@@ -63,7 +63,7 @@
 
 ### 1. Clone & configure
 ```bash
-git clone https://github.com/YOUR_USERNAME/dtu-diabetes-ml-dashboard.git
+git clone https://github.com/federicomarra/dtu-diabetes-ml-dashboard.git
 cd dtu-diabetes-ml-dashboard
 cp .env.example .env
 ```
