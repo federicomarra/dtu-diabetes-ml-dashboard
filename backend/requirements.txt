@@ -1,0 +1,22 @@
+# Web framework
+Flask==3.0.2
+Flask-Cors==4.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+
+# Database
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.25
+
+# Serialization & validation
+marshmallow==3.20.2
+
+# Configuration
+python-dotenv==1.0.0
+
+# Production server
+gunicorn==21.2.0
+
+# Data processing
+numpy==1.26.4
+pandas==2.2.0

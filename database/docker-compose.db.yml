@@ -1,0 +1,36 @@
+# Local PostgreSQL for development
+# Usage: docker compose -f database/docker-compose.db.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: diabetes-db
+    environment:
+      POSTGRES_DB: diabetes_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: diabetes-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@dtu.dk
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
