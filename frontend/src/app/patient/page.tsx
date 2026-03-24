@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import GlucoseChart from "@/components/GlucoseChart";
 import TIRBarChart from "@/components/TIRBarChart";
 import PatientOverview from "@/components/PatientOverview";
@@ -101,13 +101,9 @@ const DEMO_ANOMALIES: AnomalyDetection[] = [
 ];
 
 export default function PatientDashboard() {
-  const [readings, setReadings] = useState<GlucoseReading[]>([]);
-
-  useEffect(() => {
-    // TODO: Replace with API call when backend is running
-    // import { getGlucoseReadings, getTimeInRange, getAnomalies } from "@/lib/api";
-    setReadings(generateDemoReadings());
-  }, []);
+  // TODO: Replace with API call when backend is running
+  // import { getGlucoseReadings, getTimeInRange, getAnomalies } from "@/lib/api";
+  const readings = useMemo(() => generateDemoReadings(), []);
 
   return (
     <div className={styles.dashboard}>

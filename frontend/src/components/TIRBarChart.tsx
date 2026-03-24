@@ -24,14 +24,6 @@ const RANGE_COLORS = {
   very_high: "#e74c3c",
 };
 
-const RANGE_LABELS = {
-  very_low: "Very Low (<54)",
-  low: "Low (54–69)",
-  in_range: "In Range (70–180)",
-  high: "High (181–250)",
-  very_high: "Very High (>250)",
-};
-
 export default function TIRBarChart({ tir }: TIRBarChartProps) {
   const data = [
     { name: "Very Low", pct: tir.very_low_pct, key: "very_low" as const },
