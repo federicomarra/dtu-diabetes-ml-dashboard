@@ -1,11 +1,14 @@
 """Glucose data API routes."""
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
+from flask_smorest import Blueprint
 from app import db
 from app.models.glucose_reading import GlucoseReading
 from app.services.glucose_service import GlucoseService
 
-glucose_bp = Blueprint("glucose", __name__)
+glucose_bp = Blueprint(
+    "glucose", __name__, description="Glucose readings and statistics"
+)
 
 
 @glucose_bp.route("/<int:patient_id>", methods=["GET"])

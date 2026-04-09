@@ -10,6 +10,10 @@ SQLAlchemy==2.0.25
 
 # Serialization & validation
 marshmallow==3.20.2
+marshmallow-sqlalchemy==1.1.0
+
+# OpenAPI / Swagger
+flask-smorest==0.44.0
 
 # Configuration
 python-dotenv==1.0.0

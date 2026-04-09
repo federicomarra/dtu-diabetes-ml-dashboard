@@ -1,12 +1,15 @@
 """Patient API routes."""
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
+from flask_smorest import Blueprint
 from app import db
 from app.models.patient import Patient
 
-patients_bp = Blueprint("patients", __name__)
+patients_bp = Blueprint(
+    "patients", __name__, description="Patient management"
+)
 
 
-@patients_bp.route("/", methods=["GET"])
+@patients_bp.route("/list", methods=["GET"], endpoint="list_patients")
 def list_patients():
     """List all patients with optional pagination."""
     page = request.args.get("page", 1, type=int)
@@ -31,7 +34,7 @@ def get_patient(patient_id: int):
     return jsonify(patient.to_dict())
 
 
-@patients_bp.route("/", methods=["POST"])
+@patients_bp.route("/create", methods=["POST"], endpoint="create_patient")
 def create_patient():
     """Create a new patient."""
     data = request.get_json()

@@ -1,9 +1,12 @@
 """Anomaly detection API routes."""
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
+from flask_smorest import Blueprint
 from app import db
 from app.models.anomaly_detection import AnomalyDetection
 
-anomalies_bp = Blueprint("anomalies", __name__)
+anomalies_bp = Blueprint(
+    "anomalies", __name__, description="Anomaly detection results"
+)
 
 
 @anomalies_bp.route("/<int:patient_id>", methods=["GET"])
