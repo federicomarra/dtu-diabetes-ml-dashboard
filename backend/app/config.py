@@ -1,6 +1,7 @@
 """Application configuration classes."""
 import os
 from dotenv import load_dotenv
+from sqlalchemy.pool import StaticPool
 
 load_dotenv()
 
@@ -31,10 +32,11 @@ class ProductionConfig(BaseConfig):
 class TestingConfig(BaseConfig):
     """Testing configuration."""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "TEST_DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5432/diabetes_db_test"
-    )
+    SQLALCHEMY_DATABASE_URI = "sqlite://"
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "connect_args": {"check_same_thread": False},
+        "poolclass": StaticPool,
+    }
     CORS_ORIGINS = "*"
 
 

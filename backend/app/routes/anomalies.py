@@ -1,5 +1,5 @@
 """Anomaly detection API routes."""
-from flask import jsonify, request
+from flask import abort, jsonify, request
 from flask_smorest import Blueprint
 from app import db
 from app.models.anomaly_detection import AnomalyDetection
@@ -39,7 +39,9 @@ def get_anomalies(patient_id: int):
 @anomalies_bp.route("/<int:anomaly_id>/acknowledge", methods=["POST"])
 def acknowledge_anomaly(anomaly_id: int):
     """Mark an anomaly as acknowledged by a clinician."""
-    anomaly = AnomalyDetection.query.get_or_404(anomaly_id)
+    anomaly = db.session.get(AnomalyDetection, anomaly_id)
+    if anomaly is None:
+        abort(404)
     anomaly.is_acknowledged = True
     db.session.commit()
 

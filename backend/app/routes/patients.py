@@ -1,5 +1,5 @@
 """Patient API routes."""
-from flask import jsonify, request
+from flask import abort, jsonify, request
 from flask_smorest import Blueprint
 from app import db
 from app.models.patient import Patient
@@ -30,7 +30,9 @@ def list_patients():
 @patients_bp.route("/<int:patient_id>", methods=["GET"])
 def get_patient(patient_id: int):
     """Get a single patient by ID."""
-    patient = Patient.query.get_or_404(patient_id)
+    patient = db.session.get(Patient, patient_id)
+    if patient is None:
+        abort(404)
     return jsonify(patient.to_dict())
 
 
