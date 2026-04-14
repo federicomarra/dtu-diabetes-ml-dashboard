@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8000
 
 # Use Gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "wsgi:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT --workers 4 wsgi:app"]
