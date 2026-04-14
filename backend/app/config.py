@@ -23,10 +23,18 @@ class DevelopmentConfig(BaseConfig):
 
 
 class ProductionConfig(BaseConfig):
-    """Production configuration (HPC deployment)."""
+    """Production configuration (Railway / HPC deployment)."""
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://*.vercel.app").split(",")
+
+    # Railway Postgres uses postgres:// but SQLAlchemy requires postgresql://
+    _db_url = os.getenv("DATABASE_URL", "")
+    if _db_url.startswith("postgres://"):
+        _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+    SQLALCHEMY_DATABASE_URI = _db_url
+
+    CORS_ORIGINS = os.getenv(
+        "CORS_ORIGINS", "https://*.vercel.app,https://*.up.railway.app"
+    ).split(",")
 
 
 class TestingConfig(BaseConfig):
