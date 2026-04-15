@@ -55,8 +55,8 @@ def create_app(config_name: str = "development") -> Flask:
         return {"status": "healthy"}
 
     # Health check endpoint (plain Flask route, not documented by smorest)
-    @app.route("/api/hello-guido")
-    def hello_guido():
+    @app.route("/api/hello")
+    def hello():
         return {"il piu' bello del mondo": "guido"}
 
     return app
