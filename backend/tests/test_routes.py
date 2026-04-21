@@ -63,7 +63,7 @@ class TestGlucoseAPI:
             db.session.add(p)
             db.session.commit()
             
-            r = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow(), glucose_mgdl=120)
+            r = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow(), glucose_mmoll=6.7)
             db.session.add(r)
             db.session.commit()
 
@@ -71,7 +71,7 @@ class TestGlucoseAPI:
             assert response.status_code == 200
             data = response.get_json()
             assert data["count"] == 1
-            assert data["readings"][0]["glucose_mgdl"] == 120
+            assert data["readings"][0]["glucose_mmoll"] == 6.7
 
     def test_get_latest_reading_not_found(self, client):
         response = client.get("/api/glucose/999/latest")
@@ -83,9 +83,9 @@ class TestGlucoseAPI:
             db.session.add(p)
             db.session.commit()
             
-            # 2 readings: one in range (100), one high (200)
-            r1 = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow() - timedelta(minutes=5), glucose_mgdl=100)
-            r2 = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow(), glucose_mgdl=200)
+            # 2 readings: one in range (5.6 mmol/L), one high (11.1 mmol/L)
+            r1 = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow() - timedelta(minutes=5), glucose_mmoll=5.6)
+            r2 = GlucoseReading(patient_id=p.id, timestamp=datetime.utcnow(), glucose_mmoll=11.1)
             db.session.add_all([r1, r2])
             db.session.commit()
 

@@ -12,7 +12,7 @@ class GlucoseReading(db.Model):
         db.Integer, db.ForeignKey("patients.id"), nullable=False, index=True
     )
     timestamp = db.Column(db.DateTime, nullable=False, index=True)
-    glucose_mgdl = db.Column(db.Float, nullable=False)
+    glucose_mmoll = db.Column(db.Float, nullable=False)  # stored in mmol/L
     source = db.Column(
         db.String(20), nullable=False, default="simulated"
     )  # simulated, dexcom, libre
@@ -25,14 +25,14 @@ class GlucoseReading(db.Model):
 
     @property
     def status(self) -> str:
-        """Classify glucose level into clinical ranges."""
-        if self.glucose_mgdl < 54:
+        """Classify glucose level into clinical ranges (mmol/L thresholds)."""
+        if self.glucose_mmoll < 3.0:
             return "very_low"
-        elif self.glucose_mgdl < 70:
+        elif self.glucose_mmoll < 3.9:
             return "low"
-        elif self.glucose_mgdl <= 180:
+        elif self.glucose_mmoll <= 10.0:
             return "in_range"
-        elif self.glucose_mgdl <= 250:
+        elif self.glucose_mmoll <= 13.9:
             return "high"
         else:
             return "very_high"
@@ -42,10 +42,10 @@ class GlucoseReading(db.Model):
             "id": self.id,
             "patient_id": self.patient_id,
             "timestamp": self.timestamp.isoformat(),
-            "glucose_mgdl": self.glucose_mgdl,
+            "glucose_mmoll": self.glucose_mmoll,
             "source": self.source,
             "status": self.status,
         }
 
     def __repr__(self) -> str:
-        return f"<GlucoseReading {self.timestamp}: {self.glucose_mgdl} mg/dL>"
+        return f"<GlucoseReading {self.timestamp}: {self.glucose_mmoll} mmol/L>"

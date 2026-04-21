@@ -16,7 +16,7 @@ class AnomalyService:
     """
 
     # Thresholds for rule-based detection
-    HIGH_GLUCOSE_THRESHOLD = 250  # mg/dL
+    HIGH_GLUCOSE_THRESHOLD = 13.9  # mmol/L
     SUSTAINED_DURATION_MINUTES = 60
     BOLUS_LOOKBACK_MINUTES = 30
 
@@ -41,7 +41,7 @@ class AnomalyService:
             GlucoseReading.query
             .filter_by(patient_id=patient_id)
             .filter(GlucoseReading.timestamp.between(window_start, window_end))
-            .filter(GlucoseReading.glucose_mgdl >= AnomalyService.HIGH_GLUCOSE_THRESHOLD)
+            .filter(GlucoseReading.glucose_mmoll >= AnomalyService.HIGH_GLUCOSE_THRESHOLD)
             .order_by(GlucoseReading.timestamp)
             .all()
         )
@@ -71,7 +71,7 @@ class AnomalyService:
                     "anomaly_type": "missed_bolus",
                     "confidence": 0.7,
                     "description": (
-                        f"Glucose at {reading.glucose_mgdl} mg/dL with no bolus "
+                        f"Glucose at {reading.glucose_mmoll} mmol/L with no bolus "
                         f"in the preceding {AnomalyService.BOLUS_LOOKBACK_MINUTES} min"
                     ),
                 })

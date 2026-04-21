@@ -7,11 +7,11 @@ from app.models.glucose_reading import GlucoseReading
 class GlucoseService:
     """Service for glucose data computations."""
 
-    # Clinical glucose target ranges (mg/dL)
-    VERY_LOW = 54
-    LOW = 70
-    HIGH = 180
-    VERY_HIGH = 250
+    # Clinical glucose target ranges (mmol/L)
+    VERY_LOW = 3.0
+    LOW = 3.9
+    HIGH = 10.0
+    VERY_HIGH = 13.9
 
     @staticmethod
     def calculate_time_in_range(
@@ -22,11 +22,11 @@ class GlucoseService:
         """Calculate time-in-range (TIR) statistics for a patient.
 
         Returns percentage of readings in each clinical range:
-        - very_low: < 54 mg/dL
-        - low: 54–69 mg/dL
-        - in_range: 70–180 mg/dL
-        - high: 181–250 mg/dL
-        - very_high: > 250 mg/dL
+        - very_low: < 3.0 mmol/L
+        - low: 3.0–3.8 mmol/L
+        - in_range: 3.9–10.0 mmol/L
+        - high: 10.1–13.9 mmol/L
+        - very_high: > 13.9 mmol/L
         """
         query = GlucoseReading.query.filter_by(patient_id=patient_id)
 
@@ -53,21 +53,21 @@ class GlucoseService:
                 "very_high_pct": 0,
             }
 
-        very_low = sum(1 for r in readings if r.glucose_mgdl < GlucoseService.VERY_LOW)
+        very_low = sum(1 for r in readings if r.glucose_mmoll < GlucoseService.VERY_LOW)
         low = sum(
             1 for r in readings
-            if GlucoseService.VERY_LOW <= r.glucose_mgdl < GlucoseService.LOW
+            if GlucoseService.VERY_LOW <= r.glucose_mmoll < GlucoseService.LOW
         )
         in_range = sum(
             1 for r in readings
-            if GlucoseService.LOW <= r.glucose_mgdl <= GlucoseService.HIGH
+            if GlucoseService.LOW <= r.glucose_mmoll <= GlucoseService.HIGH
         )
         high = sum(
             1 for r in readings
-            if GlucoseService.HIGH < r.glucose_mgdl <= GlucoseService.VERY_HIGH
+            if GlucoseService.HIGH < r.glucose_mmoll <= GlucoseService.VERY_HIGH
         )
         very_high = sum(
-            1 for r in readings if r.glucose_mgdl > GlucoseService.VERY_HIGH
+            1 for r in readings if r.glucose_mmoll > GlucoseService.VERY_HIGH
         )
 
         return {
