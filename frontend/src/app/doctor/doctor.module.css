@@ -34,3 +34,14 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cardLink {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cardLink:hover {
+  text-decoration: none;
+}

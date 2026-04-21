@@ -6,17 +6,14 @@ export interface Patient {
   id: number;
   external_id: string;
   name: string;
-  date_of_birth: string | null;
-  diabetes_type: string;
-  diagnosis_date: string | null;
-  created_at: string;
+  age: number | string | null;
 }
 
 export interface GlucoseReading {
   id: number;
   patient_id: number;
   timestamp: string;
-  glucose_mgdl: number;
+  glucose_mmoll: number;
   source: "simulated" | "dexcom" | "libre";
   status: "very_low" | "low" | "in_range" | "high" | "very_high";
 }
@@ -37,6 +34,14 @@ export interface MealEvent {
   timestamp: string;
   carbs_grams: number;
   meal_type: "breakfast" | "lunch" | "dinner" | "snack" | null;
+}
+
+export interface ExerciseEvent {
+  id: number;
+  patient_id: number;
+  timestamp: string;
+  duration_minutes: number;
+  intensity: "low" | "medium" | "high";   // TODO: check with Guido about these
 }
 
 export interface AnomalyDetection {

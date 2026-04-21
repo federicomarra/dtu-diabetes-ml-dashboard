@@ -29,7 +29,9 @@ export default function RootLayout({
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <span style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-              🩸 DTU Diabetes Dashboard
+              <a href="/" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
+                DTU Diabetes ML Dashboard
+              </a>
             </span>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.9rem" }}>

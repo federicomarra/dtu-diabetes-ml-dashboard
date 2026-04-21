@@ -7,6 +7,7 @@ import styles from "./PatientOverview.module.css";
 interface PatientOverviewProps {
   patientName: string;
   patientId: string;
+  patientAge: string | number | null;
   latestReading?: GlucoseReading;
   tir?: TimeInRange;
   anomalyCount?: number;
@@ -47,6 +48,7 @@ function getStatusLabel(status?: string): string {
 export default function PatientOverview({
   patientName,
   patientId,
+  patientAge,
   latestReading,
   tir,
   anomalyCount = 0,
@@ -55,7 +57,10 @@ export default function PatientOverview({
     <div className={styles.card}>
       <div className={styles.header}>
         <h3 className={styles.name}>{patientName}</h3>
-        <span className={styles.id}>{patientId}</span>
+        <div className={styles.headerMeta}>
+          <span className={styles.id}>{patientId}</span>
+          <span className={styles.age}>Age: {patientAge} yo</span>
+        </div>
       </div>
 
       <div className={styles.metrics}>
@@ -71,7 +76,7 @@ export default function PatientOverview({
               style={{ color: getStatusColor(latestReading?.status) }}
             >
               {latestReading
-                ? `${latestReading.glucose_mgdl} mg/dL`
+                ? `${latestReading.glucose_mmoll.toFixed(1)} mmol/L`
                 : "—"}
             </div>
             <div

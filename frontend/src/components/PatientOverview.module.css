@@ -33,6 +33,18 @@
   font-family: monospace;
 }
 
+.headerMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.age {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
 .metrics {
   display: flex;
   gap: 1.5rem;

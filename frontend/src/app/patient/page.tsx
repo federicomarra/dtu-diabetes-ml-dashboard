@@ -11,6 +11,7 @@ import type {
   TimeInRange,
   AnomalyDetection,
 } from "@/types";
+import { generateDemoReadings } from "@/data/demo-data";
 import styles from "./patient.module.css";
 
 /**
@@ -23,49 +24,10 @@ import styles from "./patient.module.css";
 // Demo data for development (replace with API calls when backend is running)
 const DEMO_PATIENT: Patient = {
   id: 1,
-  external_id: "SIM_001",
-  name: "Demo Patient",
-  date_of_birth: "1990-05-15",
-  diabetes_type: "T1D",
-  diagnosis_date: "2005-03-20",
-  created_at: new Date().toISOString(),
+  external_id: "SIM_00001",
+  name: "Demo patient 000001",
+  age: 34,
 };
-
-function generateDemoReadings(): GlucoseReading[] {
-  const readings: GlucoseReading[] = [];
-  const now = new Date();
-  let glucose = 110;
-
-  for (let i = 288; i >= 0; i--) {
-    const timestamp = new Date(now.getTime() - i * 5 * 60 * 1000);
-    const hour = timestamp.getHours();
-
-    // Simulate meal spikes
-    const mealEffect =
-      (hour >= 7 && hour <= 9) || (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 20)
-        ? Math.random() * 3
-        : 0;
-
-    glucose += (110 - glucose) * 0.02 + (Math.random() - 0.5) * 6 + mealEffect;
-    glucose = Math.max(50, Math.min(350, glucose));
-
-    const status: GlucoseReading["status"] =
-      glucose < 54 ? "very_low" :
-      glucose < 70 ? "low" :
-      glucose <= 180 ? "in_range" :
-      glucose <= 250 ? "high" : "very_high";
-
-    readings.push({
-      id: i,
-      patient_id: 1,
-      timestamp: timestamp.toISOString(),
-      glucose_mgdl: Math.round(glucose * 10) / 10,
-      source: "simulated",
-      status,
-    });
-  }
-  return readings;
-}
 
 const DEMO_TIR: TimeInRange = {
   patient_id: 1,
@@ -84,7 +46,7 @@ const DEMO_ANOMALIES: AnomalyDetection[] = [
     glucose_reading_id: 42,
     anomaly_type: "missed_bolus",
     confidence: 0.85,
-    description: "Glucose at 265 mg/dL with no bolus in preceding 30 min",
+    description: "Glucose at 14.7 mmol/L with no bolus in preceding 30 min",
     is_acknowledged: false,
     detected_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
   },
@@ -113,6 +75,7 @@ export default function PatientDashboard() {
       <PatientOverview
         patientName={DEMO_PATIENT.name}
         patientId={DEMO_PATIENT.external_id}
+        patientAge={DEMO_PATIENT.age}
         latestReading={readings[readings.length - 1]}
         tir={DEMO_TIR}
         anomalyCount={DEMO_ANOMALIES.filter((a) => !a.is_acknowledged).length}
