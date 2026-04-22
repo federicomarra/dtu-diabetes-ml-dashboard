@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -29,18 +30,18 @@ export default function RootLayout({
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <span style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-              <a href="/" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
+              <Link href="/" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
                 DTU Diabetes ML Dashboard
-              </a>
+              </Link>
             </span>
           </div>
           <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.9rem" }}>
-            <a href="/patient" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
+            <Link href="/patient" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
               Patient View
-            </a>
-            <a href="/doctor" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
+            </Link>
+            <Link href="/doctor" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
               Doctor View
-            </a>
+            </Link>
           </div>
         </nav>
         <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
