@@ -10,12 +10,12 @@
  */
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   generateDemoReadings,
   DEMO_ANOMALIES,
 } from "@/models/demoData";
-import type { Patient, TimeInRange, AnomalyDetection } from "@/models/types";
+import type { Patient, TimeInRange, AnomalyDetection, GlucoseReading } from "@/models/types";
 
 // Demo patient — replace with session/auth lookup in production
 const DEMO_PATIENT: Patient = {
@@ -36,15 +36,19 @@ const DEMO_TIR: TimeInRange = {
 };
 
 export function usePatientController() {
-  const readings = useMemo(() => generateDemoReadings(), []);
+  const [readings, setReadings] = useState<GlucoseReading[]>([]);
   const anomalies: AnomalyDetection[] = DEMO_ANOMALIES[DEMO_PATIENT.id] ?? [];
+
+  useEffect(() => {
+    setReadings(generateDemoReadings());
+  }, []);
 
   return {
     patient: DEMO_PATIENT,
     readings,
     tir: DEMO_TIR,
     anomalies,
-    latestReading: readings[readings.length - 1],
+    latestReading: readings.length > 0 ? readings[readings.length - 1] : undefined,
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge: (id: number) => {
       console.log("Acknowledge anomaly:", id);
