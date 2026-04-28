@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   title: "DTU Diabetes ML Dashboard",
   description:
     "Type 1 Diabetes monitoring dashboard with ML-based anomaly detection — DTU Research Project",
+  icons: {
+    icon: "/diab-favicon.svg",
+  },
 };
 
 export default function RootLayout({
