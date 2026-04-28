@@ -11,8 +11,8 @@ interface AnomalyAlertProps {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  missed_bolus:    "Missed Bolus",
-  late_bolus:      "Late Bolus",
+  missed_bolus: "Missed Bolus",
+  late_bolus: "Late Bolus",
   unusual_pattern: "Unusual Pattern",
 };
 
@@ -44,7 +44,7 @@ export default function AnomalyAlert({
               <span className={styles.alertType}>
                 {TYPE_LABELS[anomaly.anomaly_type] || anomaly.anomaly_type}
               </span>
-              <span className={styles.alertTime}>
+              <span className={styles.alertTime} suppressHydrationWarning>
                 {format(new Date(anomaly.detected_at), "MMM d, HH:mm")}
               </span>
               <span className={styles.confidence}>

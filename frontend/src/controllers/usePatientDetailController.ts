@@ -9,7 +9,8 @@
  */
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
+import type { GlucoseReading } from "@/models/types";
 import {
   getDemoPatientByExternalId,
   generateDemoReadings,
@@ -18,7 +19,14 @@ import {
 
 export function usePatientDetailController(externalId: string) {
   const entry = getDemoPatientByExternalId(externalId);
-  const readings = useMemo(() => generateDemoReadings(), []);
+  const [readings, setReadings] = useState<GlucoseReading[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setReadings(generateDemoReadings());
+    }, 10);
+    return () => clearTimeout(timer);
+  }, []);
 
   if (!entry) {
     return { notFound: true as const, patient: null, readings: [], tir: null, anomalies: [] };
@@ -33,7 +41,7 @@ export function usePatientDetailController(externalId: string) {
     tir,
     readings,
     anomalies,
-    latestReading: readings[readings.length - 1],
+    latestReading: readings.length > 0 ? readings[readings.length - 1] : undefined,
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge: (id: number) => {
       console.log("Acknowledge anomaly:", id);
