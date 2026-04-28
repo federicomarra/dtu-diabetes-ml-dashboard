@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Link from "next/link";
+import { GlucoseUnitProvider } from "@/controllers/GlucoseUnitContext";
+import NavBar from "@/views/NavBar/NavBar";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -22,34 +23,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body style={{ fontFamily: "var(--font-inter), sans-serif" }}>
-        <nav style={{
-          background: "var(--nav-bg)",
-          color: "var(--nav-text)",
-          padding: "0.75rem 1.5rem",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom: "1px solid var(--border)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-              <Link href="/" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
-                DTU Diabetes ML Dashboard
-              </Link>
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.9rem" }}>
-            <Link href="/patient" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
-              Patient View
-            </Link>
-            <Link href="/doctor" style={{ color: "var(--nav-text)", textDecoration: "none" }}>
-              Doctor View
-            </Link>
-          </div>
-        </nav>
-        <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
-          {children}
-        </main>
+        <GlucoseUnitProvider>
+          <NavBar />
+          <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
+            {children}
+          </main>
+        </GlucoseUnitProvider>
       </body>
     </html>
   );

@@ -13,6 +13,8 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import type { GlucoseReading } from "@/models/types";
+import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { convertGlucose } from "@/models/glucoseUnits";
 import styles from "./GlucoseChart.module.css";
 
 interface GlucoseChartProps {
@@ -24,6 +26,8 @@ export default function GlucoseChart({
   readings,
   title = "Glucose Trace",
 }: GlucoseChartProps) {
+  const { unit } = useGlucoseUnit();
+
   const chartData = readings
     .slice()
     .sort(
@@ -33,7 +37,7 @@ export default function GlucoseChart({
     .map((r) => ({
       time: format(new Date(r.timestamp), "HH:mm"),
       fullTime: format(new Date(r.timestamp), "MMM d, HH:mm"),
-      glucose: r.glucose_mmoll,
+      glucose: convertGlucose(r.glucose_mmoll, unit),
       status: r.status,
     }));
 
@@ -81,7 +85,7 @@ export default function GlucoseChart({
             domain={[2.2, 19.4]}
             tick={{ fontSize: 11 }}
             label={{
-              value: "mmol/L",
+              value: unit,
               angle: -90,
               position: "insideLeft",
               fontSize: 12,
@@ -93,7 +97,7 @@ export default function GlucoseChart({
               border: "1px solid var(--border)",
               borderRadius: "8px",
             }}
-            formatter={(value: unknown) => [`${value} mmol/L`, "Glucose"]}
+            formatter={(value: unknown) => [`${value} ${unit}`, "Glucose"]}
             labelFormatter={(label: unknown) => `Time: ${label}`}
           />
           <Line

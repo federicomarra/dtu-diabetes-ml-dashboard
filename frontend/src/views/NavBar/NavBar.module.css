@@ -1,0 +1,78 @@
+.nav {
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.brandLink {
+  color: var(--nav-text);
+  text-decoration: none;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.navLink {
+  color: var(--nav-text);
+  text-decoration: none;
+}
+
+.navLink:hover {
+  text-decoration: underline;
+}
+
+/* ─── Unit toggle ─────────────────────────────── */
+
+.unitToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.unitToggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.unitActive {
+  color: #fff;
+  font-weight: 600;
+}
+
+.unitInactive {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+}
+
+.unitDivider {
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 300;
+}

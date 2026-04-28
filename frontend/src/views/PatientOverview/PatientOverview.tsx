@@ -2,6 +2,8 @@
 
 import { Activity, Droplets, AlertTriangle } from "lucide-react";
 import type { GlucoseReading, TimeInRange } from "@/models/types";
+import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { formatGlucose } from "@/models/glucoseUnits";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -47,6 +49,8 @@ export default function PatientOverview({
   tir,
   anomalyCount = 0,
 }: PatientOverviewProps) {
+  const { unit } = useGlucoseUnit();
+
   return (
     <div className={styles.card}>
       <div className={styles.header}>
@@ -70,7 +74,7 @@ export default function PatientOverview({
               style={{ color: getStatusColor(latestReading?.status) }}
             >
               {latestReading
-                ? `${latestReading.glucose_mmoll.toFixed(1)} mmol/L`
+                ? formatGlucose(latestReading.glucose_mmoll, unit)
                 : "—"}
             </div>
             <div
