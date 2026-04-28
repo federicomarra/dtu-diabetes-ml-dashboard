@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
 import TIRBarChart from "@/views/TIRBarChart/TIRBarChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";

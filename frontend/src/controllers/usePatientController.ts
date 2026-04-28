@@ -40,7 +40,10 @@ export function usePatientController() {
   const anomalies: AnomalyDetection[] = DEMO_ANOMALIES[DEMO_PATIENT.id] ?? [];
 
   useEffect(() => {
-    setReadings(generateDemoReadings());
+    const timer = setTimeout(() => {
+      setReadings(generateDemoReadings());
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   return {
