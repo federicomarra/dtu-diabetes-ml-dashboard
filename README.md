@@ -2,30 +2,30 @@
 
 **Type 1 Diabetes monitoring system** with continuous glucose monitoring, insulin tracking, and ML-powered anomaly detection for missed and late boluses.
 
-> DTU Research Project — Deployed on Vercel (frontend) + DTU HPC (backend & ML)
+> DTU Research Project — Currently run locally (Docker or manual setup)
 
 ## Architecture
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Frontend   │────▶│   Backend    │────▶│  PostgreSQL  │
-│  (Next.js)   │     │   (Flask)    │     │   Database   │
-│   Vercel     │     │   DTU HPC    │     │   DTU HPC    │
-└──────────────┘     └──────────────┘     └──────────────┘
-                            │
-                     ┌──────┴──────┐
-                     │  ML Module  │
-                     │  (PyTorch)  │
-                     │  DTU HPC    │
-                     └─────────────┘
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│     Frontend     │     │     Backend      │     │    Database      │
+│    (Next.js)     │────▶│     (Flask)      │────▶│   (PostgreSQL)   │
+│  localhost:3000  │     │  localhost:8000  │     │  localhost:5432  │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+                                  │
+                         ┌──────────────────┐
+                         │    ML Module     │
+                         │    (PyTorch)     │
+                         │  local / DTU HPC │
+                         └──────────────────┘
 ```
 
-| Component | Technology | Deployment |
+| Component | Technology | Environment |
 |-----------|-----------|------------|
-| Frontend | Next.js + TypeScript + Recharts | Vercel |
-| Backend API | Flask + SQLAlchemy + Gunicorn | DTU HPC |
-| Database | PostgreSQL 16 | DTU HPC / Docker |
-| ML Module | PyTorch + scikit-learn | DTU HPC (GPU) |
+| Frontend | Next.js + TypeScript + Recharts | localhost:3000 |
+| Backend API | Flask + SQLAlchemy + Gunicorn | localhost:8000 |
+| Database | PostgreSQL 16 | localhost:5432 |
+| ML Module | PyTorch + scikit-learn | Local / DTU HPC |
 
 ## Project Structure
 
@@ -52,17 +52,26 @@
 │   └── wsgi.py               # Gunicorn entrypoint
 ├── frontend/                 # Next.js dashboard
 │   └── src/
-│       ├── app/
+│       ├── app/                  # Next.js pages (thin shells)
 │       │   ├── page.tsx          # Home / landing
+│       │   ├── layout.tsx        # Root layout & nav
 │       │   ├── patient/page.tsx  # Single-patient dashboard
-│       │   └── doctor/page.tsx   # Multi-patient clinician view
-│       ├── components/
-│       │   ├── GlucoseChart.tsx  # 24-hour CGM line chart (Recharts)
-│       │   ├── TIRBarChart.tsx   # Time-in-range stacked bar
-│       │   ├── PatientOverview.tsx # Summary card with key metrics
-│       │   └── AnomalyAlert.tsx  # Alert list with acknowledge action
-│       ├── lib/              # API client
-│       └── types/            # TypeScript interfaces
+│       │   └── doctor/
+│       │       ├── page.tsx      # Multi-patient clinician view
+│       │       └── [patient_id]/page.tsx  # Doctor patient detail
+│       ├── controllers/          # React hooks — data & state
+│       │   ├── usePatientController.ts
+│       │   ├── usePatientDetailController.ts
+│       │   └── useDoctorController.ts
+│       ├── models/               # Types, API client, demo data
+│       │   ├── types.ts
+│       │   ├── api.ts
+│       │   └── demoData.ts
+│       └── views/                # Presentational components
+│           ├── GlucoseChart/     # 24-hour CGM line chart (Recharts)
+│           ├── TIRBarChart/      # Time-in-range stacked bar
+│           ├── PatientOverview/  # Summary card with key metrics
+│           └── AnomalyAlert/     # Alert list with acknowledge action
 ├── ml/                       # Machine learning module
 │   ├── data/                 # Synthetic data generation
 │   ├── training/             # Model training (train_anomaly.py)
@@ -79,7 +88,7 @@
 ### Prerequisites
 - [Node.js 18+](https://nodejs.org/)
 - [Python 3.10+](https://python.org/)
-- [Docker & Docker Compose](https://docker.com/)
+- [Docker](https://docker.com/)
 
 ### 1. Clone & configure
 ```bash
@@ -101,9 +110,9 @@ Services available after startup:
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:3000 |
-| Backend API | http://localhost:5001/api/health |
-| Swagger UI | http://localhost:5001/api/swagger |
-| OpenAPI JSON | http://localhost:5001/api/openapi.json |
+| Backend API | http://localhost:8000/api/health |
+| Swagger UI | http://localhost:8000/api/swagger |
+| OpenAPI JSON | http://localhost:8000/api/openapi.json |
 | pgAdmin | http://localhost:5050 (admin@dtu.dk / admin) |
 
 ### 3. Manual setup (without Docker)
@@ -120,7 +129,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 flask db upgrade          # Apply migrations
 python ../database/seed.py  # Seed with synthetic data
-gunicorn --bind 0.0.0.0:5000 --workers 2 --reload wsgi:app
+gunicorn --bind 0.0.0.0:8000 --workers 2 --reload wsgi:app
 ```
 
 **Frontend:**
@@ -176,8 +185,8 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [`flask-sm
 
 | Resource | URL (local Docker) |
 |----------|-------------------|
-| Swagger UI (interactive) | http://localhost:5001/api/swagger |
-| Raw OpenAPI 3.0 JSON spec | http://localhost:5001/api/openapi.json |
+| Swagger UI (interactive) | http://localhost:8000/api/swagger |
+| Raw OpenAPI 3.0 JSON spec | http://localhost:8000/api/openapi.json |
 
 ### How it works
 
@@ -225,33 +234,11 @@ def get_patient(patient_id: int):
 
 > The frontend currently ships with realistic **demo data** for layout/testing. Replace the `DEMO_*` constants with live API calls from `@/lib/api` when the backend is running.
 
-## DTU HPC Deployment
+## Deployment
 
-The `hpc_job.sh` script supports four modes submitted via LSF `bsub`:
-
-```bash
-# Run Flask API server (4 CPU cores, 8 GB RAM, 24 h wall-time)
-bsub < hpc_job.sh api
-
-# Run ML training (enable GPU lines in hpc_job.sh first)
-bsub < hpc_job.sh train
-
-# Generate synthetic CGM data
-bsub < hpc_job.sh generate
-
-# Seed database with generated data
-bsub < hpc_job.sh seed
-```
-
-Default LSF resources: `-q hpc -n 4 -W 24:00 -R "rusage[mem=8GB]"`.  
-For GPU training, uncomment the `gpuv100` queue and CUDA module lines in `hpc_job.sh`.
-
-## Vercel Deployment
-
-1. Connect the GitHub repo to Vercel
-2. Set framework to **Next.js** and root directory to `frontend`
-3. Add environment variable: `NEXT_PUBLIC_API_URL=http://your-hpc-ip:5000/api`
-4. Deploy
+> **Note:** For this stage of the project, the application is **not hosted externally**. All services run locally via Docker Compose or manual setup (see [Quick Start](#quick-start) above).
+>
+> Cloud deployment (e.g. Vercel for the frontend, DTU HPC for the backend & ML training) may be reintroduced in a later phase.
 
 ## License
 
