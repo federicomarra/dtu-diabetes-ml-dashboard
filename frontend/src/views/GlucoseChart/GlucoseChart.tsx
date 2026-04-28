@@ -13,6 +13,15 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import type { GlucoseReading } from "@/models/types";
+import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { convertGlucose } from "@/models/glucoseUnits";
+import {
+  LOW_THRESHOLD,
+  HIGH_THRESHOLD,
+  VERY_HIGH_THRESHOLD,
+  CHART_DOMAIN_MIN,
+  CHART_DOMAIN_MAX,
+} from "@/models/glucoseConfig";
 import styles from "./GlucoseChart.module.css";
 
 interface GlucoseChartProps {
@@ -24,6 +33,8 @@ export default function GlucoseChart({
   readings,
   title = "Glucose Trace",
 }: GlucoseChartProps) {
+  const { unit } = useGlucoseUnit();
+
   const chartData = readings
     .slice()
     .sort(
@@ -33,9 +44,15 @@ export default function GlucoseChart({
     .map((r) => ({
       time: format(new Date(r.timestamp), "HH:mm"),
       fullTime: format(new Date(r.timestamp), "MMM d, HH:mm"),
-      glucose: r.glucose_mmoll,
+      glucose: convertGlucose(r.glucose_mmoll, unit),
       status: r.status,
     }));
+
+  const low = convertGlucose(LOW_THRESHOLD, unit);
+  const high = convertGlucose(HIGH_THRESHOLD, unit);
+  const veryHigh = convertGlucose(VERY_HIGH_THRESHOLD, unit);
+  const domainMin = convertGlucose(CHART_DOMAIN_MIN, unit);
+  const domainMax = convertGlucose(CHART_DOMAIN_MAX, unit);
 
   return (
     <div className={styles.container}>
@@ -44,32 +61,32 @@ export default function GlucoseChart({
         <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
 
-          {/* Target range shading (3.9–10.0 mmol/L) */}
+          {/* Target range shading */}
           <ReferenceArea
-            y1={3.9}
-            y2={10.0}
+            y1={low}
+            y2={high}
             fill="var(--success)"
             fillOpacity={0.08}
           />
 
           {/* Clinical threshold lines */}
           <ReferenceLine
-            y={3.9}
+            y={low}
             stroke="var(--warning)"
             strokeDasharray="4 4"
-            label={{ value: "3.9", position: "left", fontSize: 11 }}
+            label={{ value: String(low), position: "left", fontSize: 11 }}
           />
           <ReferenceLine
-            y={10.0}
+            y={high}
             stroke="var(--warning)"
             strokeDasharray="4 4"
-            label={{ value: "10.0", position: "left", fontSize: 11 }}
+            label={{ value: String(high), position: "left", fontSize: 11 }}
           />
           <ReferenceLine
-            y={13.9}
+            y={veryHigh}
             stroke="var(--danger)"
             strokeDasharray="4 4"
-            label={{ value: "13.9", position: "left", fontSize: 11 }}
+            label={{ value: String(veryHigh), position: "left", fontSize: 11 }}
           />
 
           <XAxis
@@ -78,10 +95,10 @@ export default function GlucoseChart({
             interval="preserveStartEnd"
           />
           <YAxis
-            domain={[2.2, 19.4]}
+            domain={[domainMin, domainMax]}
             tick={{ fontSize: 11 }}
             label={{
-              value: "mmol/L",
+              value: unit,
               angle: -90,
               position: "insideLeft",
               fontSize: 12,
@@ -93,7 +110,7 @@ export default function GlucoseChart({
               border: "1px solid var(--border)",
               borderRadius: "8px",
             }}
-            formatter={(value: unknown) => [`${value} mmol/L`, "Glucose"]}
+            formatter={(value: unknown) => [`${value} ${unit}`, "Glucose"]}
             labelFormatter={(label: unknown) => `Time: ${label}`}
           />
           <Line

@@ -11,6 +11,14 @@ import type {
   TimeInRange,
   AnomalyDetection,
 } from "@/models/types";
+import {
+  VERY_LOW_THRESHOLD,
+  LOW_THRESHOLD,
+  HIGH_THRESHOLD,
+  VERY_HIGH_THRESHOLD,
+  GLUCOSE_CLAMP_MIN,
+  GLUCOSE_CLAMP_MAX,
+} from "@/models/glucoseConfig";
 
 // ─── Glucose reading generator ────────────────────────────
 
@@ -33,16 +41,16 @@ export function generateDemoReadings(): GlucoseReading[] {
 
     glucose +=
       (6.1 - glucose) * 0.02 + (Math.random() - 0.5) * 0.33 + mealEffect;
-    glucose = Math.max(2.8, Math.min(19.4, glucose)); // 50–350 mg/dL in mmol/L
+    glucose = Math.max(GLUCOSE_CLAMP_MIN, Math.min(GLUCOSE_CLAMP_MAX, glucose));
 
     const status: GlucoseReading["status"] =
-      glucose < 3.0
+      glucose < VERY_LOW_THRESHOLD
         ? "very_low"
-        : glucose < 3.9
+        : glucose < LOW_THRESHOLD
         ? "low"
-        : glucose <= 10.0
+        : glucose <= HIGH_THRESHOLD
         ? "in_range"
-        : glucose <= 13.9
+        : glucose <= VERY_HIGH_THRESHOLD
         ? "high"
         : "very_high";
 
