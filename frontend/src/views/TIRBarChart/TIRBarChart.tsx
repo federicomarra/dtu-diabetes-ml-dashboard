@@ -241,7 +241,7 @@ function DividedView({ tir }: { tir: TimeInRange }) {
 // ─── Main component ────────────────────────────────────────
 
 export default function TIRBarChart({ tir }: TIRBarChartProps) {
-  const [mode, setMode] = useState<ViewMode>("divided");
+  const [mode, setMode] = useState<ViewMode>("unified");
 
   return (
     <div className={styles.container}>
