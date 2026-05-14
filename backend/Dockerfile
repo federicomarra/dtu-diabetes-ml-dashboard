@@ -1,18 +1,29 @@
-FROM python:3.10-slim
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
 
+# Copy solution + project files first for layer caching
+COPY DiabetesApi/DiabetesApi.csproj          DiabetesApi/
+COPY DiabetesApi.Tests/DiabetesApi.Tests.csproj DiabetesApi.Tests/
+COPY DiabetesApi.slnx .
+
+RUN dotnet restore DiabetesApi.slnx
+
+# Copy sources and publish
+COPY DiabetesApi/ DiabetesApi/
+RUN dotnet publish DiabetesApi/DiabetesApi.csproj \
+    -c Release \
+    -o /app/out
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Install system deps for psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc && \
-    rm -rf /var/lib/apt/lists/*
+COPY --from=build /app/out .
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
+# Listen on port 8000
 EXPOSE 8000
+ENV ASPNETCORE_URLS=http://+:8000
+ENV ASPNETCORE_ENVIRONMENT=Production
 
-# Use Gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "wsgi:app"]
+ENTRYPOINT ["dotnet", "DiabetesApi.dll"]

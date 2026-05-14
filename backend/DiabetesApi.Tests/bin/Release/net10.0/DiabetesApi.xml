@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>DiabetesApi</name>
+    </assembly>
+    <members>
+        <member name="T:DiabetesApi.Controllers.AnomaliesController">
+            <summary>Anomaly detection results and acknowledgement.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.AnomaliesController.#ctor(DiabetesApi.Data.AppDbContext)">
+            <summary>Anomaly detection results and acknowledgement.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.AnomaliesController.GetAnomalies(System.Int32,System.Nullable{System.Boolean},System.Int32)">
+            <summary>
+            Get detected anomalies for a patient.
+            </summary>
+            <param name="patientId">Patient ID.</param>
+            <param name="acknowledged">Filter by acknowledgement status (true/false, optional).</param>
+            <param name="limit">Maximum number of results (default 50).</param>
+        </member>
+        <member name="M:DiabetesApi.Controllers.AnomaliesController.AcknowledgeAnomaly(System.Int32)">
+            <summary>Mark an anomaly as acknowledged by a clinician.</summary>
+        </member>
+        <member name="T:DiabetesApi.Controllers.GlucoseController">
+            <summary>Glucose readings and statistics.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.GlucoseController.#ctor(DiabetesApi.Data.AppDbContext,DiabetesApi.Services.GlucoseService)">
+            <summary>Glucose readings and statistics.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.GlucoseController.GetGlucoseReadings(System.Int32,System.String,System.String,System.Int32)">
+            <summary>
+            Get glucose readings for a patient within an optional time range.
+            </summary>
+            <param name="patientId">Patient ID.</param>
+            <param name="start">ISO datetime string (optional).</param>
+            <param name="end">ISO datetime string (optional).</param>
+            <param name="limit">Maximum number of results (default 500).</param>
+        </member>
+        <member name="M:DiabetesApi.Controllers.GlucoseController.GetTimeInRange(System.Int32,System.String,System.String)">
+            <summary>Get time-in-range (TIR) statistics for a patient.</summary>
+            <param name="patientId">Patient ID.</param>
+            <param name="start">ISO datetime string (optional).</param>
+            <param name="end">ISO datetime string (optional).</param>
+        </member>
+        <member name="M:DiabetesApi.Controllers.GlucoseController.GetLatestReading(System.Int32)">
+            <summary>Get the most recent glucose reading for a patient.</summary>
+        </member>
+        <member name="T:DiabetesApi.Controllers.HealthController">
+            <summary>API health check.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.HealthController.GetHealth">
+            <summary>Returns the health status of the API.</summary>
+        </member>
+        <member name="T:DiabetesApi.Controllers.PatientsController">
+            <summary>Patient management endpoints.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.PatientsController.#ctor(DiabetesApi.Data.AppDbContext)">
+            <summary>Patient management endpoints.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.PatientsController.ListPatients(System.Int32,System.Int32)">
+            <summary>List all patients with optional pagination.</summary>
+            <param name="page">Page number (default 1).</param>
+            <param name="perPage">Items per page (default 20).</param>
+        </member>
+        <member name="M:DiabetesApi.Controllers.PatientsController.GetPatient(System.Int32)">
+            <summary>Get a single patient by ID.</summary>
+        </member>
+        <member name="M:DiabetesApi.Controllers.PatientsController.CreatePatient(DiabetesApi.DTOs.CreatePatientRequest)">
+            <summary>Create a new patient. Requires external_id and name.</summary>
+        </member>
+        <member name="P:DiabetesApi.Models.GlucoseReading.Status">
+            <summary>Clinical classification of the glucose value (mmol/L thresholds).</summary>
+        </member>
+        <member name="T:DiabetesApi.Services.GlucoseService">
+            <summary>Business logic for glucose data computations.</summary>
+        </member>
+        <member name="M:DiabetesApi.Services.GlucoseService.#ctor(DiabetesApi.Data.AppDbContext)">
+            <summary>Business logic for glucose data computations.</summary>
+        </member>
+        <member name="M:DiabetesApi.Services.GlucoseService.CalculateTimeInRangeAsync(System.Int32,System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
+            <summary>
+            Calculate Time-In-Range (TIR) statistics for a patient.
+            Returns percentage of readings in each clinical zone.
+            </summary>
+        </member>
+    </members>
+</doc>
