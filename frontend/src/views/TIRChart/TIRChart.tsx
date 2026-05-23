@@ -19,9 +19,9 @@ import {
   HIGH_THRESHOLD,
   VERY_HIGH_THRESHOLD,
 } from "@/models/glucoseConfig";
-import styles from "./TIRBarChart.module.css";
+import styles from "./TIRChart.module.css";
 
-interface TIRBarChartProps {
+interface TIRChartProps {
   tir: TimeInRange;
 }
 
@@ -33,11 +33,11 @@ const RANGE_COLORS = {
   very_high: "#e74c3c",
 };
 
-type ViewMode = "unified" | "divided";
+type ViewMode = "stacked" | "barchart";
 
-// ─── Unified view ──────────────────────────────────────────
+// ─── Stacked view ──────────────────────────────────────────
 
-interface UnifiedViewProps {
+interface StackedViewProps {
   tir: TimeInRange;
 }
 
@@ -50,7 +50,7 @@ function pctToMinutes(pct: number): string {
   return `${h}h ${m}min.`;
 }
 
-function UnifiedView({ tir }: UnifiedViewProps) {
+function StackedView({ tir }: StackedViewProps) {
   const { unit } = useGlucoseUnit();
 
   const ranges = [
@@ -122,9 +122,9 @@ function UnifiedView({ tir }: UnifiedViewProps) {
   };
 
   return (
-    <div className={styles.unifiedWrapper}>
+    <div className={styles.stackedWrapper}>
       {/* Left axis: threshold labels */}
-      <div className={styles.unifiedAxis} style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.55s" }}>
+      <div className={styles.stackedAxis} style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.55s" }}>
         {thresholdLabels.map(({ value, after }) => (
           <div
             key={value}
@@ -141,11 +141,11 @@ function UnifiedView({ tir }: UnifiedViewProps) {
       </div>
 
       {/* Stacked bar */}
-      <div className={styles.unifiedBar}>
+      <div className={styles.stackedBar}>
         {ranges.map((r) => (
           <div
             key={r.key}
-            className={styles.unifiedSegment}
+            className={styles.stackedSegment}
             style={{
               height: segmentHeight(r.key, r.pct),
               background: r.color,
@@ -174,7 +174,7 @@ function UnifiedView({ tir }: UnifiedViewProps) {
 
       {/* Right legend */}
       <div
-        className={styles.unifiedLegend}
+        className={styles.stackedLegend}
         style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.55s" }}
       >
         {ranges.map((r) => (
@@ -199,9 +199,9 @@ function UnifiedView({ tir }: UnifiedViewProps) {
   );
 }
 
-// ─── Divided view (original) ───────────────────────────────
+// ─── BarChart view (original) ───────────────────────────────
 
-function DividedView({ tir }: { tir: TimeInRange }) {
+function BarChartView({ tir }: { tir: TimeInRange }) {
   const data = [
     { name: "Very Low", pct: tir.very_low_pct, key: "very_low" as const },
     { name: "Low", pct: tir.low_pct, key: "low" as const },
@@ -240,8 +240,8 @@ function DividedView({ tir }: { tir: TimeInRange }) {
 
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRBarChart({ tir }: TIRBarChartProps) {
-  const [mode, setMode] = useState<ViewMode>("unified");
+export default function TIRChart({ tir }: TIRChartProps) {
+  const [mode, setMode] = useState<ViewMode>("stacked");
 
   return (
     <div className={styles.container}>
@@ -249,34 +249,34 @@ export default function TIRBarChart({ tir }: TIRBarChartProps) {
       <div className={styles.header}>
         <div>
           <h3 className={styles.title}>Time in Range</h3>
-          <div className={styles.totalReadings}>
-            {tir.total_readings.toLocaleString()} readings
+          <div className={styles.temporalSpan}>
+            {tir.temporal_span_days} days
           </div>
         </div>
 
         {/* Mode switcher */}
         <div className={styles.switcher}>
           <button
-            className={`${styles.switchBtn} ${mode === "unified" ? styles.switchBtnActive : ""}`}
-            onClick={() => setMode("unified")}
+            className={`${styles.switchBtn} ${mode === "stacked" ? styles.switchBtnActive : ""}`}
+            onClick={() => setMode("stacked")}
           >
-            unified
+            Stacked
           </button>
           <button
-            className={`${styles.switchBtn} ${mode === "divided" ? styles.switchBtnActive : ""}`}
-            onClick={() => setMode("divided")}
+            className={`${styles.switchBtn} ${mode === "barchart" ? styles.switchBtnActive : ""}`}
+            onClick={() => setMode("barchart")}
           >
-            divided
+            BarChart
           </button>
         </div>
       </div>
 
       {/* Chart — fixed-height wrapper keeps the card size stable on toggle */}
       <div className={styles.chartArea}>
-        {mode === "unified" ? (
-          <UnifiedView tir={tir} />
+        {mode === "stacked" ? (
+          <StackedView tir={tir} />
         ) : (
-          <DividedView tir={tir} />
+          <BarChartView tir={tir} />
         )}
       </div>
 

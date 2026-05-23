@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRBarChart from "@/views/TIRBarChart/TIRBarChart";
+import TIRChart from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
@@ -55,7 +55,7 @@ export default function DoctorPatientDetail() {
 
       <div className={styles.chartsGrid}>
         <GlucoseChart readings={readings} title="24-Hour Glucose Trace" />
-        <TIRBarChart tir={tir} />
+        <TIRChart tir={tir} />
       </div>
     </div>
   );
