@@ -35,6 +35,18 @@ const RANGE_COLORS = {
 
 type ViewMode = "stacked" | "barchart";
 
+function returnTextFromSpanDays(days: number): string {
+  if (days < 7) {
+    return `${days} day${days !== 1 ? "s" : ""}`;
+  } else if (days < 30) {
+    return `${Math.round(days / 7)} week${Math.round(days / 7) !== 1 ? "s" : ""}`;
+  } else if (days < 365) {
+    return `${Math.round(days / 30)} month${Math.round(days / 30) !== 1 ? "s" : ""}`;
+  } else {
+    return `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
+  }
+}
+
 // ─── Stacked view ──────────────────────────────────────────
 
 interface StackedViewProps {
@@ -250,7 +262,7 @@ export default function TIRChart({ tir }: TIRChartProps) {
         <div>
           <h3 className={styles.title}>Time in Range</h3>
           <div className={styles.temporalSpan}>
-            {tir.temporal_span_days} days
+            {returnTextFromSpanDays(tir.temporal_span_days)}
           </div>
         </div>
 

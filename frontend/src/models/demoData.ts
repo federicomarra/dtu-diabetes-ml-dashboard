@@ -94,7 +94,7 @@ export const DEMO_PATIENTS: Array<{
         glucose_mmoll: 5.3, source: "simulated", status: "in_range",
       },
       tir: {
-        patient_id: 2, temporal_span_days: 7,
+        patient_id: 2, temporal_span_days: 14,
         very_low_pct: 0.5, low_pct: 2.1, in_range_pct: 85.3,
         high_pct: 10.2, very_high_pct: 1.9,
       },
@@ -107,7 +107,7 @@ export const DEMO_PATIENTS: Array<{
         glucose_mmoll: 14.9, source: "simulated", status: "very_high",
       },
       tir: {
-        patient_id: 3, temporal_span_days: 7,
+        patient_id: 3, temporal_span_days: 30,
         very_low_pct: 3.1, low_pct: 5.2, in_range_pct: 55.8,
         high_pct: 22.4, very_high_pct: 13.5,
       },
@@ -120,7 +120,7 @@ export const DEMO_PATIENTS: Array<{
         glucose_mmoll: 3.4, source: "simulated", status: "low",
       },
       tir: {
-        patient_id: 4, temporal_span_days: 7,
+        patient_id: 4, temporal_span_days: 170,
         very_low_pct: 4.5, low_pct: 8.3, in_range_pct: 64.7,
         high_pct: 16.1, very_high_pct: 6.4,
       },
