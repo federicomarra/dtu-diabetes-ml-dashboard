@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -35,16 +35,32 @@ const RANGE_COLORS = {
 
 type ViewMode = "stacked" | "barchart";
 
-function returnTextFromSpanDays(days: number): string {
-  if (days < 7) {
-    return `${days} day${days !== 1 ? "s" : ""}`;
+function returnTextFromSpanDays(days: number): ReactNode {
+  let span: string;
+  if (days < 1) {
+    span = "day";
+  } else if (days === 7) {
+    span = "week";
+  } else if (days < 14) {
+    span = `${days} days`;
+  } else if (days === 30 || days === 31) {
+    span = "month";
   } else if (days < 30) {
-    return `${Math.round(days / 7)} week${Math.round(days / 7) !== 1 ? "s" : ""}`;
+    span = `${Math.round(days / 7)} weeks`;
   } else if (days < 365) {
-    return `${Math.round(days / 30)} month${Math.round(days / 30) !== 1 ? "s" : ""}`;
+    span = `${Math.round(days / 30)} months`;
   } else {
-    return `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
+    span = `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
   }
+  let start_day: string = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toLocaleDateString().split("/").slice(0, -1).join("/");
+  let end_day: string = new Date().toLocaleDateString().split("/").slice(0, -1).join("/");
+  return (
+    <div className={styles.temporalSpan}>
+      <strong>latest {span}</strong>
+      <br />
+      ({start_day} - {end_day})
+    </div>
+  );
 }
 
 // ─── Stacked view ──────────────────────────────────────────
@@ -224,7 +240,7 @@ function BarChartView({ tir }: { tir: TimeInRange }) {
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} layout="vertical" margin={{ left: 80 }}>
+      <BarChart data={data} layout="vertical" margin={{ left: 0 }}>
         <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
         <YAxis
           type="category"
@@ -293,15 +309,18 @@ export default function TIRChart({ tir }: TIRChartProps) {
       </div>
 
       {/* Target indicator */}
-      <div className={styles.target}>
+      <div className={styles.target} style={{
+        color:
+          tir.in_range_pct >= 70 ? "var(--success)" : "var(--warning)",
+      }}>
+        TIR Target: ≥70% | Current: {tir.in_range_pct}%
         <span
           className={styles.targetDot}
           style={{
-            background:
+            color:
               tir.in_range_pct >= 70 ? "var(--success)" : "var(--warning)",
           }}
         />
-        TIR Target: ≥70% — Current: {tir.in_range_pct}%
       </div>
     </div>
   );

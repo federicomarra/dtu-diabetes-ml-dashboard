@@ -25,6 +25,7 @@
 .temporalSpan {
   font-size: 0.8rem;
   color: var(--text-secondary);
+  text-align: center;
 }
 
 /* ─── Unified / Divided switcher ─────────────────────────── */
