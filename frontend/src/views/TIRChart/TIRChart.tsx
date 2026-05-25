@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -13,6 +13,7 @@ import {
 import type { TimeInRange } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
+import type { GlucoseUnit } from "@/models/glucoseUnits";
 import {
   VERY_LOW_THRESHOLD,
   LOW_THRESHOLD,
@@ -21,16 +22,45 @@ import {
 } from "@/models/glucoseConfig";
 import styles from "./TIRChart.module.css";
 
+// ─── Threshold types ────────────────────────────────────────
+
+interface CustomThresholds {
+  veryHigh: number; // mmol/L
+  high: number;     // mmol/L
+  low: number;      // mmol/L
+  veryLow: number;  // mmol/L
+}
+
+const DEFAULT_THRESHOLDS: CustomThresholds = {
+  veryHigh: VERY_HIGH_THRESHOLD,
+  high: HIGH_THRESHOLD,
+  low: LOW_THRESHOLD,
+  veryLow: VERY_LOW_THRESHOLD,
+};
+
+/** Convert a mmol/L threshold for display in `unit`. */
+function toDisplay(mmoll: number, unit: GlucoseUnit): string {
+  return convertGlucose(mmoll, unit).toString();
+}
+
+/** Parse a display string back to mmol/L. */
+function fromDisplay(value: string, unit: GlucoseUnit): number {
+  const n = parseFloat(value);
+  if (isNaN(n)) return NaN;
+  if (unit === "mg/dL") return n / 18.0182;
+  return n;
+}
+
 interface TIRChartProps {
   tir: TimeInRange;
 }
 
 const RANGE_COLORS = {
-  very_low: "#c0392b",
-  low: "#e67e22",
-  in_range: "#27ae60",
-  high: "#f39c12",
   very_high: "#e74c3c",
+  high: "#f39c12",
+  in_range: "#27ae60",
+  low: "#e67e22",
+  very_low: "#c0392b",
 };
 
 type ViewMode = "stacked" | "barchart";
@@ -67,6 +97,7 @@ function returnTextFromSpanDays(days: number): ReactNode {
 
 interface StackedViewProps {
   tir: TimeInRange;
+  thresholds: CustomThresholds;
 }
 
 function pctToMinutes(pct: number): string {
@@ -78,7 +109,7 @@ function pctToMinutes(pct: number): string {
   return `${h}h ${m}min.`;
 }
 
-function StackedView({ tir }: StackedViewProps) {
+function StackedView({ tir, thresholds }: StackedViewProps) {
   const { unit } = useGlucoseUnit();
 
   const ranges = [
@@ -87,45 +118,44 @@ function StackedView({ tir }: StackedViewProps) {
       label: "Very High",
       pct: tir.very_high_pct,
       color: RANGE_COLORS.very_high,
-      // above VERY_HIGH_THRESHOLD
-      rangeLabel: `>${formatGlucose(VERY_HIGH_THRESHOLD, unit)}`,
+      rangeLabel: `>${formatGlucose(thresholds.veryHigh, unit)}`,
     },
     {
       key: "high" as const,
       label: "High",
       pct: tir.high_pct,
       color: RANGE_COLORS.high,
-      rangeLabel: `${formatGlucose(HIGH_THRESHOLD, unit)} – ${formatGlucose(VERY_HIGH_THRESHOLD, unit)}`,
+      rangeLabel: `${formatGlucose(thresholds.high, unit)} – ${formatGlucose(thresholds.veryHigh, unit)}`,
     },
     {
       key: "in_range" as const,
       label: "In Range",
       pct: tir.in_range_pct,
       color: RANGE_COLORS.in_range,
-      rangeLabel: `${formatGlucose(LOW_THRESHOLD, unit)} – ${formatGlucose(HIGH_THRESHOLD, unit)}`,
+      rangeLabel: `${formatGlucose(thresholds.low, unit)} – ${formatGlucose(thresholds.high, unit)}`,
     },
     {
       key: "low" as const,
       label: "Low",
       pct: tir.low_pct,
       color: RANGE_COLORS.low,
-      rangeLabel: `${formatGlucose(VERY_LOW_THRESHOLD, unit)} – ${formatGlucose(LOW_THRESHOLD, unit)}`,
+      rangeLabel: `${formatGlucose(thresholds.veryLow, unit)} – ${formatGlucose(thresholds.low, unit)}`,
     },
     {
       key: "very_low" as const,
       label: "Very Low",
       pct: tir.very_low_pct,
       color: RANGE_COLORS.very_low,
-      rangeLabel: `<${formatGlucose(VERY_LOW_THRESHOLD, unit)}`,
+      rangeLabel: `<${formatGlucose(thresholds.veryLow, unit)}`,
     },
   ];
 
   // The threshold values displayed on the left axis (top → bottom order in CSS)
   const thresholdLabels = [
-    { value: VERY_HIGH_THRESHOLD, after: "very_high" },
-    { value: HIGH_THRESHOLD, after: "high" },
-    { value: LOW_THRESHOLD, after: "in_range" },
-    { value: VERY_LOW_THRESHOLD, after: "low" },
+    { value: thresholds.veryHigh, after: "very_high" },
+    { value: thresholds.high, after: "high" },
+    { value: thresholds.low, after: "in_range" },
+    { value: thresholds.veryLow, after: "low" },
   ];
 
   // cumulative offset from the top for each segment (top = very_high)
@@ -229,13 +259,45 @@ function StackedView({ tir }: StackedViewProps) {
 
 // ─── BarChart view (original) ───────────────────────────────
 
-function BarChartView({ tir }: { tir: TimeInRange }) {
+interface BarChartViewProps {
+  tir: TimeInRange;
+  thresholds: CustomThresholds;
+}
+
+function BarChartView({ tir, thresholds }: BarChartViewProps) {
+  const { unit } = useGlucoseUnit();
+
   const data = [
-    { name: "Very Low", pct: tir.very_low_pct, key: "very_low" as const },
-    { name: "Low", pct: tir.low_pct, key: "low" as const },
-    { name: "In Range", pct: tir.in_range_pct, key: "in_range" as const },
-    { name: "High", pct: tir.high_pct, key: "high" as const },
-    { name: "Very High", pct: tir.very_high_pct, key: "very_high" as const },
+    {
+      name: "Very High",
+      pct: tir.very_high_pct,
+      key: "very_high" as const,
+      range: `>${formatGlucose(thresholds.veryHigh, unit)}`,
+    },
+    {
+      name: "High",
+      pct: tir.high_pct,
+      key: "high" as const,
+      range: `${formatGlucose(thresholds.high, unit)} – ${formatGlucose(thresholds.veryHigh, unit)}`,
+    },
+    {
+      name: "In Range",
+      pct: tir.in_range_pct,
+      key: "in_range" as const,
+      range: `${formatGlucose(thresholds.low, unit)} – ${formatGlucose(thresholds.high, unit)}`,
+    },
+    {
+      name: "Low",
+      pct: tir.low_pct,
+      key: "low" as const,
+      range: `${formatGlucose(thresholds.veryLow, unit)} – ${formatGlucose(thresholds.low, unit)}`,
+    },
+    {
+      name: "Very Low",
+      pct: tir.very_low_pct,
+      key: "very_low" as const,
+      range: `<${formatGlucose(thresholds.veryLow, unit)}`,
+    },
   ];
 
   return (
@@ -249,11 +311,20 @@ function BarChartView({ tir }: { tir: TimeInRange }) {
           width={80}
         />
         <Tooltip
-          formatter={(value: unknown) => [`${value}%`, "Percentage"]}
+          formatter={(value: unknown, _name: unknown, props: { payload?: { range?: string } }) => [
+            `${value}%`,
+            props.payload?.range ?? "Percentage",
+          ]}
           contentStyle={{
             background: "var(--card-bg)",
             border: "1px solid var(--border)",
             borderRadius: "8px",
+          }}
+          labelStyle={{
+            color: "var(--text-primary)",
+          }}
+          itemStyle={{
+            color: "var(--text-secondary)",
           }}
         />
         <Bar dataKey="pct" radius={[0, 4, 4, 0]}>
@@ -268,8 +339,130 @@ function BarChartView({ tir }: { tir: TimeInRange }) {
 
 // ─── Main component ────────────────────────────────────────
 
+// ─── Range Customization Modal ─────────────────────────────
+
+interface RangesModalProps {
+  unit: GlucoseUnit;
+  thresholds: CustomThresholds;
+  onApply: (t: CustomThresholds) => void;
+  onClose: () => void;
+}
+
+function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
+  const [draft, setDraft] = useState({
+    veryHigh: toDisplay(thresholds.veryHigh, unit),
+    high: toDisplay(thresholds.high, unit),
+    low: toDisplay(thresholds.low, unit),
+    veryLow: toDisplay(thresholds.veryLow, unit),
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Close on backdrop click
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === overlayRef.current) onClose();
+  };
+
+  const validate = (): CustomThresholds | null => {
+    const vh = fromDisplay(draft.veryHigh, unit);
+    const h = fromDisplay(draft.high, unit);
+    const l = fromDisplay(draft.low, unit);
+    const vl = fromDisplay(draft.veryLow, unit);
+    const errs: Record<string, string> = {};
+    if (isNaN(vh)) errs.veryHigh = "Invalid number";
+    if (isNaN(h)) errs.high = "Invalid number";
+    if (isNaN(l)) errs.low = "Invalid number";
+    if (isNaN(vl)) errs.veryLow = "Invalid number";
+    // Ordering: vl < l < h < vh — check every adjacent and cross pair
+    if (!errs.veryLow && !errs.low && vl >= l) errs.low = "Must be > Very Low";
+    if (!errs.veryLow && !errs.high && vl >= h) errs.high = "Must be > Very Low";
+    if (!errs.veryLow && !errs.veryHigh && vl >= vh) errs.veryHigh = "Must be > Very Low";
+    if (!errs.low && !errs.high && l >= h) errs.high = "Must be > Low";
+    if (!errs.low && !errs.veryHigh && l >= vh) errs.veryHigh = "Must be > Low";
+    if (!errs.high && !errs.veryHigh && h >= vh) errs.veryHigh = "Must be > High";
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return null;
+    return { veryLow: vl, low: l, high: h, veryHigh: vh };
+  };
+
+  const handleApply = () => {
+    const t = validate();
+    if (t) { onApply(t); onClose(); }
+  };
+
+  const handleReset = () => {
+    setDraft({
+      veryLow: toDisplay(DEFAULT_THRESHOLDS.veryLow, unit),
+      low: toDisplay(DEFAULT_THRESHOLDS.low, unit),
+      high: toDisplay(DEFAULT_THRESHOLDS.high, unit),
+      veryHigh: toDisplay(DEFAULT_THRESHOLDS.veryHigh, unit),
+    });
+    setErrors({});
+  };
+
+  const fields: { key: keyof typeof draft; label: string; color: string }[] = [
+    { key: "veryHigh", label: "Very High", color: RANGE_COLORS.very_high },
+    { key: "high", label: "High", color: RANGE_COLORS.high },
+    { key: "low", label: "Low", color: RANGE_COLORS.low },
+    { key: "veryLow", label: "Very Low", color: RANGE_COLORS.very_low },
+  ];
+
+  return (
+    <div className={styles.modalOverlay} ref={overlayRef} onClick={handleOverlayClick}>
+      <div className={styles.modal}>
+        <div className={styles.modalHeader}>
+          <h4 className={styles.modalTitle}>Customize Ranges</h4>
+          <button className={styles.modalClose} onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <p className={styles.modalSubtitle}>
+          Thresholds in <strong>{unit}</strong>. Values apply to all views.
+        </p>
+
+        <div className={styles.modalFields}>
+          {fields.map(({ key, label, color }) => (
+            <div key={key} className={styles.fieldRow}>
+              <label className={styles.fieldLabel}>
+                <span className={styles.fieldSwatch} style={{ background: color }} />
+                {label}
+              </label>
+              <div className={styles.fieldInputWrap}>
+                <input
+                  id={`tir-range-${key}`}
+                  type="number"
+                  step={unit === "mg/dL" ? 1 : 0.1}
+                  className={`${styles.fieldInput} ${errors[key] ? styles.fieldInputError : ""}`}
+                  value={draft[key]}
+                  onChange={(e) => {
+                    setDraft((d) => ({ ...d, [key]: e.target.value }));
+                    setErrors((err) => { const next = { ...err }; delete next[key]; return next; });
+                  }}
+                />
+                {errors[key] && <span className={styles.fieldError}>{errors[key]}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.modalFooter}>
+          <button className={styles.resetBtn} onClick={handleReset}>Reset to defaults</button>
+          <div className={styles.footerActions}>
+            <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
+            <button className={styles.applyBtn} onClick={handleApply}>Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────
+
 export default function TIRChart({ tir }: TIRChartProps) {
   const [mode, setMode] = useState<ViewMode>("stacked");
+  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
+  const [showRangesModal, setShowRangesModal] = useState(false);
+  const { unit } = useGlucoseUnit();
 
   return (
     <div className={styles.container}>
@@ -282,29 +475,44 @@ export default function TIRChart({ tir }: TIRChartProps) {
           </div>
         </div>
 
-        {/* Mode switcher */}
-        <div className={styles.switcher}>
+        <div className={styles.headerRight}>
+          {/* Ranges customization button */}
           <button
-            className={`${styles.switchBtn} ${mode === "stacked" ? styles.switchBtnActive : ""}`}
-            onClick={() => setMode("stacked")}
+            id="tir-customize-ranges-btn"
+            className={`${styles.rangesBtn} ${showRangesModal ? styles.rangesBtnActive : ""}`}
+            onClick={() => setShowRangesModal((v) => !v)}
+            title="Customize glucose ranges"
           >
-            Stacked
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" clipRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" />
+            </svg>
+            Ranges
           </button>
-          <button
-            className={`${styles.switchBtn} ${mode === "barchart" ? styles.switchBtnActive : ""}`}
-            onClick={() => setMode("barchart")}
-          >
-            BarChart
-          </button>
+
+          {/* Mode switcher */}
+          <div className={styles.switcher}>
+            <button
+              className={`${styles.switchBtn} ${mode === "stacked" ? styles.switchBtnActive : ""}`}
+              onClick={() => setMode("stacked")}
+            >
+              Stacked
+            </button>
+            <button
+              className={`${styles.switchBtn} ${mode === "barchart" ? styles.switchBtnActive : ""}`}
+              onClick={() => setMode("barchart")}
+            >
+              BarChart
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Chart — fixed-height wrapper keeps the card size stable on toggle */}
       <div className={styles.chartArea}>
         {mode === "stacked" ? (
-          <StackedView tir={tir} />
+          <StackedView tir={tir} thresholds={thresholds} />
         ) : (
-          <BarChartView tir={tir} />
+          <BarChartView tir={tir} thresholds={thresholds} />
         )}
       </div>
 
@@ -322,6 +530,16 @@ export default function TIRChart({ tir }: TIRChartProps) {
           }}
         />
       </div>
+
+      {/* Ranges customization modal */}
+      {showRangesModal && (
+        <RangesModal
+          unit={unit}
+          thresholds={thresholds}
+          onApply={setThresholds}
+          onClose={() => setShowRangesModal(false)}
+        />
+      )}
     </div>
   );
 }
