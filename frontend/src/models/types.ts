@@ -58,7 +58,7 @@ export interface AnomalyDetection {
 
 export interface TimeInRange {
   patient_id: number;
-  total_readings: number;
+  temporal_span_days: number;
   very_low_pct: number;
   low_pct: number;
   in_range_pct: number;

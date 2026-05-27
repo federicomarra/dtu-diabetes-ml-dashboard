@@ -69,7 +69,7 @@
 │       │   └── demoData.ts
 │       └── views/                # Presentational components
 │           ├── GlucoseChart/     # 24-hour CGM line chart (Recharts)
-│           ├── TIRBarChart/      # Time-in-range stacked bar
+│           ├── TIRChart/         # Time-in-range stacked bar
 │           ├── PatientOverview/  # Summary card with key metrics
 │           └── AnomalyAlert/     # Alert list with acknowledge action
 ├── ml/                       # Machine learning module
@@ -228,7 +228,7 @@ def get_patient(patient_id: int):
 | Component | Description |
 |-----------|-------------|
 | `GlucoseChart` | 24-hour CGM line chart with colour-coded glucose zones (Recharts) |
-| `TIRBarChart` | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
+| `TIRChart` | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
 | `PatientOverview` | Summary card — current glucose, TIR%, and anomaly alert count |
 | `AnomalyAlert` | Alert list displaying missed/late bolus detections with acknowledge button |
 
