@@ -1,5 +1,4 @@
-name: Continuous Integration
-
+name: GitHub CI
 on:
   push:
     branches: ["**"]
@@ -9,7 +8,7 @@ on:
 jobs:
   # ── C# Backend ──────────────────────────────────────────────────────────────
   backend:
-    name: "backend: build & test"
+    name: "backend"
     runs-on: ubuntu-latest
 
     steps:
@@ -34,7 +33,7 @@ jobs:
 
   # ── ML Module (Python) ──────────────────────────────────────────────────────
   ml:
-    name: "ml: lint"
+    name: "ml"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -48,9 +47,9 @@ jobs:
         working-directory: ml
         run: pip install -r requirements.txt
 
-  # ── Frontend ─────────────────────────────────────────────────────────────────
+  # ── React NextJS Frontend ─────────────────────────────────────────────────────────────────
   frontend:
-    name: "frontend: lint & build"
+    name: "frontend"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
