@@ -55,22 +55,30 @@
 │   │   └── ApiTests.cs
 │   ├── DiabetesApi.sln
 │   └── Dockerfile
-├── frontend/                      # Next.js dashboard
+│
+├── frontend/                 # Next.js dashboard
 │   └── src/
-│       ├── app/                   # Next.js pages (thin shells)
-│       │   ├── page.tsx           # Home / landing
-│       │   ├── layout.tsx         # Root layout & nav
-│       │   ├── patient/page.tsx   # Single-patient dashboard
+│       ├── app/                  # Next.js pages (thin shells)
+│       │   ├── page.tsx          # Home / landing
+│       │   ├── layout.tsx        # Root layout & nav
+│       │   ├── patient/page.tsx  # Single-patient dashboard
 │       │   └── doctor/
-│       │       ├── page.tsx       # Multi-patient clinician view
-│       │       └── [patient_id]/page.tsx
-│       ├── controllers/           # React hooks — data & state
-│       ├── models/                # Types, API client, demo data
-│       └── views/                 # Presentational components
-│           ├── GlucoseChart/
-│           ├── TIRBarChart/
-│           ├── PatientOverview/
-│           └── AnomalyAlert/
+│       │       ├── page.tsx      # Multi-patient clinician view
+│       │       └── [patient_id]/page.tsx  # Doctor patient detail
+│       ├── controllers/          # React hooks — data & state
+│       │   ├── usePatientController.ts
+│       │   ├── usePatientDetailController.ts
+│       │   └── useDoctorController.ts
+│       ├── models/               # Types, API client, demo data
+│       │   ├── types.ts
+│       │   ├── api.ts
+│       │   └── demoData.ts
+│       └── views/                # Presentational components
+│           ├── GlucoseChart/     # 24-hour CGM line chart (Recharts)
+│           ├── TIRChart/         # Time-in-range stacked bar
+│           ├── PatientOverview/  # Summary card with key metrics
+│           └── AnomalyAlert/     # Alert list with acknowledge action
+│
 ├── ml/                            # Machine learning module (Python)
 │   ├── data/                      # Synthetic data generation
 │   ├── training/                  # Model training (train_anomaly.py)
@@ -210,12 +218,12 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuck
 
 ### Components
 
-| Component        | Description                                                               |
-|------------------|---------------------------------------------------------------------------|
-| `GlucoseChart`   | 24-hour CGM line chart with colour-coded glucose zones (Recharts)        |
-| `TIRBarChart`    | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
-| `PatientOverview`| Summary card — current glucose, TIR%, and anomaly alert count            |
-| `AnomalyAlert`   | Alert list displaying missed/late bolus detections with acknowledge button |
+| Component | Description |
+|-----------|-------------|
+| `GlucoseChart` | 24-hour CGM line chart with colour-coded glucose zones (Recharts) |
+| `TIRChart` | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
+| `PatientOverview` | Summary card — current glucose, TIR%, and anomaly alert count |
+| `AnomalyAlert` | Alert list displaying missed/late bolus detections with acknowledge button |
 
 > The frontend currently ships with realistic **demo data** for layout/testing. Replace the `DEMO_*` constants with live API calls from `@/lib/api` when the backend is running.
 
