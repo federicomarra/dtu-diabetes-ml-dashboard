@@ -7,6 +7,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  CartesianGrid,
   ResponsiveContainer,
   Cell,
 } from "recharts";
@@ -303,6 +304,13 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} layout="vertical" margin={{ left: 0 }}>
+        <CartesianGrid
+          vertical={true}
+          horizontal={false}
+          stroke="var(--border)"
+          strokeDasharray="4 4"
+          strokeOpacity={30}
+        />
         <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
         <YAxis
           type="category"
