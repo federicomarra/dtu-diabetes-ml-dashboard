@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DiabetesApi.Tests/DiabetesApi.Tests.csproj" />
+  <Project Path="DiabetesApi/DiabetesApi.csproj" />
+</Solution>
