@@ -27,7 +27,7 @@ const DEMO_PATIENT: Patient = {
 
 const DEMO_TIR: TimeInRange = {
   patient_id: 1,
-  total_readings: 288,
+  temporal_span_days: 7,
   very_low_pct: 1.2,
   low_pct: 3.5,
   in_range_pct: 72.1,

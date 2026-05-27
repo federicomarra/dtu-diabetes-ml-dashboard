@@ -34,8 +34,8 @@ export function generateDemoReadings(): GlucoseReading[] {
     // Simulate meal spikes
     const mealEffect =
       (hour >= 7 && hour <= 9) ||
-      (hour >= 12 && hour <= 14) ||
-      (hour >= 18 && hour <= 20)
+        (hour >= 12 && hour <= 14) ||
+        (hour >= 18 && hour <= 20)
         ? Math.random() * 0.17 // ~3 mg/dL in mmol/L
         : 0;
 
@@ -47,12 +47,12 @@ export function generateDemoReadings(): GlucoseReading[] {
       glucose < VERY_LOW_THRESHOLD
         ? "very_low"
         : glucose < LOW_THRESHOLD
-        ? "low"
-        : glucose <= HIGH_THRESHOLD
-        ? "in_range"
-        : glucose <= VERY_HIGH_THRESHOLD
-        ? "high"
-        : "very_high";
+          ? "low"
+          : glucose <= HIGH_THRESHOLD
+            ? "in_range"
+            : glucose <= VERY_HIGH_THRESHOLD
+              ? "high"
+              : "very_high";
 
     readings.push({
       id: i,
@@ -74,59 +74,59 @@ export const DEMO_PATIENTS: Array<{
   tir: TimeInRange;
   anomalyCount: number;
 }> = [
-  {
-    patient: { id: 1, external_id: "DEMO_000001", name: "Alice Johnson", age: 34 },
-    latestReading: {
-      id: 1, patient_id: 1, timestamp: new Date().toISOString(),
-      glucose_mmoll: 8.1, source: "simulated", status: "in_range",
+    {
+      patient: { id: 1, external_id: "DEMO_000001", name: "Alice Johnson", age: 34 },
+      latestReading: {
+        id: 1, patient_id: 1, timestamp: new Date().toISOString(),
+        glucose_mmoll: 8.1, source: "simulated", status: "in_range",
+      },
+      tir: {
+        patient_id: 1, temporal_span_days: 7,
+        very_low_pct: 1.2, low_pct: 3.5, in_range_pct: 72.1,
+        high_pct: 18.4, very_high_pct: 4.8,
+      },
+      anomalyCount: 2,
     },
-    tir: {
-      patient_id: 1, total_readings: 288,
-      very_low_pct: 1.2, low_pct: 3.5, in_range_pct: 72.1,
-      high_pct: 18.4, very_high_pct: 4.8,
+    {
+      patient: { id: 2, external_id: "DEMO_000002", name: "Bob Smith", age: 39 },
+      latestReading: {
+        id: 2, patient_id: 2, timestamp: new Date().toISOString(),
+        glucose_mmoll: 5.3, source: "simulated", status: "in_range",
+      },
+      tir: {
+        patient_id: 2, temporal_span_days: 14,
+        very_low_pct: 0.5, low_pct: 2.1, in_range_pct: 85.3,
+        high_pct: 10.2, very_high_pct: 1.9,
+      },
+      anomalyCount: 0,
     },
-    anomalyCount: 2,
-  },
-  {
-    patient: { id: 2, external_id: "DEMO_000002", name: "Bob Smith", age: 39 },
-    latestReading: {
-      id: 2, patient_id: 2, timestamp: new Date().toISOString(),
-      glucose_mmoll: 5.3, source: "simulated", status: "in_range",
+    {
+      patient: { id: 3, external_id: "DEMO_000003", name: "Clara Andersen", age: 26 },
+      latestReading: {
+        id: 3, patient_id: 3, timestamp: new Date().toISOString(),
+        glucose_mmoll: 14.9, source: "simulated", status: "very_high",
+      },
+      tir: {
+        patient_id: 3, temporal_span_days: 30,
+        very_low_pct: 3.1, low_pct: 5.2, in_range_pct: 55.8,
+        high_pct: 22.4, very_high_pct: 13.5,
+      },
+      anomalyCount: 5,
     },
-    tir: {
-      patient_id: 2, total_readings: 288,
-      very_low_pct: 0.5, low_pct: 2.1, in_range_pct: 85.3,
-      high_pct: 10.2, very_high_pct: 1.9,
+    {
+      patient: { id: 4, external_id: "DEMO_000004", name: "David Nielsen", age: 49 },
+      latestReading: {
+        id: 4, patient_id: 4, timestamp: new Date().toISOString(),
+        glucose_mmoll: 3.4, source: "simulated", status: "low",
+      },
+      tir: {
+        patient_id: 4, temporal_span_days: 170,
+        very_low_pct: 4.5, low_pct: 8.3, in_range_pct: 64.7,
+        high_pct: 16.1, very_high_pct: 6.4,
+      },
+      anomalyCount: 3,
     },
-    anomalyCount: 0,
-  },
-  {
-    patient: { id: 3, external_id: "DEMO_000003", name: "Clara Andersen", age: 26 },
-    latestReading: {
-      id: 3, patient_id: 3, timestamp: new Date().toISOString(),
-      glucose_mmoll: 14.9, source: "simulated", status: "very_high",
-    },
-    tir: {
-      patient_id: 3, total_readings: 288,
-      very_low_pct: 3.1, low_pct: 5.2, in_range_pct: 55.8,
-      high_pct: 22.4, very_high_pct: 13.5,
-    },
-    anomalyCount: 5,
-  },
-  {
-    patient: { id: 4, external_id: "DEMO_000004", name: "David Nielsen", age: 49 },
-    latestReading: {
-      id: 4, patient_id: 4, timestamp: new Date().toISOString(),
-      glucose_mmoll: 3.4, source: "simulated", status: "low",
-    },
-    tir: {
-      patient_id: 4, total_readings: 288,
-      very_low_pct: 4.5, low_pct: 8.3, in_range_pct: 64.7,
-      high_pct: 16.1, very_high_pct: 6.4,
-    },
-    anomalyCount: 3,
-  },
-];
+  ];
 
 // ─── Anomalies ────────────────────────────────────────────
 
