@@ -38,6 +38,7 @@ environment, falling back to the default local URL.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -53,12 +54,25 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 
 _DEFAULT_DB_URL = "postgresql://postgres:postgres@localhost:5432/diabetes_db"
-glucose_status_THRESHOLDS = [
-    (3.0,  "very_low"),
-    (3.9,  "low"),
-    (10.0, "in_range"),
-    (13.9, "high"),
-]  # anything above 13.9 mmol/L → very_high
+def load_glucose_thresholds() -> list[tuple[float, str]]:
+    config_path = Path(__file__).parent.parent / "glucose-config.json"
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        return [
+            (float(config["VERY_LOW_THRESHOLD"]), "very_low"),
+            (float(config["LOW_THRESHOLD"]), "low"),
+            (float(config["HIGH_THRESHOLD"]), "in_range"),
+            (float(config["VERY_HIGH_THRESHOLD"]), "high"),
+        ]
+    except Exception as e:
+        print(f"Warning: Could not load {config_path}, using defaults. Error: {e}")
+        return [
+            (3.0,  "very_low"),
+            (3.9,  "low"),
+            (10.0, "in_range"),
+            (13.9, "high"),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +87,8 @@ def resolve_db_url(cli_url: str | None) -> str:
 
 
 def glucose_status(mgdl: float) -> str:
+    glucose_status_THRESHOLDS = load_glucose_thresholds()
+
     for threshold, label in glucose_status_THRESHOLDS:
         if mgdl < threshold:
             return label

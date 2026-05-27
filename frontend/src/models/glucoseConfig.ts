@@ -11,17 +11,19 @@
 
 // ─── Clinical range thresholds (mmol/L) ───────────────────
 
+import config from '../../../glucose-config.json';
+
 /** Below this value a reading is classified as "very low" (level 2 hypoglycaemia). */
-export const VERY_LOW_THRESHOLD = 3.0;
+export const VERY_LOW_THRESHOLD = config.VERY_LOW_THRESHOLD;
 
 /** Below this value (but ≥ VERY_LOW) a reading is classified as "low" (level 1 hypoglycaemia). */
-export const LOW_THRESHOLD = 3.9;
+export const LOW_THRESHOLD = config.LOW_THRESHOLD;
 
 /** At or below this value (and ≥ LOW) a reading is classified as "in range". */
-export const HIGH_THRESHOLD = 10.0;
+export const HIGH_THRESHOLD = config.HIGH_THRESHOLD;
 
 /** Above HIGH but ≤ this value a reading is classified as "high" (level 1 hyperglycaemia). */
-export const VERY_HIGH_THRESHOLD = 13.9;
+export const VERY_HIGH_THRESHOLD = config.VERY_HIGH_THRESHOLD;
 
 // ─── Chart display bounds (mmol/L) ────────────────────────
 
