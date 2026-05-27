@@ -66,6 +66,11 @@ const RANGE_COLORS = {
 
 type ViewMode = "stacked" | "barchart";
 
+/** Format a Date as DD/MM — locale-independent to avoid SSR hydration mismatches. */
+function formatDayMonth(d: Date): string {
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function returnTextFromSpanDays(days: number): ReactNode {
   let span: string;
   if (days < 1) {
@@ -83,8 +88,8 @@ function returnTextFromSpanDays(days: number): ReactNode {
   } else {
     span = `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
   }
-  let start_day: string = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toLocaleDateString().split("/").slice(0, -1).join("/");
-  let end_day: string = new Date().toLocaleDateString().split("/").slice(0, -1).join("/");
+  const start_day: string = formatDayMonth(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
+  const end_day: string = formatDayMonth(new Date());
   return (
     <div className={styles.temporalSpan}>
       <strong>latest {span}</strong>
