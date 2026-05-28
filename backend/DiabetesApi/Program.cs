@@ -34,6 +34,7 @@ else
 
 // ── Application Services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<GlucoseService>();
+builder.Services.AddScoped<PatientService>();
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 builder.Services.AddControllers()

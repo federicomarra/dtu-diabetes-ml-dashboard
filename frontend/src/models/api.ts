@@ -1,6 +1,20 @@
 /**
  * Typed API client for the diabetes dashboard backend.
  * MODEL layer — raw data access, all HTTP calls live here.
+ *
+ * Route mapping (from backend/DiabetesApi/Routes/):
+ *   GET  api/patient/list              → getPatients()
+ *   GET  api/patient/{id}              → getPatient()
+ *   POST api/patient/create            → createPatient()
+ *   GET  api/glucose/{id}              → getGlucoseReadings()
+ *   GET  api/glucose/{id}/latest       → getLatestReading()
+ *   GET  api/glucose/{id}/tir          → getTimeInRange()
+ *   GET  api/anomaly/{id}              → getAnomalies()
+ *   POST api/anomaly/{id}/acknowledge  → acknowledgeAnomaly()
+ *   GET  api/insulin/{id}              → getInsulins()
+ *   GET  api/meal/{id}                 → getMeals()
+ *   GET  api/history/{id}              → getHistory()
+ *   GET  api/health                    → healthCheck()
  */
 import axios from "axios";
 import type {
@@ -8,6 +22,9 @@ import type {
   GlucoseReading,
   AnomalyDetection,
   TimeInRange,
+  InsulinEvent,
+  MealEvent,
+  HistoryEntry,
   PaginatedResponse,
 } from "@/models/types";
 
@@ -23,21 +40,21 @@ export async function getPatients(
   page = 1,
   perPage = 20
 ): Promise<PaginatedResponse<Patient>> {
-  const { data } = await api.get("/patients/", {
+  const { data } = await api.get("/patient/list", {
     params: { page, per_page: perPage },
   });
   return data;
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
-  const { data } = await api.get(`/patients/${patientId}`);
+  const { data } = await api.get(`/patient/${patientId}`);
   return data;
 }
 
 export async function createPatient(
   patient: Pick<Patient, "external_id" | "name">
 ): Promise<Patient> {
-  const { data } = await api.post("/patients/", patient);
+  const { data } = await api.post("/patient/create", patient);
   return data;
 }
 
@@ -60,7 +77,7 @@ export async function getLatestReading(
 
 export async function getTimeInRange(
   patientId: number,
-  params?: { start?: string; end?: string }
+  params?: { start?: string; end?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
 ): Promise<TimeInRange> {
   const { data } = await api.get(`/glucose/${patientId}/tir`, { params });
   return data;
@@ -79,11 +96,47 @@ export async function getAnomalies(
 export async function acknowledgeAnomaly(
   anomalyId: number
 ): Promise<AnomalyDetection> {
-  const { data } = await api.post(`/anomalies/${anomalyId}/acknowledge`);
+  const { data } = await api.post(`/anomaly/${anomalyId}/acknowledge`);
   return data;
 }
 
-// ─── Health ──────────────────────────────────────────────
+// ─── Insulin ─────────────────────────────────────────────
+
+export async function getInsulins(
+  patientId: number,
+  limit = 100
+): Promise<{ patient_id: number; insulins: InsulinEvent[]; count: number }> {
+  const { data } = await api.get(`/insulin/${patientId}`, {
+    params: { limit },
+  });
+  return data;
+}
+
+// ─── Meals ───────────────────────────────────────────────
+
+export async function getMeals(
+  patientId: number,
+  limit = 100
+): Promise<{ patient_id: number; meals: MealEvent[]; count: number }> {
+  const { data } = await api.get(`/meal/${patientId}`, {
+    params: { limit },
+  });
+  return data;
+}
+
+// ─── History ─────────────────────────────────────────────
+
+export async function getHistory(
+  patientId: number,
+  limit = 100
+): Promise<{ patient_id: number; histories: HistoryEntry[]; count: number }> {
+  const { data } = await api.get(`/history/${patientId}`, {
+    params: { limit },
+  });
+  return data;
+}
+
+// ─── Health check ────────────────────────────────────────
 
 export async function healthCheck(): Promise<{ status: string }> {
   const { data } = await api.get("/health");

@@ -1,4 +1,4 @@
-name: GitHub CI
+name: Continuous Integration
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: ["**"]
 
 jobs:
-  # ── C# Backend ──────────────────────────────────────────────────────────────
+  # ── Backend (C# ASP.NET Core API) ──────────────────────────────────────────────
   backend:
     name: "backend"
     runs-on: ubuntu-latest
@@ -48,7 +48,7 @@ jobs:
         working-directory: ml
         run: pip install -r requirements.txt
 
-  # ── React NextJS Frontend ─────────────────────────────────────────────────────────────────
+  # ── Frontend (React NextJS) ─────────────────────────────────────────────────────────────────
   frontend:
     name: "frontend"
     runs-on: ubuntu-latest

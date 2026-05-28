@@ -39,7 +39,7 @@ export default function PatientDashboard() {
 
       <div className={styles.chartsGrid}>
         <GlucoseChart readings={readings} title="24-Hour Glucose Trace" />
-        <TIRChart tir={tir} />
+        <TIRChart tir={tir} patientId={patient.id} />
       </div>
     </div>
   );

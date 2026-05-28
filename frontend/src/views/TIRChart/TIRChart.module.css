@@ -68,6 +68,12 @@
 .chartArea {
   height: 280px;
   position: relative;
+  transition: opacity 0.25s ease;
+}
+
+.chartLoading {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* ─── Stacked view layout ────────────────────────────────── */
@@ -146,10 +152,10 @@
   gap: 8px;
   min-width: 0;
   overflow: hidden;
-  padding: 10px 4px;
-  margin-bottom: 8px;
-  min-height: 2px;
+  padding: 4px 4px;
+  min-height: 0;
   position: relative;
+  box-sizing: border-box;
 }
 
 /* Dashed horizontal divider line connecting bar to legend text */
