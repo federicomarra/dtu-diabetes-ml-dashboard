@@ -204,7 +204,7 @@ def upload_histories(
 ) -> None:
     """Insert history rows."""
     sql = """
-        INSERT INTO histories (patient_id, timestamp, glucose_mmoll, insulin_U, cho_grams)
+        INSERT INTO histories (patient_id, timestamp, glucose_mmoll, insulin_u, cho_grams)
         VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT DO NOTHING
     """
@@ -220,10 +220,10 @@ def upload_histories(
             continue
         ts     = minute_to_timestamp(base_dt, row["absolute_minute"])
         glucose_mmol = round(float(row["blood_glucose"]), 1)
-        insulin_U = round(float(row["insulin_mU_min"]) / 1000, 3)
+        insulin_u = round(float(row["insulin_mU_min"]) / 1000, 3)
         cho_grams = round(float(row["cho_mg_min"]) / 1000, 0)
         #exercise_ca = float(row["exercise_overlay"])
-        rows.append((db_pid, ts, glucose_mmol, insulin_U, cho_grams))
+        rows.append((db_pid, ts, glucose_mmol, insulin_u, cho_grams))
     n = execute_batch(cur, sql, rows, batch_size)
     print(f"  ✓ histories: {n} inserted")
 

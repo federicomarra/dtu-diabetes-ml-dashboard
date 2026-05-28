@@ -23,7 +23,7 @@ public class History
     [Column("glucose_mmoll")]
     public float? Glucose { get; set; }
 
-    [Column("insulin_U")]
+    [Column("insulin_u")]
     public float? Insulin { get; set; }
 
     [Column("cho_grams")]

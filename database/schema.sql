@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS histories (
     patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     timestamp       TIMESTAMP NOT NULL,
     glucose_mmoll   REAL,
-    insulin_U      REAL,
+    insulin_u      REAL,
     cho_grams       REAL
     --exercise_ca     REAL,    -- NOT INCLUDED IN SCHEMA FOR NOW
     --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
