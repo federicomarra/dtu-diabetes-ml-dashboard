@@ -63,7 +63,10 @@ public class GlucoseService(AppDbContext db)
 
     /// <summary>
     /// Calculate Time-In-Range (TIR) statistics for a patient.
-    /// Returns percentage of readings in each clinical zone.
+    /// Returns percentage of readings in each clinical zone, plus the
+    /// actual temporal span (in fractional days) covered by the queried readings.
+    /// When <paramref name="start"/> / <paramref name="end"/> are supplied the span
+    /// is derived from the min/max timestamps of the matching readings.
     /// </summary>
     public async Task<TirResponse> CalculateTimeInRangeAsync(
         int patientId,
@@ -80,21 +83,33 @@ public class GlucoseService(AppDbContext db)
         if (end.HasValue)
             query = query.Where(r => r.Timestamp <= end.Value);
 
-        var readings = await query.Select(r => r.GlucoseMmoll).ToListAsync();
-        int total = readings.Count;
+        // Project both the glucose value and the timestamp so we can compute
+        // the actual time span covered by this set of readings.
+        var rows = await query
+            .Select(r => new { r.GlucoseMmoll, r.Timestamp })
+            .ToListAsync();
+
+        int total = rows.Count;
 
         if (total == 0)
             return new TirResponse(patientId, 0, 0, 0, 0, 0, 0);
 
-        int veryLowCount  = readings.Count(v => v < thresholds.VeryLow);
-        int lowCount      = readings.Count(v => v >= thresholds.VeryLow && v < thresholds.Low);
-        int inRangeCount  = readings.Count(v => v >= thresholds.Low && v <= thresholds.High);
-        int highCount     = readings.Count(v => v > thresholds.High && v <= thresholds.VeryHigh);
-        int veryHighCount = readings.Count(v => v > thresholds.VeryHigh);
+        // Temporal span: difference between the earliest and latest reading.
+        DateTime minTs = rows.Min(r => r.Timestamp);
+        DateTime maxTs = rows.Max(r => r.Timestamp);
+        int temporalSpanDays = (int)(maxTs - minTs).TotalDays;
+
+        var values = rows.Select(r => r.GlucoseMmoll).ToList();
+
+        int veryLowCount  = values.Count(v => v < thresholds.VeryLow);
+        int lowCount      = values.Count(v => v >= thresholds.VeryLow && v < thresholds.Low);
+        int inRangeCount  = values.Count(v => v >= thresholds.Low && v <= thresholds.High);
+        int highCount     = values.Count(v => v > thresholds.High && v <= thresholds.VeryHigh);
+        int veryHighCount = values.Count(v => v > thresholds.VeryHigh);
 
         return new TirResponse(
             patientId,
-            total,
+            temporalSpanDays,
             (float)Math.Round(veryLowCount  / (double)total * 100, 1),
             (float)Math.Round(lowCount      / (double)total * 100, 1),
             (float)Math.Round(inRangeCount  / (double)total * 100, 1),

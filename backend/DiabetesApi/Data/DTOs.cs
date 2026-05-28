@@ -43,7 +43,7 @@ public record GlucosesResponse(
 
 public record TirResponse(
     int PatientId,
-    int TotalReadings,
+    int TemporalSpanDays,
     float VeryLowPct,
     float LowPct,
     float InRangePct,
