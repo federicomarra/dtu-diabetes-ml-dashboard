@@ -222,3 +222,4 @@ CLAUDE.md
 /ml/data
 *.code-workspace
 dtu-diabetes-ml-dashboard.code-workspace
+/database/simulated-data

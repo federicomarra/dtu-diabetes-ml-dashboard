@@ -11,7 +11,7 @@
 
 // ─── Clinical range thresholds (mmol/L) ───────────────────
 
-import config from '../../../glucose-config.json';
+import config from '../../glucose-config.json';
 
 /** Below this value a reading is classified as "very low" (level 2 hypoglycaemia). */
 export const VERY_LOW_THRESHOLD = config.VERY_LOW_THRESHOLD;
