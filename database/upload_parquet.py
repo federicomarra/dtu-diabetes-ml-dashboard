@@ -3,7 +3,7 @@
 Parquet columns expected
 ------------------------
 patient_id, patient_age_years, day, minute, absolute_minute, time,
-blood_glucose (mmol/L), cho_mg_min, insulin_mU_min, base_scenario,
+blood_glucose (mmol/L), cho_mg_announced, insulin_mU_min, base_scenario,
 had_large_meal, had_missed_bolus, n_late_boluses, exercise_overlay,
 bolus_status, meal_size, exercise_type, scenario_id, missed_meal_id,
 late_bolus_id, late_bolus_ids
@@ -14,20 +14,20 @@ Tables populated
 ----------------
 patients            – one row per unique patient_id
 glucose_readings    – one row per minute (blood_glucose)
-meal_events         – rows where cho_mg_min > 0 (meal start minutes)
+meal_events         – rows where cho_mg_announced > 0 (meal start minutes)
 insulin_events      – bolus rows (bolus_status != 'none') + basal proxy
 exercise_events     – rows where exercise_overlay != 'none' (event starts)
 anomaly_detections  – missed boluses and late boluses inferred from flags
 
 Usage
 -----
-    python database/load_parquet.py path/to/simulation.parquet
+    python database/upload_parquet.py path/to/simulation.parquet
 
     # Additional options:
-    python database/load_parquet.py data.parquet \\
-        --db-url postgresql://postgres:postgres@localhost:5432/diabetes_db \\
-        --batch-size 5000 \\
-        --clear          # truncate tables first (keeps schema intact)
+    python database/upload_parquet.py data.parquet \
+        --db-url postgresql://postgres:postgres@localhost:5432/diabetes_db \
+        --batch-size 10080 \    # 7 days in minutes
+        --clear                 # truncate tables first (keeps schema intact)
 
 Environment
 -----------
@@ -312,19 +312,19 @@ def upload_meals(
     cur, df: pd.DataFrame, id_map: dict[int, int], batch_size: int, base_dt: datetime
 ) -> None:
     """Insert a meal event at the first minute of each meal bout."""
-    # Collapse cho_mg_min per patient: each non-zero run becomes sum at its first minute.
+    # Collapse cho_mg_announced per patient: each non-zero run becomes sum at its first minute.
     df = df.copy()
     for pid, grp in df.groupby("patient_id"):
-        df.loc[grp.index, "cho_mg_min"] = collapse_runs(grp["cho_mg_min"])
+        df.loc[grp.index, "cho_mg_announced"] = collapse_runs(grp["cho_mg_announced"])
 
-    df_meal = df[df["cho_mg_min"] > 0].copy()
+    df_meal = df[df["cho_mg_announced"] > 0].copy()
     if df_meal.empty:
         print("  ✓ meals: 0 inserted (no CHO rows)")
         return
 
     # Mark bout starts — after collapse_runs, only the first minute of each run is > 0.
     df_sorted = df.sort_values(["patient_id", "absolute_minute"])
-    starts = df_sorted[df_sorted["cho_mg_min"] > 0].copy()
+    starts = df_sorted[df_sorted["cho_mg_announced"] > 0].copy()
 
     sql = """
         INSERT INTO meals (patient_id, timestamp, carbs, meal_type)
@@ -337,7 +337,7 @@ def upload_meals(
         if db_pid is None:
             continue
         ts = minute_to_timestamp(base_dt, row["absolute_minute"])
-        carbs = round(float(row["cho_mg_min"]) / 1000, 0)
+        carbs = round(float(row["cho_mg_announced"]) / 1000, 0)
         mtype  = meal_type(int(row["minute"]))
         rows.append((db_pid, ts, carbs, mtype))
 
@@ -346,7 +346,7 @@ def upload_meals(
 
 
 
-def upload_exercise_events(
+def upload_exercises(
     cur, df: pd.DataFrame, id_map: dict[int, int], batch_size: int, base_dt: datetime
 ) -> None:
     """Insert exercise events at the start of each exercise bout."""
