@@ -1,16 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
-using DiabetesApi.DTOs;
 using DiabetesApi.Models;
 
-namespace DiabetesApi.Controllers;
+namespace DiabetesApi.Routes;
 
 /// <summary>Anomaly detection results and acknowledgement.</summary>
 [ApiController]
-[Route("api/anomalies")]
+[Route("api/anomaly")]
 [Produces("application/json")]
-public class AnomaliesController(AppDbContext db) : ControllerBase
+public class Anomaly(AppDbContext db) : ControllerBase
 {
     /// <summary>
     /// Get detected anomalies for a patient.
@@ -25,13 +24,13 @@ public class AnomaliesController(AppDbContext db) : ControllerBase
         [FromQuery] bool? acknowledged = null,
         [FromQuery] int limit = 50)
     {
-        var query = db.AnomalyDetections.Where(a => a.PatientId == patientId);
+        var query = db.Anomalies.Where(a => a.PatientId == patientId);
 
         if (acknowledged.HasValue)
             query = query.Where(a => a.IsAcknowledged == acknowledged.Value);
 
         var anomalies = await query
-            .OrderByDescending(a => a.DetectedAt)
+            .OrderByDescending(a => a.Id)
             .Take(limit)
             .ToListAsync();
 
@@ -48,7 +47,7 @@ public class AnomaliesController(AppDbContext db) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AcknowledgeAnomaly(int anomalyId)
     {
-        var anomaly = await db.AnomalyDetections.FindAsync(anomalyId);
+        var anomaly = await db.Anomalies.FindAsync(anomalyId);
         if (anomaly is null) return NotFound();
 
         anomaly.IsAcknowledged = true;
@@ -57,14 +56,13 @@ public class AnomaliesController(AppDbContext db) : ControllerBase
         return Ok(ToDto(anomaly));
     }
 
-    private static AnomalyDetectionDto ToDto(AnomalyDetection a) => new(
+    private static AnomalyDetectionDto ToDto(Models.Anomaly a) => new(
         a.Id,
         a.PatientId,
         a.GlucoseReadingId,
         a.AnomalyType,
-        a.Confidence,
+        (float)a.Confidence,
         a.Description,
-        a.IsAcknowledged,
-        a.DetectedAt.ToString("O")
+        a.IsAcknowledged
     );
 }

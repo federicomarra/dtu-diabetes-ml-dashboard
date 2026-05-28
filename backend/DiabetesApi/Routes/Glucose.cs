@@ -1,11 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
-using DiabetesApi.DTOs;
 using DiabetesApi.Models;
 using DiabetesApi.Services;
 
-namespace DiabetesApi.Controllers;
+namespace DiabetesApi.Routes;
 
 /// <summary>Glucose readings and statistics.</summary>
 [ApiController]
@@ -21,14 +20,14 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     /// <param name="end">ISO datetime string (optional).</param>
     /// <param name="limit">Maximum number of results (default 500).</param>
     [HttpGet("{patientId:int}")]
-    [ProducesResponseType(typeof(GlucoseReadingsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(GlucosesResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetGlucoseReadings(
         int patientId,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
-        [FromQuery] int limit     = 500)
+        [FromQuery] int limit     = 14*24*60)    // two weeks in minutes
     {
-        var query = db.GlucoseReadings.Where(r => r.PatientId == patientId);
+        var query = db.Glucoses.Where(r => r.PatientId == patientId);
 
         if (start is not null)
             query = query.Where(r => r.Timestamp >= DateTime.Parse(start).ToUniversalTime());
@@ -40,7 +39,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
             .Take(limit)
             .ToListAsync();
 
-        return Ok(new GlucoseReadingsResponse(
+        return Ok(new GlucosesResponse(
             patientId,
             readings.Select(ToDto),
             readings.Count
@@ -71,7 +70,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetLatestReading(int patientId)
     {
-        var reading = await db.GlucoseReadings
+        var reading = await db.Glucoses
             .Where(r => r.PatientId == patientId)
             .OrderByDescending(r => r.Timestamp)
             .FirstOrDefaultAsync();
@@ -82,11 +81,11 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         return Ok(ToDto(reading));
     }
 
-    private static GlucoseReadingDto ToDto(GlucoseReading r) => new(
+    private static GlucoseReadingDto ToDto(Glucose r) => new(
         r.Id,
         r.PatientId,
         r.Timestamp.ToString("O"),
-        r.GlucoseMmoll,
+        (float)r.GlucoseMmoll,
         r.Source,
         r.Status
     );

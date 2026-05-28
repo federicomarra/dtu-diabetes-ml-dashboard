@@ -1,16 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
-using DiabetesApi.DTOs;
 using DiabetesApi.Models;
+using DiabetesApi.Services;
 
-namespace DiabetesApi.Controllers;
+namespace DiabetesApi.Routes;
 
 /// <summary>Patient management endpoints.</summary>
 [ApiController]
-[Route("api/patients")]
+[Route("api/patient")]
 [Produces("application/json")]
-public class PatientsController(AppDbContext db) : ControllerBase
+public class Patient(AppDbContext db, PatientService patientService) : ControllerBase
 {
     /// <summary>List all patients with optional pagination.</summary>
     /// <param name="page">Page number (default 1).</param>
@@ -58,13 +58,11 @@ public class PatientsController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.ExternalId) || string.IsNullOrWhiteSpace(req.Name))
             return BadRequest(new { error = "external_id and name are required" });
 
-        var patient = new Patient
+        var patient = new Models.Patient
         {
             ExternalId   = req.ExternalId,
             Name         = req.Name,
-            DiabetesType = req.DiabetesType ?? "T1D",
             DateOfBirth  = req.DateOfBirth  is not null ? DateOnly.Parse(req.DateOfBirth)  : null,
-            DiagnosisDate= req.DiagnosisDate is not null ? DateOnly.Parse(req.DiagnosisDate): null,
         };
 
         db.Patients.Add(patient);
@@ -73,13 +71,10 @@ public class PatientsController(AppDbContext db) : ControllerBase
         return CreatedAtAction(nameof(GetPatient), new { patientId = patient.Id }, ToDto(patient));
     }
 
-    private static PatientDto ToDto(Patient p) => new(
+    private PatientDto ToDto(Models.Patient p) => new(
         p.Id,
         p.ExternalId,
         p.Name,
-        p.DateOfBirth?.ToString("yyyy-MM-dd"),
-        p.DiabetesType,
-        p.DiagnosisDate?.ToString("yyyy-MM-dd"),
-        p.CreatedAt.ToString("O")
+        patientService.CalculateAge(p.DateOfBirth) ?? 0
     );
 }

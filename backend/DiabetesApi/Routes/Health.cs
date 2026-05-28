@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace DiabetesApi.Controllers;
+namespace DiabetesApi.Routes;
 
 /// <summary>API health check.</summary>
 [ApiController]
 [Route("api")]
-public class HealthController : ControllerBase
+public class Health : ControllerBase
 {
     /// <summary>Returns the health status of the API.</summary>
     [HttpGet("health")]
