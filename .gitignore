@@ -194,9 +194,10 @@ dist/
 coverage/
 .nyc_output/
 
-# Misc
+# OS Misc
 .DS_Store
 *.pem
+Thumbs.db
 .env.local
 .env.*.local
 
@@ -210,18 +211,22 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+*.code-workspace
+dtu-diabetes-ml-dashboard.code-workspace
 
-# OS
-Thumbs.db
-.DS_Store
+# Documentation
 /doc
+
+# C# Dotnet
+/backend/**/bin
+/backend/**/obj
+
+# Database
+/database/simulated-data
 
 # Claude
 AGENTS.md
 CLAUDE.md
+
+# Python
 /ml/data
-*.code-workspace
-dtu-diabetes-ml-dashboard.code-workspace
-/database/simulated-data
-/backend/**/bin
-/backend/**/obj
