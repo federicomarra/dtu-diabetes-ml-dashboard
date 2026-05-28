@@ -18,10 +18,25 @@ export default function DoctorPatientDetail() {
   const { patient_id } = useParams<{ patient_id: string }>();
   const ctrl = usePatientDetailController(patient_id);
 
+  if (ctrl.loading) {
+    return (
+      <div className={styles.dashboard}>
+        <Link href="/doctor" className={styles.backLink}>
+          <ArrowLeft size={16} /> Back to Doctor Dashboard
+        </Link>
+        <p style={{ color: "var(--text-secondary)", marginTop: "2rem" }}>
+          Loading patient data…
+        </p>
+      </div>
+    );
+  }
+
   if (ctrl.notFound) {
     return (
       <div className={styles.notFound}>
-        <p>Patient <code>{patient_id}</code> not found.</p>
+        <p>
+          Patient <code>{patient_id}</code> not found.
+        </p>
         <Link href="/doctor" className={styles.backLink}>
           <ArrowLeft size={16} /> Back to Doctor Dashboard
         </Link>
@@ -29,7 +44,21 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, anomalies, latestReading, handleAcknowledge } = ctrl;
+  if (ctrl.error) {
+    return (
+      <div className={styles.dashboard}>
+        <Link href="/doctor" className={styles.backLink}>
+          <ArrowLeft size={16} /> Back to Doctor Dashboard
+        </Link>
+        <p style={{ color: "var(--color-high)", marginTop: "2rem" }}>
+          Error: {ctrl.error}
+        </p>
+      </div>
+    );
+  }
+
+  const { patient, tir, readings, anomalies, latestReading, handleAcknowledge } =
+    ctrl;
 
   return (
     <div className={styles.dashboard}>
@@ -41,11 +70,11 @@ export default function DoctorPatientDetail() {
       <h2 className={styles.pageTitle}>Patient Detail View</h2>
 
       <PatientOverview
-        patientName={patient.name}
-        patientId={patient.external_id}
-        patientAge={patient.age != null ? String(patient.age) : "??"}
+        patientName={patient!.name}
+        patientId={patient!.external_id}
+        patientAge={patient!.age != null ? String(patient!.age) : "??"}
         latestReading={latestReading}
-        tir={tir}
+        tir={tir ?? undefined}
         anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
       />
 
@@ -55,7 +84,7 @@ export default function DoctorPatientDetail() {
 
       <div className={styles.chartsGrid}>
         <GlucoseChart readings={readings} title="24-Hour Glucose Trace" />
-        <TIRChart tir={tir} />
+        {tir && <TIRChart tir={tir} />}
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
 /**
  * Shared TypeScript interfaces for the diabetes dashboard.
  * MODEL layer — defines the data shapes used across the application.
+ *
+ * All field names match the snake_case JSON produced by the backend
+ * (JsonNamingPolicy.SnakeCaseLower configured in Program.cs).
  */
 
 export interface Patient {
@@ -19,30 +22,32 @@ export interface GlucoseReading {
   status: "very_low" | "low" | "in_range" | "high" | "very_high";
 }
 
+/** Maps to InsulinDto from DiabetesApi/Routes/Insulin.cs */
 export interface InsulinEvent {
   id: number;
   patient_id: number;
   timestamp: string;
   units: number;
   event_type: "bolus" | "basal";
-  is_late: boolean;
-  is_missed: boolean;
 }
 
+/** Maps to MealDto from DiabetesApi/Routes/Meal.cs */
 export interface MealEvent {
   id: number;
   patient_id: number;
   timestamp: string;
-  carbs_grams: number;
+  carbs: number;
   meal_type: "breakfast" | "lunch" | "dinner" | "snack" | null;
 }
 
-export interface ExerciseEvent {
+/** Maps to HistoryDto from DiabetesApi/Routes/History.cs */
+export interface HistoryEntry {
   id: number;
   patient_id: number;
   timestamp: string;
-  duration_minutes: number;
-  intensity: "low" | "medium" | "high"; // TODO: check with Guido about these
+  glucose: number | null;
+  insulin: number | null;
+  meal: number | null;
 }
 
 export interface AnomalyDetection {
@@ -53,7 +58,7 @@ export interface AnomalyDetection {
   confidence: number;
   description: string | null;
   is_acknowledged: boolean;
-  detected_at: string;
+  detected_at?: string; // not present in backend; kept for forward-compat
 }
 
 export interface TimeInRange {
@@ -66,6 +71,7 @@ export interface TimeInRange {
   very_high_pct: number;
 }
 
+/** Maps to PaginatedPatientsResponse from DiabetesApi/Routes/Patient.cs */
 export interface PaginatedResponse<T> {
   patients: T[];
   total: number;
