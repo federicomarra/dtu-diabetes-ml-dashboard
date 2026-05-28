@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DiabetesApi.Models;
 
-[Table("glucose_readings")]
-public class GlucoseReading
+[Table("glucoses")]
+public class Glucose
 {
     [Key]
     [Column("id")]
@@ -24,20 +24,14 @@ public class GlucoseReading
     [MaxLength(20)]
     public string Source { get; set; } = "simulated";
 
-    [Column("created_at")]
+    [NotMapped]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
     public Patient Patient { get; set; } = null!;
 
-    /// <summary>Clinical classification of the glucose value (mmol/L thresholds).</summary>
-    [NotMapped]
-    public string Status => GlucoseMmoll switch
-    {
-        < 3.0 => "very_low",
-        < 3.9 => "low",
-        <= 10.0 => "in_range",
-        <= 13.9 => "high",
-        _ => "very_high"
-    };
+    [Required]
+    [Column("status")]
+    [MaxLength(20)]
+    public string Status { get; set; } = "in_range";
 }

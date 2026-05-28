@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DiabetesApi.Models;
 
-[Table("insulin_events")]
-public class InsulinEvent
+[Table("insulins")]
+public class Insulin
 {
     [Key]
     [Column("id")]
@@ -24,15 +24,6 @@ public class InsulinEvent
     [Column("event_type")]
     [MaxLength(10)]
     public string EventType { get; set; } = string.Empty; // bolus, basal
-
-    [Column("is_late")]
-    public bool IsLate { get; set; } = false;
-
-    [Column("is_missed")]
-    public bool IsMissed { get; set; } = false;
-
-    [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Patient Patient { get; set; } = null!;
 }

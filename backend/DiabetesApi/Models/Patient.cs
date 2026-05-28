@@ -23,13 +23,6 @@ public class Patient
     [Column("date_of_birth")]
     public DateOnly? DateOfBirth { get; set; }
 
-    [Column("diabetes_type")]
-    [MaxLength(10)]
-    public string DiabetesType { get; set; } = "T1D";
-
-    [Column("diagnosis_date")]
-    public DateOnly? DiagnosisDate { get; set; }
-
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -37,8 +30,10 @@ public class Patient
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation
-    public ICollection<GlucoseReading> GlucoseReadings { get; set; } = [];
-    public ICollection<InsulinEvent> InsulinEvents { get; set; } = [];
-    public ICollection<MealEvent> MealEvents { get; set; } = [];
-    public ICollection<AnomalyDetection> AnomalyDetections { get; set; } = [];
+    public ICollection<Glucose> Glucoses { get; set; } = [];
+    public ICollection<Insulin> Insulins { get; set; } = [];
+    public ICollection<Meal> Meals { get; set; } = [];
+    public ICollection<Anomaly> Anomalies { get; set; } = [];
+    public ICollection<Exercise> Exercises { get; set; } = [];
+    public ICollection<History> Histories { get; set; } = [];
 }

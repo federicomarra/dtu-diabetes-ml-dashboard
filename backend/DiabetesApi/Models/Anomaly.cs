@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DiabetesApi.Models;
 
-[Table("anomaly_detections")]
-public class AnomalyDetection
+[Table("anomalies")]
+public class Anomaly
 {
     [Key]
     [Column("id")]
@@ -30,10 +30,7 @@ public class AnomalyDetection
     [Column("is_acknowledged")]
     public bool IsAcknowledged { get; set; } = false;
 
-    [Column("detected_at")]
-    public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
-
     // Navigation
     public Patient Patient { get; set; } = null!;
-    public GlucoseReading? GlucoseReading { get; set; }
+    public Glucose? GlucoseReading { get; set; }
 }
