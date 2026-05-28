@@ -68,7 +68,7 @@ export default function PatientOverview({
             <Droplets size={18} />
           </div>
           <div>
-            <div className={styles.metricLabel}>Current Glucose</div>
+            <div className={styles.metricLabel}>Latest Glucose</div>
             <div
               className={styles.metricValue}
               style={{ color: getStatusColor(latestReading?.status) }}
