@@ -51,6 +51,13 @@ public record TirResponse(
     float VeryHighPct
 );
 
+public record ranges(
+    double? VeryLow = null,
+    double? Low = null,
+    double? High = null,
+    double? VeryHigh = null
+);
+
 // ── Anomalies ─────────────────────────────────────────────────────────────────
 
 public record AnomalyDetectionDto(

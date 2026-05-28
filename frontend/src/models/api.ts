@@ -77,7 +77,7 @@ export async function getLatestReading(
 
 export async function getTimeInRange(
   patientId: number,
-  params?: { start?: string; end?: string }
+  params?: { start?: string; end?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
 ): Promise<TimeInRange> {
   const { data } = await api.get(`/glucose/${patientId}/tir`, { params });
   return data;

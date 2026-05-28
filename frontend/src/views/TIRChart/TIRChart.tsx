@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -12,6 +12,7 @@ import {
   Cell,
 } from "recharts";
 import type { TimeInRange } from "@/models/types";
+import { getTimeInRange } from "@/models/api";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
 import type { GlucoseUnit } from "@/models/glucoseUnits";
@@ -54,6 +55,7 @@ function fromDisplay(value: string, unit: GlucoseUnit): number {
 
 interface TIRChartProps {
   tir: TimeInRange;
+  patientId: number;
 }
 
 const RANGE_COLORS = {
@@ -189,19 +191,25 @@ function StackedView({ tir, thresholds }: StackedViewProps) {
     <div className={styles.stackedWrapper}>
       {/* Left axis: threshold labels */}
       <div className={styles.stackedAxis} style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.55s" }}>
-        {thresholdLabels.map(({ value, after }) => (
-          <div
-            key={value}
-            className={styles.axisLabel}
-            style={{
-              top: `${offsets[after] + (
-                ranges.find(r => r.key === after)!.pct
-              )}%`
-            }}
-          >
-            {convertGlucose(value, unit)}
-          </div>
-        ))}
+        {thresholdLabels.map(({ value, after }, i) => {
+          const rawTop = offsets[after] + ranges.find(r => r.key === after)!.pct;
+          // Ensure minimum spacing (14px ≈ 5% of 280px) between consecutive labels
+          // so text doesn't collide with the dashed divider lines.
+          const prevTop = i > 0
+            ? offsets[thresholdLabels[i - 1].after] + ranges.find(r => r.key === thresholdLabels[i - 1].after)!.pct
+            : -Infinity;
+          const minGap = 5; // % — ensures ~14px gap at 280px height
+          const clampedTop = Math.max(rawTop, prevTop + minGap);
+          return (
+            <div
+              key={value}
+              className={styles.axisLabel}
+              style={{ top: `${clampedTop}%` }}
+            >
+              {convertGlucose(value, unit)}
+            </div>
+          );
+        })}
       </div>
 
       {/* Stacked bar */}
@@ -241,23 +249,29 @@ function StackedView({ tir, thresholds }: StackedViewProps) {
         className={styles.stackedLegend}
         style={{ opacity: animated ? 1 : 0, transition: "opacity 0.5s ease 0.55s" }}
       >
-        {ranges.map((r) => (
-          <div
-            key={r.key}
-            className={styles.legendRow}
-            style={{ height: `${r.pct}%`, minHeight: r.pct > 0 ? 32 : 0 }}
-          >
-            <div className={styles.legendDivider} />
-            <div className={styles.legendContent}>
-              <span className={styles.legendName} style={{ color: r.color }}>{r.label}</span>
-              <span className={styles.legendRange}>{r.rangeLabel}</span>
+        {(() => {
+          const CHART_H = 280; // matches .chartArea height
+          const MIN_ROW = 36;
+          const totalMin = ranges.length * MIN_ROW;
+          const extra = Math.max(0, CHART_H - totalMin);
+          return ranges.map((r) => (
+            <div
+              key={r.key}
+              className={styles.legendRow}
+              style={{ height: MIN_ROW + (r.pct / 100) * extra }}
+            >
+              <div className={styles.legendDivider} />
+              <div className={styles.legendContent}>
+                <span className={styles.legendName} style={{ color: r.color }}>{r.label}</span>
+                <span className={styles.legendRange}>{r.rangeLabel}</span>
+              </div>
+              <div className={styles.legendStats}>
+                <span className={styles.legendPct}>{r.pct.toFixed(1)}%</span>
+                <span className={styles.legendTime}>({pctToMinutes(r.pct)})</span>
+              </div>
             </div>
-            <div className={styles.legendStats}>
-              <span className={styles.legendPct}>{r.pct.toFixed(1)}%</span>
-              <span className={styles.legendTime}>({pctToMinutes(r.pct)})</span>
-            </div>
-          </div>
-        ))}
+          ));
+        })()}
       </div>
     </div>
   );
@@ -471,11 +485,42 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
 
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRChart({ tir }: TIRChartProps) {
+export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) {
   const [mode, setMode] = useState<ViewMode>("stacked");
   const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
   const [showRangesModal, setShowRangesModal] = useState(false);
+  const [liveTir, setLiveTir] = useState<TimeInRange>(initialTir);
+  const [loading, setLoading] = useState(false);
   const { unit } = useGlucoseUnit();
+
+  // Keep liveTir in sync when the parent provides new initial data
+  useEffect(() => { setLiveTir(initialTir); }, [initialTir]);
+
+  const handleApplyThresholds = useCallback(async (t: CustomThresholds) => {
+    setThresholds(t);
+
+    // Only call backend when thresholds differ from defaults
+    const isDefault =
+      t.veryLow === DEFAULT_THRESHOLDS.veryLow &&
+      t.low === DEFAULT_THRESHOLDS.low &&
+      t.high === DEFAULT_THRESHOLDS.high &&
+      t.veryHigh === DEFAULT_THRESHOLDS.veryHigh;
+
+    setLoading(true);
+    try {
+      const params = isDefault
+        ? undefined
+        : { VeryLow: t.veryLow, Low: t.low, High: t.high, VeryHigh: t.veryHigh };
+      const result = await getTimeInRange(patientId, params);
+      setLiveTir(result);
+    } catch (err) {
+      console.error("Failed to re-compute TIR with custom ranges:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [patientId]);
+
+  const tir = liveTir;
 
   return (
     <div className={styles.container}>
@@ -521,7 +566,7 @@ export default function TIRChart({ tir }: TIRChartProps) {
       </div>
 
       {/* Chart — fixed-height wrapper keeps the card size stable on toggle */}
-      <div className={styles.chartArea}>
+      <div className={`${styles.chartArea} ${loading ? styles.chartLoading : ""}`}>
         {mode === "stacked" ? (
           <StackedView tir={tir} thresholds={thresholds} />
         ) : (
@@ -549,7 +594,7 @@ export default function TIRChart({ tir }: TIRChartProps) {
         <RangesModal
           unit={unit}
           thresholds={thresholds}
-          onApply={setThresholds}
+          onApply={handleApplyThresholds}
           onClose={() => setShowRangesModal(false)}
         />
       )}

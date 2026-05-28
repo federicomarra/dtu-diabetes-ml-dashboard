@@ -70,10 +70,17 @@ public class GlucoseService(AppDbContext db)
     /// </summary>
     public async Task<TirResponse> CalculateTimeInRangeAsync(
         int patientId,
+        ranges? ranges = null,
         DateTime? start = null,
         DateTime? end = null)
     {
-        var thresholds = GetThresholds();
+        var (defaultVl, defaultL, defaultH, defaultVh) = GetThresholds();
+        var thresholds = (
+            VeryLow: ranges?.VeryLow ?? defaultVl,
+            Low: ranges?.Low ?? defaultL,
+            High: ranges?.High ?? defaultH,
+            VeryHigh: ranges?.VeryHigh ?? defaultVh
+        );
 
         var query = db.Glucoses
             .Where(r => r.PatientId == patientId);

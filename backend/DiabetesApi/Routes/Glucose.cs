@@ -48,19 +48,21 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
 
     /// <summary>Get time-in-range (TIR) statistics for a patient.</summary>
     /// <param name="patientId">Patient ID.</param>
+    /// <param name="ranges">Custom glucose threshold ranges (optional).</param>
     /// <param name="start">ISO datetime string (optional).</param>
     /// <param name="end">ISO datetime string (optional).</param>
     [HttpGet("{patientId:int}/tir")]
     [ProducesResponseType(typeof(TirResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTimeInRange(
         int patientId,
+        [FromQuery] ranges ranges,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null)
     {
         DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
         DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
 
-        var tir = await glucoseService.CalculateTimeInRangeAsync(patientId, startDt, endDt);
+        var tir = await glucoseService.CalculateTimeInRangeAsync(patientId, ranges, startDt, endDt);
         return Ok(tir);
     }
 
