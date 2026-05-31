@@ -1,7 +1,7 @@
 """
 Unit tests for ml/dataset.py.
 
-All tests use synthetic in-memory data — no Parquet file required.
+All tests use synthetic in-memory data, no Parquet file required.
 The _preloaded argument on GlucoseWindowDataset is the hook that lets us
 bypass the file read and inject a dict of numpy arrays directly.
 
@@ -26,19 +26,19 @@ from dataset import (
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-T = 300  # minutes per fake patient — fits at least 2 windows at stride=120
+T = 300  # minutes per fake patient, fits at least 2 windows at stride=120
 
 
 def _make_fake_data(n_patients: int = 3, t: int = T, seed: int = 0) -> dict[str, np.ndarray]:
     """
     Synthetic patient data matching the shape that load_patients() produces:
-      [T, 8]  — columns 0-2 are signal channels, columns 3-7 are binary labels.
+      [T, 8], columns 0-2 are signal channels, columns 3-7 are binary labels.
 
     Signals are given plausible ranges so scaler tests are meaningful:
       col 0 (blood_glucose):    ~ N(7.5, 2.0) mmol/L
       col 1 (insulin_mU_min):   ~ Uniform(0, 30) mU/min
       col 2 (cho_mg_announced): ~ Uniform(0, 500) mg/min, mostly zero
-    Labels are sparse Bernoulli(0.05) — anomalies are rare.
+    Labels are sparse Bernoulli(0.05), anomalies are rare.
     """
     rng = np.random.default_rng(seed)
     data: dict[str, np.ndarray] = {}
