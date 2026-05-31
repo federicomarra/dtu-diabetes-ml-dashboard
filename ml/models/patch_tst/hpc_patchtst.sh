@@ -46,7 +46,6 @@
 ### ─── environment ────────────────────────────────────────────────────────
 module load python3/3.10.12
 module load cuda/12.1
-module load cudnn/8.9.5
 
 source .venv/bin/activate
 
@@ -63,7 +62,7 @@ mkdir -p logs ml/data/checkpoints
 ### ─── 1. pretraining ────────────────────────────────────────────────────
 echo "=== PRETRAINING ==="
 python ml/models/patch_tst/pretrain.py \
-    --epochs      15  \
+    --epochs      40  \
     --batch_size  256 \
     --lr          1e-4 \
     --num_workers 4

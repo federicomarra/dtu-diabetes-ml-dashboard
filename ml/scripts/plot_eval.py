@@ -53,7 +53,13 @@ def plot_pr_curves(
     labels: dict[str, np.ndarray],
     out_path: Path,
 ) -> None:
-    """One PR curve per anomaly class, AUPRC annotated in the legend."""
+    """
+    One PR curve per anomaly class, log-scale Y axis.
+
+    Log scale makes the difference between AUPRC=0.02 and AUPRC=0.05 visible
+    when both are near the prevalence floor (~0.01-0.02). Each random baseline
+    is labelled with its exact prevalence value for thesis readability.
+    """
     fig, ax = plt.subplots(figsize=(7, 6))
 
     for cls in ANOMALY_CLASSES:
@@ -67,31 +73,40 @@ def plot_pr_curves(
 
         ax.plot(
             recall, precision,
-            label=f"{cls}  (AUPRC={auprc:.3f})",
+            label=f"{cls}  (AUPRC={auprc:.3f}, base={prevalence:.3f})",
             color=CLASS_COLORS[cls],
             linewidth=2,
         )
-        # dashed horizontal = random baseline for this class
+        # dashed horizontal = random baseline, labelled on the right margin
         ax.axhline(
             prevalence, color=CLASS_COLORS[cls],
-            linestyle=":", linewidth=0.8, alpha=0.5,
+            linestyle=":", linewidth=0.8, alpha=0.6,
+        )
+        ax.annotate(
+            f"{prevalence:.3f}",
+            xy=(1.01, prevalence),
+            xycoords=("axes fraction", "data"),
+            fontsize=7,
+            color=CLASS_COLORS[cls],
+            va="center",
         )
 
     ax.set_xlabel("Recall", fontsize=12)
-    ax.set_ylabel("Precision", fontsize=12)
+    ax.set_ylabel("Precision (log scale)", fontsize=12)
     ax.set_title(
         "Precision-Recall curves per anomaly class\n"
-        "(dotted = random baseline ≈ prevalence)",
+        "(dotted = random baseline at class prevalence)",
         fontsize=12, fontweight="bold",
     )
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=9, loc="upper right")
-    ax.grid(True, alpha=0.3)
+    ax.set_yscale("log")
+    ax.set_ylim(bottom=0.001)   # avoid log(0); show down to 0.1%
+    ax.legend(fontsize=8, loc="upper right")
+    ax.grid(True, alpha=0.3, which="both")
 
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=300)
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved → {out_path}")
 
