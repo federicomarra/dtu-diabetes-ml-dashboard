@@ -36,6 +36,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.nn.utils.clip_grad import clip_grad_norm_
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 
 # make ml/ importable regardless of working directory
@@ -187,11 +188,17 @@ def main() -> None:
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
-    # cosine annealing: lr starts at args.lr, decays smoothly to 0 over all epochs
-    # smoother than step decay, standard for transformer pretraining
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs, eta_min=1e-6
+    # warmup 5 epochs (lr: 1e-5 → args.lr), then cosine decay to 1e-6.
+    # warmup prevents the early val loss oscillation seen when cosine starts cold
+    # at full lr — the model overshoots for ~14 epochs before stabilising.
+    n_warmup = min(5, args.epochs // 4)
+    warmup = LinearLR(
+        optimizer, start_factor=0.1, end_factor=1.0, total_iters=n_warmup
     )
+    cosine = CosineAnnealingLR(
+        optimizer, T_max=max(1, args.epochs - n_warmup), eta_min=1e-6
+    )
+    scheduler = SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[n_warmup])
 
     # ── checkpointing ─────────────────────────────────────────────────────────
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
