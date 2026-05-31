@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dataset import build_datasets, ANOMALY_CLASSES, EVAL_STRIDE
 from models.patch_tst.model import PatchTST
-from models.patch_tst.anomaly_score import score_dataset
+from models.patch_tst.anomaly_score import score_dataset, score_dataset_last_patch
 
 # ── config ────────────────────────────────────────────────────────────────────
 

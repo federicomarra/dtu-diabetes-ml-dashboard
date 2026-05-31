@@ -107,6 +107,59 @@ def score_dataset(
     return scores, labels
 
 
+@torch.no_grad()
+def score_dataset_last_patch(
+    model: PatchTST,
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """
+    Option 2: last-patch masking at inference.
+
+    Always hides patch 5 (minutes 100–119) and scores only that patch.
+    This matches the training task — the model was trained to predict hidden
+    patches from visible context — so there is no train/inference distribution
+    shift. More principled than Option 1 (full reconstruction).
+
+    For missed bolus specifically: the glucose consequence of a meal with no
+    insulin arrives in the later patches. Scoring only the last patch directly
+    tests whether the model predicted the anomalous glucose rise.
+
+    Returns same format as score_dataset.
+    """
+    from models.patch_tst.model import N_PATCHES, PATCH_LEN
+
+    model.eval()
+
+    all_scores: list[float] = []
+    all_labels: dict[str, list[float]] = {cls: [] for cls in ANOMALY_CLASSES}
+
+    for x, label_dict in loader:
+        x = x.to(device)                               # [B, 120, 3]
+
+        # build a fixed mask: only last patch is hidden
+        B = x.shape[0]
+        mask = torch.zeros(B, N_PATCHES, dtype=torch.bool, device=device)
+        mask[:, -1] = True                             # always mask patch 5
+
+        # apply mask manually then forward with mask_ratio=0.0 to skip random masking
+        # instead we use the model internals: patch, embed, replace last token, transform
+        # simpler: call forward with mask_ratio=0.0 to get recon, then score last patch only
+        recon, _ = model(x, mask_ratio=0.0)
+
+        # score only last patch (minutes 100–119)
+        last_start = (N_PATCHES - 1) * PATCH_LEN      # = 100
+        mse = ((recon[:, last_start:, :] - x[:, last_start:, :]) ** 2).mean(dim=(1, 2))  # [B]
+        all_scores.extend(mse.cpu().tolist())
+
+        for cls in ANOMALY_CLASSES:
+            all_labels[cls].extend(label_dict[cls].tolist())
+
+    scores = np.array(all_scores, dtype=np.float32)
+    labels = {cls: np.array(v, dtype=np.float32) for cls, v in all_labels.items()}
+    return scores, labels
+
+
 # ── threshold calibration ─────────────────────────────────────────────────────
 
 def calibrate_threshold(
@@ -221,35 +274,44 @@ def main() -> None:
         pin_memory  = device.type == "cuda",
     )
 
-    # ── score all windows ─────────────────────────────────────────────────────
-    print("Scoring…")
-    scores, labels = score_dataset(model, loader, device)
-    print(f"Score range: min={scores.min():.4f}  max={scores.max():.4f}  mean={scores.mean():.4f}")
+    # ── score: option 1 (full reconstruction) ────────────────────────────────
+    print("Scoring — Option 1: full reconstruction…")
+    scores_full, labels = score_dataset(model, loader, device)
+    print(f"Score range: min={scores_full.min():.4f}  max={scores_full.max():.4f}  mean={scores_full.mean():.4f}")
 
-    # ── per-patient threshold (informational — not needed for AUROC) ──────────
-    # With eval_stride=1 and N_CAL_DAYS=5 the first 7200 windows are calibration.
-    # In a real deployment this runs per patient; here we demo on the full test set.
+    # ── score: option 2 (last-patch masking) ─────────────────────────────────
+    print("Scoring — Option 2: last-patch masking…")
+    scores_last, _ = score_dataset_last_patch(model, loader, device)
+    print(f"Score range: min={scores_last.min():.4f}  max={scores_last.max():.4f}  mean={scores_last.mean():.4f}")
+
+    # ── per-patient threshold (informational) ─────────────────────────────────
     n_cal = N_CAL_DAYS * MINUTES_PER_DAY
-    if len(scores) >= n_cal:
-        threshold = calibrate_threshold(scores, n_cal)
-        flagged   = (scores > threshold).mean() * 100
-        print(f"Threshold (median+2×IQR/1.349, first {N_CAL_DAYS} days): {threshold:.4f}  →  {flagged:.1f}% windows flagged")
+    for name, scores in [("full", scores_full), ("last-patch", scores_last)]:
+        if len(scores) >= n_cal:
+            threshold = calibrate_threshold(scores, n_cal)
+            flagged   = (scores > threshold).mean() * 100
+            print(f"Threshold [{name}] (median+2×IQR/1.349, first {N_CAL_DAYS} days): {threshold:.4f}  →  {flagged:.1f}% flagged")
 
-    # ── metrics ───────────────────────────────────────────────────────────────
-    auroc = auroc_per_class(scores, labels)
-    auprc = auprc_per_class(scores, labels)
+    # ── metrics comparison ────────────────────────────────────────────────────
+    auroc_full = auroc_per_class(scores_full, labels)
+    auprc_full = auprc_per_class(scores_full, labels)
+    auroc_last = auroc_per_class(scores_last, labels)
+    auprc_last = auprc_per_class(scores_last, labels)
 
-    print("\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ≈ prevalence)")
-    print(f"  {'class':<12}  {'AUPRC':>6}  {'AUROC':>6}  {'pos windows':>12}  {'prevalence':>10}")
-    print(f"  {'-'*12}  {'-'*6}  {'-'*6}  {'-'*12}  {'-'*10}")
+    n_total = len(scores_full)
+    header = f"  {'class':<12}  {'AUPRC-full':>10}  {'AUPRC-last':>10}  {'AUROC-full':>10}  {'AUROC-last':>10}  {'prevalence':>10}"
+    print(f"\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ≈ prevalence)")
+    print(header)
+    print(f"  {'-'*12}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}")
 
-    n_total = len(scores)
     for cls in ANOMALY_CLASSES:
         n_pos      = int(labels[cls].sum())
         prevalence = n_pos / n_total if n_total > 0 else 0.0
-        auprc_str  = f"{auprc[cls]:.4f}" if not np.isnan(auprc[cls]) else "  n/a "
-        auroc_str  = f"{auroc[cls]:.4f}" if not np.isnan(auroc[cls]) else "  n/a "
-        print(f"  {cls:<12}  {auprc_str:>6}  {auroc_str:>6}  {n_pos:>12,}  {prevalence:>9.2%}")
+        def fmt(v): return f"{v:.4f}" if not np.isnan(v) else "   n/a"
+        print(
+            f"  {cls:<12}  {fmt(auprc_full[cls]):>10}  {fmt(auprc_last[cls]):>10}"
+            f"  {fmt(auroc_full[cls]):>10}  {fmt(auroc_last[cls]):>10}  {prevalence:>9.2%}"
+        )
 
 
 if __name__ == "__main__":
