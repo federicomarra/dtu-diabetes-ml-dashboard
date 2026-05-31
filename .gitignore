@@ -227,7 +227,8 @@ dtu-diabetes-ml-dashboard.code-workspace
 # Claude
 AGENTS.md
 CLAUDE.md
-INSTRUCTIONS.md
 
 # Python
 /ml/data
+/ml/docs
+/ml/figures
