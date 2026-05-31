@@ -6,7 +6,7 @@
 
 ## Architecture
 
-```
+```text
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │     Frontend     │     │     Backend      │     │    Database      │
 │    (Next.js)     │────▶│  (ASP.NET Core)  │────▶│   (PostgreSQL)   │
@@ -21,7 +21,7 @@
 ```
 
 | Component    | Technology                               | Environment       |
-|-------------|------------------------------------------|-------------------|
+|------------- | ---------------------------------------- | ----------------- |
 | Frontend     | Next.js + TypeScript + Recharts          | localhost:3000    |
 | Backend API  | ASP.NET Core 10 + EF Core + Swashbuckle  | localhost:8000    |
 | Database     | PostgreSQL 16                            | localhost:5432    |
@@ -29,7 +29,7 @@
 
 ## Project Structure
 
-```
+```text
 ├── backend/                       # ASP.NET Core 10 API
 │   ├── DiabetesApi/               # Main API project
 │   │   ├── Controllers/           # API controllers
@@ -80,9 +80,22 @@
 │           └── AnomalyAlert/     # Alert list with acknowledge action
 │
 ├── ml/                            # Machine learning module (Python)
-│   ├── data/                      # Synthetic data generation
-│   ├── training/                  # Model training (train_anomaly.py)
-│   └── inference/                 # Prediction service
+│   ├── dataset.py                 # Data loading, normalisation, sliding-window Dataset
+│   ├── data/                      # Parquet cohort, OhioT1DM, checkpoints, scalers
+│   ├── models/                    # One subfolder per model architecture
+│   │   └── patch_tst/             # Arc 1 primary: PatchTST masked-patch pretraining
+│   │       ├── model.py           # Architecture (600k params, channel-independent)
+│   │       ├── pretrain.py        # Masked-patch pretraining loop
+│   │       ├── anomaly_score.py   # Reconstruction MSE scorer + AUPRC/AUROC eval
+│   │       └── hpc_patchtst.sh    # DTU HPC LSF job script (pretrain + eval)
+│   ├── inference/                 # DB→model adapter (deferred — see INSTRUCTIONS.md §15)
+│   ├── scripts/                   # One-off analysis and plotting scripts
+│   │   ├── explore_patients.py    # Plot 3 random patients
+│   │   ├── plot_training.py       # Train/val loss curves from pretrain_log.json
+│   │   └── plot_eval.py           # PR curves + score distribution from checkpoint
+│   ├── figures/                   # Output figures (thesis-ready, 300 dpi)
+│   ├── tests/                     # Unit tests (pytest)
+│   └── docs/                      # INSTRUCTIONS.md (gitignored), PATCHTST.md
 ├── database/                      # Schema & seeding scripts
 ├── docker-compose.yml             # Local dev environment
 ├── Jenkinsfile                    # CI/CD pipeline
@@ -92,11 +105,13 @@
 ## Quick Start
 
 ### Prerequisites
+
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 18+](https://nodejs.org/)
 - [Docker](https://docker.com/)
 
 ### 1. Clone & configure
+
 ```bash
 git clone https://github.com/federicomarra/dtu-diabetes-ml-dashboard.git
 cd dtu-diabetes-ml-dashboard
@@ -104,6 +119,7 @@ cp .env.example .env
 ```
 
 ### 2. Start with Docker (recommended)
+
 ```bash
 # Start all services (postgres, backend, frontend)
 docker compose up
@@ -114,22 +130,24 @@ docker compose --profile tools up
 
 Services available after startup:
 
-| Service     | URL                                      |
-|-------------|------------------------------------------|
-| Frontend    | http://localhost:3000                    |
-| Backend API | http://localhost:8000/api/health         |
-| Swagger UI  | http://localhost:8000/swagger            |
-| OpenAPI JSON| http://localhost:8000/swagger/v1/swagger.json |
-| pgAdmin     | http://localhost:5050 (admin@dtu.dk / admin) |
+| Service     | URL                                                                                            |
+|-------------|----------------------------------------------------------------------------------------------- |
+| Frontend    | [http://localhost:3000](http://localhost:3000)                                                 |
+| Backend API | [http://localhost:8000/api/health](http://localhost:8000/api/health)                           |
+| Swagger UI  | [http://localhost:8000/swagger](http://localhost:8000/swagger)                                 |
+| OpenAPI JSON| [http://localhost:8000/swagger/v1/swagger.json](http://localhost:8000/swagger/v1/swagger.json) |
+| pgAdmin     | [http://localhost:5050](http://localhost:5050) ([admin@dtu.dk](admin@dtu.dk) / admin)          |
 
 ### 3. Manual setup (without Docker)
 
 **Database only:**
+
 ```bash
 docker compose up postgres -d
 ```
 
 **Backend:**
+
 ```bash
 cd backend
 dotnet restore DiabetesApi.sln
@@ -139,6 +157,7 @@ dotnet run --project DiabetesApi/DiabetesApi.csproj
 The API starts on `http://localhost:8000`. Swagger UI is at `http://localhost:8000/swagger`.
 
 **Frontend:**
+
 ```bash
 cd frontend
 npm install
@@ -146,11 +165,13 @@ npm run dev
 ```
 
 ### 4. Seed synthetic data
+
 ```bash
 python database/seed.py
 ```
 
 ### 5. Run backend tests
+
 ```bash
 cd backend
 dotnet test DiabetesApi.Tests/ -v
@@ -162,32 +183,32 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 ### Health
 
-| Method | Endpoint     | Description                             |
-|--------|--------------|-----------------------------------------|
+| Method | Endpoint      | Description                                   |
+|--------|-------------- |-----------------------------------------------|
 | GET    | `/api/health` | Health check — returns `{"status":"healthy"}` |
 
 ### Patients (`/api/patients`)
 
-| Method | Endpoint                 | Description                                        |
-|--------|--------------------------|----------------------------------------------------|
-| GET    | `/api/patients/list`     | List all patients (paginated: `?page=1&per_page=20`) |
+| Method | Endpoint                 | Description                                            |
+|--------|--------------------------|--------------------------------------------------------|
+| GET    | `/api/patients/list`     | List all patients (paginated: `?page=1&per_page=20`)   |
 | POST   | `/api/patients/create`   | Create a new patient (`external_id` + `name` required) |
-| GET    | `/api/patients/{id}`     | Get a single patient by ID                        |
+| GET    | `/api/patients/{id}`     | Get a single patient by ID                             |
 
 ### Glucose (`/api/glucose`)
 
-| Method | Endpoint                          | Description                                       |
-|--------|-----------------------------------|---------------------------------------------------|
+| Method | Endpoint                          | Description                                      |
+|--------|-----------------------------------|--------------------------------------------------|
 | GET    | `/api/glucose/{patient_id}`       | Get readings (`?start=`, `?end=`, `?limit=500`)  |
 | GET    | `/api/glucose/{patient_id}/latest`| Most recent glucose reading                      |
 | GET    | `/api/glucose/{patient_id}/tir`   | Time-in-range statistics (`?start=`, `?end=`)    |
 
 ### Anomalies (`/api/anomalies`)
 
-| Method | Endpoint                                  | Description                                      |
-|--------|-------------------------------------------|--------------------------------------------------|
+| Method | Endpoint                                  | Description                                              |
+|--------|-------------------------------------------|----------------------------------------------------------|
 | GET    | `/api/anomalies/{patient_id}`             | List anomalies (`?acknowledged=true/false`, `?limit=50`) |
-| POST   | `/api/anomalies/{anomaly_id}/acknowledge` | Mark anomaly as acknowledged                    |
+| POST   | `/api/anomalies/{anomaly_id}/acknowledge` | Mark anomaly as acknowledged                             |
 
 > 📖 Full interactive API reference via **Swagger UI** at `http://localhost:8000/swagger`
 
@@ -195,10 +216,10 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore).
 
-| Resource                    | URL (local Docker)                          |
-|-----------------------------|---------------------------------------------|
-| Swagger UI (interactive)    | http://localhost:8000/swagger               |
-| Raw OpenAPI 3.0 JSON spec   | http://localhost:8000/swagger/v1/swagger.json |
+| Resource                    | URL (local Docker)                                                                             |
+|-----------------------------|------------------------------------------------------------------------------------------------|
+| Swagger UI (interactive)    | [http://localhost:8000/swagger](http://localhost:8000/swagger)                                 |
+| Raw OpenAPI 3.0 JSON spec   | [http://localhost:8000/swagger/v1/swagger.json](http://localhost:8000/swagger/v1/swagger.json) |
 
 ### How it works
 
@@ -210,20 +231,20 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuck
 
 ### Pages
 
-| Route      | Component               | Description                     |
-|------------|-------------------------|---------------------------------|
-| `/`        | `app/page.tsx`          | Home / landing page             |
-| `/patient` | `app/patient/page.tsx`  | Single-patient CGM dashboard    |
+| Route      | Component               | Description                      |
+|------------|-------------------------|----------------------------------|
+| `/`        | `app/page.tsx`          | Home / landing page              |
+| `/patient` | `app/patient/page.tsx`  | Single-patient CGM dashboard     |
 | `/doctor`  | `app/doctor/page.tsx`   | Multi-patient clinician overview |
 
 ### Components
 
-| Component | Description |
-|-----------|-------------|
-| `GlucoseChart` | 24-hour CGM line chart with colour-coded glucose zones (Recharts) |
-| `TIRChart` | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
-| `PatientOverview` | Summary card — current glucose, TIR%, and anomaly alert count |
-| `AnomalyAlert` | Alert list displaying missed/late bolus detections with acknowledge button |
+| Component         | Description                                                                    |
+|-------------------|--------------------------------------------------------------------------------|
+| `GlucoseChart`    | 24-hour CGM line chart with colour-coded glucose zones (Recharts)              |
+| `TIRChart`        | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
+| `PatientOverview` | Summary card — current glucose, TIR%, and anomaly alert count                  |
+| `AnomalyAlert`    | Alert list displaying missed/late bolus detections with acknowledge button     |
 
 > The frontend currently ships with realistic **demo data** for layout/testing. Replace the `DEMO_*` constants with live API calls from `@/lib/api` when the backend is running.
 
