@@ -36,7 +36,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.nn.utils.clip_grad import clip_grad_norm_
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 # make ml/ importable regardless of working directory
@@ -188,17 +188,11 @@ def main() -> None:
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
-    # warmup 5 epochs (lr: 1e-5 → args.lr), then cosine decay to 1e-6.
-    # warmup prevents the early val loss oscillation seen when cosine starts cold
-    # at full lr — the model overshoots for ~14 epochs before stabilising.
-    n_warmup = min(5, args.epochs // 4)
-    warmup = LinearLR(
-        optimizer, start_factor=0.1, end_factor=1.0, total_iters=n_warmup
+    # ReduceLROnPlateau: halves lr whenever val loss doesn't improve for 3 epochs.
+    # More adaptive than cosine — no T_max to tune, scales naturally from 500 to 20k patients.
+    scheduler = ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6
     )
-    cosine = CosineAnnealingLR(
-        optimizer, T_max=max(1, args.epochs - n_warmup), eta_min=1e-6
-    )
-    scheduler = SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[n_warmup])
 
     # ── checkpointing ─────────────────────────────────────────────────────────
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
@@ -211,10 +205,10 @@ def main() -> None:
 
         train_loss = train_one_epoch(model, train_loader, optimizer, device)
         val_loss   = eval_one_epoch(model, val_loader, device)
-        scheduler.step()
+        scheduler.step(val_loss)   # ReduceLROnPlateau monitors val loss directly
 
         elapsed = time.time() - t0
-        lr_now  = scheduler.get_last_lr()[0]
+        lr_now  = optimizer.param_groups[0]["lr"]
 
         print(
             f"Epoch {epoch:02d}/{args.epochs}  "
