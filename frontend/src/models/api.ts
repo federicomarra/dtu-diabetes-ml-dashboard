@@ -41,13 +41,18 @@ export async function getPatients(
   perPage = 20
 ): Promise<PaginatedResponse<Patient>> {
   const { data } = await api.get("/patient/list", {
-    params: { page, per_page: perPage },
+    params: { page, perPage },
   });
   return data;
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
   const { data } = await api.get(`/patient/${patientId}`);
+  return data;
+}
+
+export async function getPatientByExternalId(externalId: string): Promise<Patient> {
+  const { data } = await api.get(`/patient/by-external/${encodeURIComponent(externalId)}`);
   return data;
 }
 
