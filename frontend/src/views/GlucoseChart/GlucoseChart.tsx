@@ -22,16 +22,19 @@ import {
   CHART_DOMAIN_MIN,
   CHART_DOMAIN_MAX,
 } from "@/models/glucoseConfig";
+import type { CustomThresholds } from "@/views/TIRChart/TIRChart";
 import styles from "./GlucoseChart.module.css";
 
 interface GlucoseChartProps {
   readings: GlucoseReading[];
   title?: string;
+  thresholds?: CustomThresholds;
 }
 
 export default function GlucoseChart({
   readings,
   title = "Glucose Trace",
+  thresholds,
 }: GlucoseChartProps) {
   const { unit } = useGlucoseUnit();
 
@@ -48,9 +51,9 @@ export default function GlucoseChart({
       status: r.status,
     }));
 
-  const low = convertGlucose(LOW_THRESHOLD, unit);
-  const high = convertGlucose(HIGH_THRESHOLD, unit);
-  const veryHigh = convertGlucose(VERY_HIGH_THRESHOLD, unit);
+  const low      = convertGlucose(thresholds?.low      ?? LOW_THRESHOLD,       unit);
+  const high     = convertGlucose(thresholds?.high     ?? HIGH_THRESHOLD,      unit);
+  const veryHigh = convertGlucose(thresholds?.veryHigh ?? VERY_HIGH_THRESHOLD, unit);
   const domainMin = convertGlucose(CHART_DOMAIN_MIN, unit);
   const domainMax = convertGlucose(CHART_DOMAIN_MAX, unit);
 

@@ -26,14 +26,14 @@ import styles from "./TIRChart.module.css";
 
 // ─── Threshold types ────────────────────────────────────────
 
-interface CustomThresholds {
+export interface CustomThresholds {
   veryHigh: number; // mmol/L
   high: number;     // mmol/L
   low: number;      // mmol/L
   veryLow: number;  // mmol/L
 }
 
-const DEFAULT_THRESHOLDS: CustomThresholds = {
+export const DEFAULT_THRESHOLDS: CustomThresholds = {
   veryHigh: VERY_HIGH_THRESHOLD,
   high: HIGH_THRESHOLD,
   low: LOW_THRESHOLD,
@@ -56,6 +56,8 @@ function fromDisplay(value: string, unit: GlucoseUnit): number {
 interface TIRChartProps {
   tir: TimeInRange;
   patientId: number;
+  thresholds: CustomThresholds;
+  onThresholdsChange: (t: CustomThresholds) => void;
 }
 
 const RANGE_COLORS = {
@@ -384,6 +386,22 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const overlayRef = useRef<HTMLDivElement>(null);
+  const prevUnitRef = useRef(unit);
+
+  // Re-convert draft values when the user switches unit while the modal is open
+  useEffect(() => {
+    const prevUnit = prevUnitRef.current;
+    if (prevUnit === unit) return;
+    prevUnitRef.current = unit;
+    setDraft((d) => ({
+      veryHigh: toDisplay(fromDisplay(d.veryHigh, prevUnit), unit),
+      high:     toDisplay(fromDisplay(d.high,     prevUnit), unit),
+      low:      toDisplay(fromDisplay(d.low,      prevUnit), unit),
+      veryLow:  toDisplay(fromDisplay(d.veryLow,  prevUnit), unit),
+    }));
+    setErrors({});
+  }, [unit]);
+
 
   // Close on backdrop click
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -418,13 +436,8 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   };
 
   const handleReset = () => {
-    setDraft({
-      veryLow: toDisplay(DEFAULT_THRESHOLDS.veryLow, unit),
-      low: toDisplay(DEFAULT_THRESHOLDS.low, unit),
-      high: toDisplay(DEFAULT_THRESHOLDS.high, unit),
-      veryHigh: toDisplay(DEFAULT_THRESHOLDS.veryHigh, unit),
-    });
-    setErrors({});
+    onApply(DEFAULT_THRESHOLDS);
+    onClose();
   };
 
   const fields: { key: keyof typeof draft; label: string; color: string }[] = [
@@ -485,9 +498,8 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
 
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) {
+export default function TIRChart({ tir: initialTir, patientId, thresholds, onThresholdsChange }: TIRChartProps) {
   const [mode, setMode] = useState<ViewMode>("stacked");
-  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
   const [showRangesModal, setShowRangesModal] = useState(false);
   const [liveTir, setLiveTir] = useState<TimeInRange>(initialTir);
   const [loading, setLoading] = useState(false);
@@ -497,7 +509,7 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
   useEffect(() => { setLiveTir(initialTir); }, [initialTir]);
 
   const handleApplyThresholds = useCallback(async (t: CustomThresholds) => {
-    setThresholds(t);
+    onThresholdsChange(t);
 
     // Only call backend when thresholds differ from defaults
     const isDefault =
@@ -518,7 +530,7 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
     } finally {
       setLoading(false);
     }
-  }, [patientId]);
+  }, [patientId, onThresholdsChange]);
 
   const tir = liveTir;
 
