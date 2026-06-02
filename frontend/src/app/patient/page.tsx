@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRChart from "@/views/TIRChart/TIRChart";
+import TIRChart, { DEFAULT_THRESHOLDS, type CustomThresholds } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import { usePatientController } from "@/controllers/usePatientController";
@@ -22,6 +23,9 @@ export default function PatientDashboard() {
     handleAcknowledge,
   } = usePatientController();
 
+  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
+  const handleThresholdsChange = useCallback((t: CustomThresholds) => setThresholds(t), []);
+
   return (
     <div className={styles.dashboard}>
       <h2 className={styles.pageTitle}>Patient Dashboard</h2>
@@ -38,9 +42,15 @@ export default function PatientDashboard() {
       <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} title="24-Hour Glucose Trace" />
-        <TIRChart tir={tir} patientId={patient.id} />
+        <GlucoseChart readings={readings} title="24-Hour Glucose Trace" thresholds={thresholds} />
+        <TIRChart
+          tir={tir}
+          patientId={patient.id}
+          thresholds={thresholds}
+          onThresholdsChange={handleThresholdsChange}
+        />
       </div>
     </div>
   );
 }
+
