@@ -277,6 +277,14 @@ interface BarChartViewProps {
 function BarChartView({ tir, thresholds }: BarChartViewProps) {
   const { unit } = useGlucoseUnit();
 
+  // Defer rendering until after the first browser paint so Recharts'
+  // ResizeObserver always sees a fully-laid-out container (never -1).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   const data = [
     {
       name: "Very High",
@@ -310,8 +318,10 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
     },
   ];
 
+  if (!mounted) return null;
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minHeight={280} minWidth={0} debounce={50} initialDimension={{ width: 400, height: 280 }}>
       <BarChart data={data} layout="vertical" margin={{ left: 0 }}>
         <CartesianGrid
           vertical={true}
@@ -356,6 +366,7 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
     </ResponsiveContainer>
   );
 }
+
 
 // ─── Main component ────────────────────────────────────────
 

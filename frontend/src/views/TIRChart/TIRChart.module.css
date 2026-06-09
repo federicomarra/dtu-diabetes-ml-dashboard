@@ -67,8 +67,11 @@
 /* ─── Shared chart area (keeps height stable on mode switch) ─ */
 .chartArea {
   height: 280px;
+  min-height: 0;
   position: relative;
   transition: opacity 0.25s ease;
+  /* Ensure Recharts ResponsiveContainer always gets a positive dimension */
+  overflow: hidden;
 }
 
 .chartLoading {
