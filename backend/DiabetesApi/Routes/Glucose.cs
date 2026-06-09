@@ -129,4 +129,78 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         r.Source,
         r.Status
     );
+
+
+    /// <summary>
+    /// Get average glucose reading for a patient within an optional time range or duration.
+    /// </summary>
+    /// <param name="id">Patient ID</param>
+    /// <param name="start">ISO datetime string (optional)</param>
+    /// <param name="end">ISO datetime string (optional)</param>
+    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") (optional, default '2w' if no start/end specified)</param>
+    [HttpGet("average")]
+    [ProducesResponseType(typeof(double), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAverageReading(
+        [FromQuery] int id,
+        [FromQuery] string? start = null,
+        [FromQuery] string? end   = null,
+        [FromQuery] string? last = null)
+    {
+        var query = db.Glucoses.Where(r => r.PatientId == id);
+
+        if (start is not null) {
+            query = query.Where(r => r.Timestamp >= DateTime.Parse(start).ToUniversalTime());
+        }
+        if (end is not null) {
+            query = query.Where(r => r.Timestamp <= DateTime.Parse(end).ToUniversalTime());
+        }
+
+        if (start is null && end is null && last is null) {
+            last = "2w";
+        }
+
+        if (last is not null) {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == id)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+            
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            }
+            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            }
+            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            }
+            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            }
+            else
+            {
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+            }
+        }
+
+        var average = await query
+            .Select(r => (double?)r.GlucoseMmoll)
+            .AverageAsync();
+
+        if (average is null) {
+            return NotFound(new { error = "No readings found" });
+        }
+
+        return Ok(average.Value);
+    }
 }

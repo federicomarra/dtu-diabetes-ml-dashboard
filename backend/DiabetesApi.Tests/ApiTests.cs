@@ -282,6 +282,61 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(100.0, body.GetProperty("in_range_pct").GetDouble());
     }
 
+    // ── Average Glucose ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAverageReading_ReturnsCorrectAverage()
+    {
+        var patient = await SeedPatientAsync("P_AVG_TEST", "Average Patient");
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-10), GlucoseMmoll = 5.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-5),  GlucoseMmoll = 7.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var val = await resp.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(6.0, val);
+    }
+
+    [Fact]
+    public async Task GetAverageReading_WithFilters_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_AVG_FILTER", "Average Filter Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 10.0 }, // Old reading (excluded by default 2w last)
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-2),  GlucoseMmoll = 5.0 },  // Within last 2w (included)
+            new Glucose { PatientId = patient.Id, Timestamp = now,             GlucoseMmoll = 7.0 }   // Latest within last 2w (included)
+        );
+        await db.SaveChangesAsync();
+
+        // 1. Default (uses default '2w' filtering relative to latest available reading at now) -> Average of 5.0 and 7.0 = 6.0
+        var respDefault = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var valDefault = await respDefault.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(6.0, valDefault);
+
+        // 2. Querying with last=3w -> Average of all three (10.0 + 5.0 + 7.0) / 3 = 7.333333333333333
+        var respLast = await _client.GetAsync($"/api/glucose/average?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var valLast = await respLast.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(7.33, Math.Round(valLast, 2));
+    }
+
+    [Fact]
+    public async Task GetAverageReading_NotFound_Returns404()
+    {
+        var resp = await _client.GetAsync("/api/glucose/average?id=99999");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     // ── Anomalies ─────────────────────────────────────────────────────────────
 
     [Fact]

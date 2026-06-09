@@ -9,6 +9,7 @@
  *   GET  api/glucose?id={id}           → getGlucoseReadings()
  *   GET  api/glucose/latest?id={id}    → getLatestReading()
  *   GET  api/glucose/tir?id={id}       → getTimeInRange()
+ *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/anomaly/{id}              → getAnomalies()
  *   POST api/anomaly/{id}/acknowledge  → acknowledgeAnomaly()
  *   GET  api/insulin/{id}              → getInsulins()
@@ -85,6 +86,14 @@ export async function getTimeInRange(
   params?: { start?: string; end?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
 ): Promise<TimeInRange> {
   const { data } = await api.get("/glucose/tir", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getAverageReading(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<number> {
+  const { data } = await api.get("/glucose/average", { params: { id: patientId, ...params } });
   return data;
 }
 

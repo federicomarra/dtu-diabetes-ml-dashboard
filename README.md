@@ -199,6 +199,7 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 | GET    | `/api/glucose?id={patient_id}`       | Get readings (`?start=`, `?end=`, `?last=2w`)    |
 | GET    | `/api/glucose/latest?id={patient_id}`| Most recent glucose reading                      |
 | GET    | `/api/glucose/tir?id={patient_id}`   | Time-in-range statistics (`?start=`, `?end=`)    |
+| GET    | `/api/glucose/average?id={patient_id}`| Average glucose reading (`?start=`, `?end=`, `?last=2w`)|
 
 ### Anomalies (`/api/anomalies`)
 

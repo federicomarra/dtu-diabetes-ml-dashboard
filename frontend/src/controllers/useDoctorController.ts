@@ -19,6 +19,7 @@ import {
   getLatestReading,
   getTimeInRange,
   getAnomalies,
+  getAverageReading,
 } from "@/models/api";
 
 export interface PatientSummary {
@@ -26,6 +27,7 @@ export interface PatientSummary {
   latestReading: GlucoseReading | undefined;
   tir: TimeInRange | null;
   anomalyCount: number;
+  averageGlucose: number | null;
 }
 
 export const PER_PAGE_OPTIONS = [20, 50, 100, 200] as const;
@@ -68,13 +70,14 @@ export function useDoctorController() {
         setTotalPatients(paginatedPatients.total);
         setTotalPages(paginatedPatients.pages);
 
-        // 2. For each patient, fetch their latest reading, TIR, and anomaly count in parallel
+        // 2. For each patient, fetch their latest reading, TIR, anomaly count, and average glucose in parallel
         const summaries = await Promise.all(
           patientList.map(async (patient): Promise<PatientSummary> => {
-            const [latestReading, tir, anomaliesResp] = await Promise.allSettled([
+            const [latestReading, tir, anomaliesResp, averageGlucoseResp] = await Promise.allSettled([
               getLatestReading(patient.id),
               getTimeInRange(patient.id),
               getAnomalies(patient.id, { acknowledged: false }),
+              getAverageReading(patient.id, { last: "2w" }),
             ]);
 
             return {
@@ -88,6 +91,10 @@ export function useDoctorController() {
                 anomaliesResp.status === "fulfilled"
                   ? anomaliesResp.value.count
                   : 0,
+              averageGlucose:
+                averageGlucoseResp.status === "fulfilled"
+                  ? averageGlucoseResp.value
+                  : null,
             };
           })
         );

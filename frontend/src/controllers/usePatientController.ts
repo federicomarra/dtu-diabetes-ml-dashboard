@@ -36,6 +36,8 @@ const DEMO_TIR: TimeInRange = {
   very_high_pct: 4.8,
 };
 
+const DEMO_AVERAGE: number = 6.8;
+
 export function usePatientController() {
   const [readings, setReadings] = useState<GlucoseReading[]>([]);
   const [multiWeekReadings, setMultiWeekReadings] = useState<GlucoseReading[]>([]);
@@ -55,6 +57,7 @@ export function usePatientController() {
     multiWeekReadings,
     tir: DEMO_TIR,
     anomalies,
+    averageGlucose: DEMO_AVERAGE,
     latestReading: readings.length > 0 ? readings[readings.length - 1] : undefined,
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge: (id: number) => {

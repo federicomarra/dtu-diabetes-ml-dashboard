@@ -4,6 +4,12 @@ import { Activity, Droplets, AlertTriangle } from "lucide-react";
 import type { GlucoseReading, TimeInRange } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
+import {
+  VERY_LOW_THRESHOLD,
+  LOW_THRESHOLD,
+  HIGH_THRESHOLD,
+  VERY_HIGH_THRESHOLD,
+} from "@/models/glucoseConfig";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -13,9 +19,21 @@ interface PatientOverviewProps {
   latestReading?: GlucoseReading;
   tir?: TimeInRange;
   anomalyCount?: number;
+  averageGlucose?: number | null;
 }
 
-function getStatusColor(status?: string): string {
+function getGlucoseStatus(value: number): string {
+  if (value < VERY_LOW_THRESHOLD) return "very_low";
+  if (value < LOW_THRESHOLD) return "low";
+  if (value <= HIGH_THRESHOLD) return "in_range";
+  if (value <= VERY_HIGH_THRESHOLD) return "high";
+  return "very_high";
+}
+
+function getStatusColor(status?: string | number): string {
+  if (typeof status === "number") {
+    status = getGlucoseStatus(status);
+  }
   switch (status) {
     case "very_low":
     case "very_high":
@@ -30,7 +48,10 @@ function getStatusColor(status?: string): string {
   }
 }
 
-function getStatusLabel(status?: string): string {
+function getStatusLabel(status?: string | number): string {
+  if (typeof status === "number") {
+    status = getGlucoseStatus(status);
+  }
   switch (status) {
     case "very_low":  return "Very Low";
     case "low":       return "Low";
@@ -48,6 +69,7 @@ export default function PatientOverview({
   latestReading,
   tir,
   anomalyCount = 0,
+  averageGlucose,
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
 
@@ -98,6 +120,31 @@ export default function PatientOverview({
             </div>
           </div>
         </div>
+
+        {/* Average Glucose */}
+        {averageGlucose != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <Droplets size={18} />
+            </div>
+            <div>
+            <div className={styles.metricLabel}>Avg Glucose (2w)</div>
+            <div
+              className={styles.metricValue}
+              style={{ color: getStatusColor(averageGlucose) }}
+            >
+              {averageGlucose != null
+                ? formatGlucose(averageGlucose, unit)
+                : "—"}
+            </div>
+            <div
+              className={styles.metricStatus}
+              style={{ color: getStatusColor(averageGlucose) }}
+            >
+              {getStatusLabel(averageGlucose)}
+            </div>
+          </div>
+        </div>)}
 
         {/* Anomalies */}
         <div className={styles.metric}>

@@ -149,7 +149,7 @@ export default function DoctorDashboard() {
 
       {/* ── Patient grid ─────────────────────────────────── */}
       <div className={styles.patientsGrid}>
-        {patients.map(({ patient, latestReading, tir, anomalyCount }) => (
+        {patients.map(({ patient, latestReading, tir, anomalyCount, averageGlucose }) => (
           <Link
             key={patient.id}
             href={`/doctor/${patient.external_id}`}
@@ -162,6 +162,7 @@ export default function DoctorDashboard() {
               latestReading={latestReading}
               tir={tir ?? undefined}
               anomalyCount={anomalyCount}
+              averageGlucose={averageGlucose}
             />
           </Link>
         ))}

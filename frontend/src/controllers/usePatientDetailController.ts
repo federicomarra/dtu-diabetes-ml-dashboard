@@ -22,6 +22,7 @@ import {
   getTimeInRange,
   getAnomalies,
   acknowledgeAnomaly,
+  getAverageReading,
 } from "@/models/api";
 
 type State =
@@ -35,6 +36,7 @@ type State =
       multiWeekReadings: GlucoseReading[];
       tir: TimeInRange | null;
       anomalies: AnomalyDetection[];
+      averageGlucose: number | null;
     };
 
 export function usePatientDetailController(externalId: string) {
@@ -69,12 +71,13 @@ export function usePatientDetailController(externalId: string) {
         // Start date for multi-week view: 4 weeks ago
         const fourWeeksAgo = new Date(Date.now() - 4 * 7 * 24 * 60 * 60 * 1000).toISOString();
 
-        const [readingsResult, multiWeekResult, tirResult, anomaliesResult] =
+        const [readingsResult, multiWeekResult, tirResult, anomaliesResult, averageResult] =
           await Promise.allSettled([
             getGlucoseReadings(patient.id, { last: "24h" }),          // last 24 h as default
             getGlucoseReadings(patient.id, { start: fourWeeksAgo }), // last 4 weeks for multi-weekly chart
             getTimeInRange(patient.id),
             getAnomalies(patient.id, { limit: 50 }),
+            getAverageReading(patient.id, { last: "2w" }),            // last 2 weeks as default
           ]);
 
         if (cancelled) return;
@@ -96,6 +99,8 @@ export function usePatientDetailController(externalId: string) {
             anomaliesResult.status === "fulfilled"
               ? anomaliesResult.value.anomalies
               : [],
+          averageGlucose:
+            averageResult.status === "fulfilled" ? averageResult.value : null,
         });
       } catch (err) {
         if (!cancelled) {
@@ -145,6 +150,7 @@ export function usePatientDetailController(externalId: string) {
       multiWeekReadings: [] as GlucoseReading[],
       tir: null,
       anomalies: [],
+      averageGlucose: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
@@ -152,7 +158,7 @@ export function usePatientDetailController(externalId: string) {
   }
 
   if (state.status === "not_found") {
-    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
+    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
   }
 
   if (state.status === "error") {
@@ -165,13 +171,14 @@ export function usePatientDetailController(externalId: string) {
       multiWeekReadings: [] as GlucoseReading[],
       tir: null,
       anomalies: [],
+      averageGlucose: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
     };
   }
 
-  const { patient, readings, multiWeekReadings, tir, anomalies } = state;
+  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose } = state;
 
   return {
     notFound: false as const,
@@ -182,6 +189,7 @@ export function usePatientDetailController(externalId: string) {
     readings,
     multiWeekReadings,
     anomalies,
+    averageGlucose,
     latestReading: readings.length > 0 ? readings[0] : undefined, // ordered descending by backend
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,

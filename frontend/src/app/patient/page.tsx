@@ -23,6 +23,7 @@ export default function PatientDashboard() {
     latestReading,
     unacknowledgedCount,
     handleAcknowledge,
+    averageGlucose,
   } = usePatientController();
 
   const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
@@ -39,6 +40,7 @@ export default function PatientDashboard() {
         latestReading={latestReading}
         tir={tir}
         anomalyCount={unacknowledgedCount}
+        averageGlucose={averageGlucose}
       />
 
       <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />

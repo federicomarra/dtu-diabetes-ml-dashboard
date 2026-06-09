@@ -62,7 +62,7 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, handleAcknowledge } =
+  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, handleAcknowledge } =
     ctrl;
 
   return (
@@ -81,6 +81,7 @@ export default function DoctorPatientDetail() {
         latestReading={latestReading}
         tir={tir ?? undefined}
         anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
+        averageGlucose={averageGlucose}
       />
 
       {anomalies.length > 0 && (
