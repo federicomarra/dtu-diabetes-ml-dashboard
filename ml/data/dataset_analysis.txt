@@ -1,16 +1,18 @@
-Dataset Analysis — results_500p_14d_clean.parquet
-Generated: 2026-05-29
+Dataset Analysis — results_20000p_14d.parquet
+Generated: 2026-06-03
 ================================================================================
 
 FILE
-  Path:        ml/data/sim_data/results_500p_14d_clean.parquet
-  Row groups:  10
-  Total rows:  10,080,000
+  Path:        monte_carlo_results_parallel/20260603/023305/results_20000p_14d.parquet
+               (copy to ml/data/sim_data/ before training)
+  Row groups:  416
+  Total rows:  403,200,000
 
 PATIENTS
-  Count:       500
+  Count:       20,000
   Days each:   14
   Minutes/pt:  20,160  (= 14 × 1440, complete — no gaps)
+  Age:         mean=35.3 yr  std=11.2 yr  min=18  max=65
 
 COLUMNS (23 total)
   patient_id, patient_age_years, day, minute, absolute_minute, time
@@ -23,51 +25,100 @@ COLUMNS (23 total)
         potential ablation study only. SHOW_AC stays False in explore_patients.py.
 
 SIGNAL CHANNELS (used by dataset.py)
-  blood_glucose    mmol/L    mean=7.75   std=2.64   min=1.61   max=32.35
-  insulin_mU_min   mU/min    mean=16.79  std=111.6  min=0.0    max=10828
-                             (heavy right skew — bolus spikes dominate)
-  cho_mg_announced mg/min    mean=133.7  std=599.3  min=0.0    max=5384
-                             (75th pct = 0: meals are brief events)
-  cho_mg_min       mg/min    mean=180.7  std=795.5  (physiological absorption curve;
-                             not used as model input — kept for reference)
-  ac_counts        steps/min  available — NOT a model input (ablation only, if time permits)
+  blood_glucose    mmol/L    mean=7.7    std=2.6    min=1.5    max=34.0
+                             CV%=34.0  (within target 30–45% for variability)
+                             P5=4.18   P95=12.27
+  insulin_mU_min   mU/min    (heavy right skew — bolus spikes dominate)
+  cho_mg_announced mg/min    (75th pct = 0: meals are brief events)
+  cho_mg_min       mg/min    physiological absorption curve — not a model input
+  ac_counts        steps/min available — NOT a model input (ablation only)
 
-ANOMALY CLASS RATES (per minute)
-  Class        Column          Rate      Count
-  ─────────────────────────────────────────────
-  missed bolus bolus_status    1.01%     101,632
-  late bolus   bolus_status    1.06%     106,709
-  large meal   meal_size       1.49%     149,862
-  prolonged    exercise_type   1.11%     111,705
-  anaerobic    exercise_type   0.26%      25,848
+GLYCEMIC CONTROL
+  Hypo  (<3.9 mmol/L):   2.2%   (8,776,531 min-points)
+  TIR   (3.9–10.0):     80.8%   (325,697,215 min-points)
+  Hyper (>10.0 mmol/L): 17.0%   (68,726,254 min-points)
+  Guard (>4.0):          3.0%   checked — within acceptable range
 
-  aerobic exercise_type 1.70% (171,761) — present in data but NOT an anomaly
-  class. Expected physiological response, not a clinical event to detect.
-
-  Note: bolus_status and meal_size are NaN outside meal windows (70% of rows).
-        dataset.py fillna("normal"/"none") before binarising — correct.
-        Anomaly labels are very rare (<2%) — expected for realistic simulation.
+  TIR is stable across all 14 days (80.5–81.1%), no systematic drift.
 
 BASE SCENARIO DISTRIBUTION
-  1 = normal:    36.6%  (3,689,280 rows)
-  2 = active:    31.0%  (3,124,800 rows)
-  3 = sedentary: 32.4%  (3,265,920 rows)
-  → Roughly balanced across lifestyle profiles.
+  1 = normal:    152,812,800 pts  (~37.9%)   TIR=80.7%  Hypo=2.1%  Hyper=17.2%  mean BG=7.77
+  2 = active:    110,456,640 pts  (~27.4%)   TIR=82.6%  Hypo=3.5%  Hyper=13.9%  mean BG=7.26
+  3 = sedentary: 139,930,560 pts  (~34.7%)   TIR=79.4%  Hypo=1.3%  Hyper=19.3%  mean BG=8.07
 
-NULL COUNTS (columns with nulls)
-  bolus_status:    7,064,269  (70.1% — NaN outside meal windows, expected)
-  meal_size:       7,077,317  (70.2% — same reason)
-  exercise_overlay: 8,948,160  (88.8% — only set during exercise windows)
-  missed_meal_id:  9,182,880  (91.1% — only set when a meal was missed)
-  late_bolus_id:   9,449,280  (93.7% — only set for late bolus events)
+  Active patients: lower BG mean + more hypo (exercise lowers glucose).
+  Sedentary patients: higher BG mean + more hyper (less movement, more insulin resistance).
+  Distribution is reasonably balanced across lifestyle profiles.
+
+DAY-LEVEL ANOMALY OVERLAY RATES (280,000 patient-days)
+  Large meal:     25,176 days   9.0% of days
+  Missed bolus:   25,497 days   9.1% of days
+  Late boluses:   19,478 days   0.07 avg late boluses/day
+  Exercise:       29,711 days  10.6% of days (sc7=aerobic, sc8=anaerobic)
+
+ANOMALY CLASS RATES — PER MINUTE (ML labels)
+  Class        Column          Rate      Count
+  ─────────────────────────────────────────────
+  missed bolus bolus_status    1.03%     4,161,601
+  late bolus   bolus_status    1.03%     4,141,438
+  large meal   meal_size       1.46%     5,901,682
+  prolonged    exercise_type   1.01%     4,080,511
+  anaerobic    exercise_type   0.26%     1,039,395
+
+  aerobic exercise_type 1.64% (6,605,945) — present in data but NOT an anomaly
+  class. Expected physiological response, not a clinical event to detect.
+
+FULL PER-MINUTE LABEL DISTRIBUTION
+  bolus_status:  none=70.0%  normal=27.9%  missed=1.0%  late=1.0%
+  meal_size:     none=70.2%  normal=28.4%  large=1.5%
+  exercise_type: none=97.1%  aerobic=1.6%  prolonged=1.0%  anaerobic=0.3%
+
+  Note: bolus_status and meal_size are NaN outside meal windows (~70% of rows).
+        dataset.py fillna("normal"/"none") before binarising — correct.
+        Anomaly labels are very rare (0.26–1.5%) — expected for realistic simulation.
 
 DATASET.PY COMPATIBILITY CHECK
   ✓ blood_glucose       — present
   ✓ insulin_mU_min      — present
-  ✓ cho_mg_announced    — present (added in HPC re-run)
-  ✓ bolus_status        — present
-  ✓ meal_size           — present
-  ✓ exercise_type       — present
+  ✓ cho_mg_announced    — present
+  ✓ bolus_status        — present (missed/late/normal/none)
+  ✓ meal_size           — present (large/normal/none)
+  ✓ exercise_type       — present (aerobic/anaerobic/prolonged/none)
   ✓ absolute_minute     — present
   ✓ patient_id          — present
-  ✓ No row-count gaps   — all 500 patients have exactly 20,160 rows
+  ✓ No row-count gaps   — all 20,000 patients have exactly 20,160 rows
+  ✓ Schema types        — Int64/boolean nullable cols, consistent across all chunks
+
+ML READINESS
+  [OK] Patients ≥ 1000:           20,000
+  [OK] TIR ≥ 55%:                 80.8%
+  [OK] Hypo < 5%:                 2.2%
+  [OK] Hyper < 30%:               17.0%
+  [OK] CV% 30–45%:                34.0%
+  [OK] All 3 base scenarios:      present
+  [OK] Bolus labels:              normal / missed / late
+  [OK] Exercise labels (4 types): aerobic / anaerobic / prolonged / none
+
+  Overall: READY FOR ML PIPELINE
+
+================================================================================
+COMPARISON TO 500-PATIENT COHORT
+================================================================================
+
+  Metric                  500p (W1)       20k (W3)        Change
+  ───────────────────────────────────────────────────────────────
+  Patients                500             20,000          ×40
+  Total rows              10,080,000      403,200,000     ×40
+  BG mean (mmol/L)        7.75            7.7             ≈same
+  BG std (mmol/L)         2.64            2.6             ≈same
+  BG min (mmol/L)         1.61            1.5             slightly lower
+  BG max (mmol/L)         32.35           34.0            slightly higher
+  missed bolus rate       1.01%           1.03%           ≈same
+  late bolus rate         1.06%           1.03%           ≈same
+  large meal rate         1.49%           1.46%           ≈same
+  prolonged rate          1.11%           1.01%           ≈same
+  anaerobic rate          0.26%           0.26%           identical
+
+  Signal statistics and anomaly rates are highly consistent between cohorts.
+  The 40× scale-up did not shift the distribution — simulation is stable.
+  Wider BG range (min/max) reflects more extreme patient archetypes at scale.
