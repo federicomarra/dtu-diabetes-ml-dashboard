@@ -49,7 +49,7 @@ export function useDoctorController() {
 
   /** Change page — clamped to valid range. */
   const setPage = (p: number) =>
-    setPageRaw((prev) => Math.max(1, Math.min(p, totalPages || 1)));
+    setPageRaw(Math.max(1, Math.min(p, totalPages || 1)));
 
   /** Change per-page and reset to page 1. */
   const setPerPage = (pp: PerPageOption) => {
