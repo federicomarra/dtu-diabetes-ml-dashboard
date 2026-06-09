@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRChart, { DEFAULT_THRESHOLDS, type CustomThresholds } from "@/views/TIRChart/TIRChart";
+import TIRChart from "@/views/TIRChart/TIRChart";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
@@ -26,9 +25,6 @@ export default function PatientDashboard() {
     averageGlucose,
   } = usePatientController();
 
-  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
-  const handleThresholdsChange = useCallback((t: CustomThresholds) => setThresholds(t), []);
-
   return (
     <div className={styles.dashboard}>
       <h2 className={styles.pageTitle}>Patient Dashboard</h2>
@@ -46,16 +42,14 @@ export default function PatientDashboard() {
       <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} title="24-Hour Glucose Trace" thresholds={thresholds} />
+        <GlucoseChart readings={readings} />
         <TIRChart
           tir={tir}
           patientId={patient.id}
-          thresholds={thresholds}
-          onThresholdsChange={handleThresholdsChange}
         />
       </div>
 
-      <MultiWeeklyChart readings={multiWeekReadings} thresholds={thresholds} />
+      <MultiWeeklyChart readings={multiWeekReadings} />
     </div>
   );
 }

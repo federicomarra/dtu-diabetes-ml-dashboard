@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRChart, { DEFAULT_THRESHOLDS, type CustomThresholds } from "@/views/TIRChart/TIRChart";
+import TIRChart from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
@@ -19,9 +18,6 @@ import styles from "./patient-detail.module.css";
 export default function DoctorPatientDetail() {
   const { patient_id } = useParams<{ patient_id: string }>();
   const ctrl = usePatientDetailController(patient_id);
-
-  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
-  const handleThresholdsChange = useCallback((t: CustomThresholds) => setThresholds(t), []);
 
   if (ctrl.loading) {
     return (
@@ -89,18 +85,16 @@ export default function DoctorPatientDetail() {
       )}
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} title="24-Hour Glucose Trace" thresholds={thresholds} />
+        <GlucoseChart readings={readings} />
         {tir && (
           <TIRChart
             tir={tir}
             patientId={patient!.id}
-            thresholds={thresholds}
-            onThresholdsChange={handleThresholdsChange}
           />
         )}
       </div>
 
-      <MultiWeeklyChart readings={multiWeekReadings} thresholds={thresholds} />
+      <MultiWeeklyChart readings={multiWeekReadings} />
     </div>
   );
 }

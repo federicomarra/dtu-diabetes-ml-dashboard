@@ -21,6 +21,8 @@ import {
   getAnomalies,
   getAverageReading,
 } from "@/models/api";
+import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 
 export interface PatientSummary {
   patient: Patient;
@@ -34,6 +36,8 @@ export const PER_PAGE_OPTIONS = [20, 50, 100, 200] as const;
 export type PerPageOption = (typeof PER_PAGE_OPTIONS)[number];
 
 export function useDoctorController() {
+  const { timeRange } = useTimeRange();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
   const [patients, setPatients] = useState<PatientSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,9 +79,15 @@ export function useDoctorController() {
           patientList.map(async (patient): Promise<PatientSummary> => {
             const [latestReading, tir, anomaliesResp, averageGlucoseResp] = await Promise.allSettled([
               getLatestReading(patient.id),
-              getTimeInRange(patient.id),
+              getTimeInRange(patient.id, {
+                ...timeRange,
+                VeryLow: glucoseRanges.veryLow,
+                Low: glucoseRanges.low,
+                High: glucoseRanges.high,
+                VeryHigh: glucoseRanges.veryHigh,
+              }),
               getAnomalies(patient.id, { acknowledged: false }),
-              getAverageReading(patient.id, { last: "2w" }),
+              getAverageReading(patient.id, timeRange),
             ]);
 
             return {
@@ -115,7 +125,7 @@ export function useDoctorController() {
     return () => {
       cancelled = true;
     };
-  }, [page, perPage]);
+  }, [page, perPage, timeRange, glucoseRanges]);
 
   const totalAlerts = patients.reduce((sum, p) => sum + p.anomalyCount, 0);
 

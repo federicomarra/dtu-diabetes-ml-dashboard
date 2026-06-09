@@ -9,11 +9,12 @@ import {
   Tooltip,
   CartesianGrid,
   ResponsiveContainer,
-  Cell,
+  Rectangle,
 } from "recharts";
 import type { TimeInRange } from "@/models/types";
 import { getTimeInRange } from "@/models/api";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
 import type { GlucoseUnit } from "@/models/glucoseUnits";
 import {
@@ -22,6 +23,7 @@ import {
   HIGH_THRESHOLD,
   VERY_HIGH_THRESHOLD,
 } from "@/models/glucoseConfig";
+import { returnTextFromSpanDays } from "@/controllers/TimeRangeContext";
 import styles from "./TIRChart.module.css";
 
 // ─── Threshold types ────────────────────────────────────────
@@ -56,8 +58,6 @@ function fromDisplay(value: string, unit: GlucoseUnit): number {
 interface TIRChartProps {
   tir: TimeInRange;
   patientId: number;
-  thresholds: CustomThresholds;
-  onThresholdsChange: (t: CustomThresholds) => void;
 }
 
 const RANGE_COLORS = {
@@ -75,30 +75,18 @@ function formatDayMonth(d: Date): string {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function returnTextFromSpanDays(days: number): ReactNode {
-  let span: string;
-  if (days < 1) {
-    span = "day";
-  } else if (days === 7) {
-    span = "week";
-  } else if (days < 14) {
-    span = `${days} days`;
-  } else if (days === 30 || days === 31) {
-    span = "month";
-  } else if (days < 30) {
-    span = `${Math.round(days / 7)} weeks`;
-  } else if (days < 365) {
-    span = `${Math.round(days / 30)} months`;
-  } else {
-    span = `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
-  }
-  const start_day: string = formatDayMonth(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
-  const end_day: string = formatDayMonth(new Date());
+
+function returnNodeFromSpanDays(days: number): ReactNode {
+  const [span, start_day, end_day] = returnTextFromSpanDays(days);
   return (
     <div className={styles.temporalSpan}>
       <strong>latest {span}</strong>
-      <br />
-      ({start_day} - {end_day})
+      {span === 'day' ? null : (
+        <>
+          <br />
+          ({start_day} - {end_day})
+        </>
+      )}
     </div>
   );
 }
@@ -356,11 +344,14 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
             color: "var(--text-secondary)",
           }}
         />
-        <Bar dataKey="pct" radius={[0, 4, 4, 0]}>
-          {data.map((entry) => (
-            <Cell key={entry.key} fill={RANGE_COLORS[entry.key]} />
-          ))}
-        </Bar>
+        <Bar
+          dataKey="pct"
+          shape={(props: any) => {
+            const { x, y, width, height, payload } = props;
+            const color = RANGE_COLORS[payload.key as keyof typeof RANGE_COLORS];
+            return <Rectangle x={x} y={y} width={width} height={height} fill={color} radius={[0, 4, 4, 0]} />;
+          }}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -496,9 +487,14 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   );
 }
 
+// ─── Range Customization Modal ─────────────────────────────
+// (Keep modal props the same as it is a helper component)
+// ...
+
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRChart({ tir: initialTir, patientId, thresholds, onThresholdsChange }: TIRChartProps) {
+export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) {
+  const { ranges: thresholds, setRanges: onThresholdsChange } = useGlucoseRanges();
   const [mode, setMode] = useState<ViewMode>("stacked");
   const [showRangesModal, setShowRangesModal] = useState(false);
   const [liveTir, setLiveTir] = useState<TimeInRange>(initialTir);
@@ -541,7 +537,7 @@ export default function TIRChart({ tir: initialTir, patientId, thresholds, onThr
         <div>
           <h3 className={styles.title}>Time in Range</h3>
           <div className={styles.temporalSpan}>
-            {returnTextFromSpanDays(tir.temporal_span_days)}
+            {returnNodeFromSpanDays(tir.temporal_span_days)}
           </div>
         </div>
 

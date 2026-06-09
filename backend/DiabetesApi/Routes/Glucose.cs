@@ -89,18 +89,25 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     /// <param name="ranges">Custom glucose threshold ranges (optional).</param>
     /// <param name="start">ISO datetime string (optional).</param>
     /// <param name="end">ISO datetime string (optional).</param>
+    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") (optional, default '2w' if no start/end specified).</param>
     [HttpGet("tir")]
     [ProducesResponseType(typeof(TirResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetTimeInRange(
         [FromQuery] int id,
         [FromQuery] ranges ranges,
         [FromQuery] string? start = null,
-        [FromQuery] string? end   = null)
+        [FromQuery] string? end   = null,
+        [FromQuery] string? last = null)
     {
+        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m")) {
+            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+        }
+
         DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
         DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
 
-        var tir = await glucoseService.CalculateTimeInRangeAsync(id, ranges, startDt, endDt);
+        var tir = await glucoseService.CalculateTimeInRangeAsync(id, ranges, startDt, endDt, last);
         return Ok(tir);
     }
 

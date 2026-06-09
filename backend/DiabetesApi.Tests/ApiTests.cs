@@ -282,6 +282,35 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(100.0, body.GetProperty("in_range_pct").GetDouble());
     }
 
+    [Fact]
+    public async Task GetTir_WithLastFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_TIR_LAST", "TIR Last Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 }, // Out of default 2w range, and out of 5d range
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-3),  GlucoseMmoll = 6.0 },  // In range
+            new Glucose { PatientId = patient.Id, Timestamp = now,             GlucoseMmoll = 6.5 }   // In range
+        );
+        await db.SaveChangesAsync();
+
+        // 1. Default (uses default '2w' filtering relative to latest available reading) -> The 12.0 reading at -20d is excluded.
+        // Remaining are 6.0 and 6.5, which are both in-range -> 100%
+        var respDefault = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var bodyDefault = await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(100.0, bodyDefault.GetProperty("in_range_pct").GetDouble());
+
+        // 2. Querying with last=3w -> Includes the 12.0 reading.
+        // Readings: 12.0, 6.0, 6.5 -> 2 out of 3 in-range -> 66.7%
+        var respLast = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(66.7, bodyLast.GetProperty("in_range_pct").GetDouble());
+    }
+
     // ── Average Glucose ───────────────────────────────────────────────────────
 
     [Fact]

@@ -14,6 +14,7 @@ import {
 import { startOfWeek, getISOWeek } from "date-fns";
 import type { GlucoseReading } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import { convertGlucose } from "@/models/glucoseUnits";
 import {
   LOW_THRESHOLD,
@@ -29,7 +30,6 @@ import styles from "./MultiWeeklyChart.module.css";
 
 interface MultiWeeklyChartProps {
   readings?: GlucoseReading[];
-  thresholds?: CustomThresholds;
 }
 
 interface DayData {
@@ -313,9 +313,9 @@ function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayS
 
 export default function MultiWeeklyChart({
   readings,
-  thresholds,
 }: MultiWeeklyChartProps) {
   const { unit } = useGlucoseUnit();
+  const { ranges: thresholds } = useGlucoseRanges();
 
   const low      = convertGlucose(thresholds?.low      ?? LOW_THRESHOLD,       unit);
   const high     = convertGlucose(thresholds?.high     ?? HIGH_THRESHOLD,      unit);

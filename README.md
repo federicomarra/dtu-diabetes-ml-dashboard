@@ -73,8 +73,10 @@
 │       │   └── doctor/
 │       │       ├── page.tsx       # Multi-patient clinician view (paginated)
 │       │       └── [patient_id]/page.tsx  # Patient detail
-│       ├── controllers/           # React hooks — data & state
+│       ├── controllers/           # React hooks & contexts — data & state
 │       │   ├── GlucoseUnitContext.tsx
+│       │   ├── TimeRangeContext.tsx
+│       │   ├── GlucoseRangesContext.tsx
 │       │   ├── usePatientController.ts
 │       │   ├── usePatientDetailController.ts
 │       │   └── useDoctorController.ts
@@ -88,7 +90,9 @@
 │           ├── GlucoseChart/      # 24-hour CGM line chart (Recharts)
 │           ├── TIRChart/          # Time-in-range chart with custom ranges
 │           ├── PatientOverview/   # Summary card with key metrics
-│           └── AnomalyAlert/      # Alert list with acknowledge action
+│           ├── AnomalyAlert/      # Alert list with acknowledge action
+│           ├── MultiWeeklyChart/  # Multi-week comparison glucose chart (Recharts)
+│           └── NavBar/            # Navigation bar component
 │
 ├── ml/                            # Machine learning module (Python)
 │   ├── training/                  # Model training (train_anomaly.py)
@@ -198,7 +202,7 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 |--------|-----------------------------------|---------------------------------------------------|
 | GET    | `/api/glucose?id={patient_id}`       | Get readings (`?start=`, `?end=`, `?last=2w`)    |
 | GET    | `/api/glucose/latest?id={patient_id}`| Most recent glucose reading                      |
-| GET    | `/api/glucose/tir?id={patient_id}`   | Time-in-range statistics (`?start=`, `?end=`)    |
+| GET    | `/api/glucose/tir?id={patient_id}`   | Time-in-range statistics (`?start=`, `?end=`, `?last=2w`)|
 | GET    | `/api/glucose/average?id={patient_id}`| Average glucose reading (`?start=`, `?end=`, `?last=2w`)|
 
 ### Anomalies (`/api/anomalies`)
@@ -244,6 +248,8 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuck
 | `TIRChart` | Time-in-range chart (stacked or bar view) with customisable glucose thresholds and unit-aware range editor |
 | `PatientOverview` | Summary card — latest glucose reading, TIR %, and unacknowledged anomaly count |
 | `AnomalyAlert` | Alert list displaying missed/late bolus detections with inline acknowledge button |
+| `MultiWeeklyChart` | Overlay comparison chart comparing multiple weeks of CGM readings to observe patterns |
+| `NavBar` | Top navigation bar providing navigation between Patient and Doctor dashboards |
 
 ## Deployment
 

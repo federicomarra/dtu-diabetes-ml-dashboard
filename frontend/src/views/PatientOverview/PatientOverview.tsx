@@ -4,12 +4,7 @@ import { Activity, Droplets, AlertTriangle } from "lucide-react";
 import type { GlucoseReading, TimeInRange } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
-import {
-  VERY_LOW_THRESHOLD,
-  LOW_THRESHOLD,
-  HIGH_THRESHOLD,
-  VERY_HIGH_THRESHOLD,
-} from "@/models/glucoseConfig";
+import { useGlucoseRanges, type GlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -22,18 +17,15 @@ interface PatientOverviewProps {
   averageGlucose?: number | null;
 }
 
-function getGlucoseStatus(value: number): string {
-  if (value < VERY_LOW_THRESHOLD) return "very_low";
-  if (value < LOW_THRESHOLD) return "low";
-  if (value <= HIGH_THRESHOLD) return "in_range";
-  if (value <= VERY_HIGH_THRESHOLD) return "high";
+function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
+  if (value < ranges.veryLow) return "very_low";
+  if (value < ranges.low) return "low";
+  if (value <= ranges.high) return "in_range";
+  if (value <= ranges.veryHigh) return "high";
   return "very_high";
 }
 
-function getStatusColor(status?: string | number): string {
-  if (typeof status === "number") {
-    status = getGlucoseStatus(status);
-  }
+function getStatusColor(status?: string): string {
   switch (status) {
     case "very_low":
     case "very_high":
@@ -48,10 +40,7 @@ function getStatusColor(status?: string | number): string {
   }
 }
 
-function getStatusLabel(status?: string | number): string {
-  if (typeof status === "number") {
-    status = getGlucoseStatus(status);
-  }
+function getStatusLabel(status?: string): string {
   switch (status) {
     case "very_low":  return "Very Low";
     case "low":       return "Low";
@@ -72,6 +61,15 @@ export default function PatientOverview({
   averageGlucose,
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
+
+  const latestStatus = latestReading
+    ? getGlucoseStatus(latestReading.glucose_mmoll, glucoseRanges)
+    : undefined;
+
+  const averageStatus = averageGlucose != null
+    ? getGlucoseStatus(averageGlucose, glucoseRanges)
+    : undefined;
 
   return (
     <div className={styles.card}>
@@ -93,7 +91,7 @@ export default function PatientOverview({
             <div className={styles.metricLabel}>Latest Glucose</div>
             <div
               className={styles.metricValue}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
               {latestReading
                 ? formatGlucose(latestReading.glucose_mmoll, unit)
@@ -101,9 +99,9 @@ export default function PatientOverview({
             </div>
             <div
               className={styles.metricStatus}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
-              {getStatusLabel(latestReading?.status)}
+              {getStatusLabel(latestStatus)}
             </div>
           </div>
         </div>
@@ -131,7 +129,7 @@ export default function PatientOverview({
             <div className={styles.metricLabel}>Avg Glucose (2w)</div>
             <div
               className={styles.metricValue}
-              style={{ color: getStatusColor(averageGlucose) }}
+              style={{ color: getStatusColor(averageStatus) }}
             >
               {averageGlucose != null
                 ? formatGlucose(averageGlucose, unit)
@@ -139,9 +137,9 @@ export default function PatientOverview({
             </div>
             <div
               className={styles.metricStatus}
-              style={{ color: getStatusColor(averageGlucose) }}
+              style={{ color: getStatusColor(averageStatus) }}
             >
-              {getStatusLabel(averageGlucose)}
+              {getStatusLabel(averageStatus)}
             </div>
           </div>
         </div>)}

@@ -14,6 +14,8 @@ import {
 import { format } from "date-fns";
 import type { GlucoseReading } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import { useTimeRange, formatTimeRangeFriendly } from "@/controllers/TimeRangeContext";
 import { convertGlucose } from "@/models/glucoseUnits";
 import {
   LOW_THRESHOLD,
@@ -28,15 +30,15 @@ import styles from "./GlucoseChart.module.css";
 interface GlucoseChartProps {
   readings?: GlucoseReading[];
   title?: string;
-  thresholds?: CustomThresholds;
 }
 
 export default function GlucoseChart({
   readings,
-  title = "Glucose Trace",
-  thresholds,
+  title,
 }: GlucoseChartProps) {
   const { unit } = useGlucoseUnit();
+  const { ranges: thresholds } = useGlucoseRanges();
+  const { timeRange } = useTimeRange();
 
   const chartData = (readings || [])
     .slice()
@@ -57,9 +59,12 @@ export default function GlucoseChart({
   const domainMin = convertGlucose(CHART_DOMAIN_MIN, unit);
   const domainMax = convertGlucose(CHART_DOMAIN_MAX, unit);
 
+  const friendlyTime = formatTimeRangeFriendly(timeRange);
+  const chartTitle = title || `Glucose trace of the ${friendlyTime}`;
+
   return (
     <div className={styles.container}>
-      <h3 className={styles.title}>{title}</h3>
+      <h3 className={styles.title}>{chartTitle}</h3>
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

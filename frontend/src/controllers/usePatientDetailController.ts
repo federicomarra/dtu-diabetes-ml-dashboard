@@ -24,6 +24,8 @@ import {
   acknowledgeAnomaly,
   getAverageReading,
 } from "@/models/api";
+import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 
 type State =
   | { status: "loading" }
@@ -41,6 +43,8 @@ type State =
 
 export function usePatientDetailController(externalId: string) {
   const [state, setState] = useState<State>({ status: "loading" });
+  const { timeRange } = useTimeRange();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
 
   useEffect(() => {
     let cancelled = false;
@@ -73,11 +77,17 @@ export function usePatientDetailController(externalId: string) {
 
         const [readingsResult, multiWeekResult, tirResult, anomaliesResult, averageResult] =
           await Promise.allSettled([
-            getGlucoseReadings(patient.id, { last: "24h" }),          // last 24 h as default
+            getGlucoseReadings(patient.id, timeRange),
             getGlucoseReadings(patient.id, { start: fourWeeksAgo }), // last 4 weeks for multi-weekly chart
-            getTimeInRange(patient.id),
+            getTimeInRange(patient.id, {
+              ...timeRange,
+              VeryLow: glucoseRanges.veryLow,
+              Low: glucoseRanges.low,
+              High: glucoseRanges.high,
+              VeryHigh: glucoseRanges.veryHigh,
+            }),
             getAnomalies(patient.id, { limit: 50 }),
-            getAverageReading(patient.id, { last: "2w" }),            // last 2 weeks as default
+            getAverageReading(patient.id, timeRange),
           ]);
 
         if (cancelled) return;
@@ -115,7 +125,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [externalId]);
+  }, [externalId, timeRange, glucoseRanges]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {
