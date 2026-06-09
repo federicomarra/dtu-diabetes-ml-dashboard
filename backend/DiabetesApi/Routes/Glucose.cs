@@ -13,48 +13,86 @@ namespace DiabetesApi.Routes;
 public class GlucoseController(AppDbContext db, GlucoseService glucoseService) : ControllerBase
 {
     /// <summary>
-    /// Get glucose readings for a patient within an optional time range.
+    /// Get glucose readings for a patient within an optional time range or duration.
     /// </summary>
-    /// <param name="patientId">Patient ID.</param>
-    /// <param name="start">ISO datetime string (optional).</param>
-    /// <param name="end">ISO datetime string (optional).</param>
-    /// <param name="limit">Maximum number of results (default 500).</param>
-    [HttpGet("{patientId:int}")]
+    /// <param name="id">Patient ID</param>
+    /// <param name="start">ISO datetime string (optional)</param>
+    /// <param name="end">ISO datetime string (optional)</param>
+    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") (optional, default '2w' if no start/end specified)</param>
+    [HttpGet]
     [ProducesResponseType(typeof(GlucosesResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetGlucoseReadings(
-        int patientId,
+        [FromQuery] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
-        [FromQuery] int limit     = 14*24*60)    // two weeks in minutes
+        [FromQuery] string? last = null)
     {
-        var query = db.Glucoses.Where(r => r.PatientId == patientId);
+        var query = db.Glucoses.Where(r => r.PatientId == id);
 
-        if (start is not null)
+        if (start is not null) {
             query = query.Where(r => r.Timestamp >= DateTime.Parse(start).ToUniversalTime());
-        if (end is not null)
+        }
+        if (end is not null) {
             query = query.Where(r => r.Timestamp <= DateTime.Parse(end).ToUniversalTime());
+        }
+
+        if (start is null && end is null && last is null) {
+            last = "2w";
+        }
+
+        if (last is not null) {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == id)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+            
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            }
+            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            }
+            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            }
+            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            }
+            else
+            {
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+            }
+        }
 
         var readings = await query
             .OrderByDescending(r => r.Timestamp)
-            .Take(limit)
             .ToListAsync();
 
         return Ok(new GlucosesResponse(
-            patientId,
+            id,
             readings.Select(ToDto),
             readings.Count
         ));
     }
 
     /// <summary>Get time-in-range (TIR) statistics for a patient.</summary>
-    /// <param name="patientId">Patient ID.</param>
+    /// <param name="id">Patient ID.</param>
     /// <param name="ranges">Custom glucose threshold ranges (optional).</param>
     /// <param name="start">ISO datetime string (optional).</param>
     /// <param name="end">ISO datetime string (optional).</param>
-    [HttpGet("{patientId:int}/tir")]
+    [HttpGet("tir")]
     [ProducesResponseType(typeof(TirResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTimeInRange(
-        int patientId,
+        [FromQuery] int id,
         [FromQuery] ranges ranges,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null)
@@ -62,18 +100,18 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
         DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
 
-        var tir = await glucoseService.CalculateTimeInRangeAsync(patientId, ranges, startDt, endDt);
+        var tir = await glucoseService.CalculateTimeInRangeAsync(id, ranges, startDt, endDt);
         return Ok(tir);
     }
 
     /// <summary>Get the most recent glucose reading for a patient.</summary>
-    [HttpGet("{patientId:int}/latest")]
+    [HttpGet("latest")]
     [ProducesResponseType(typeof(GlucoseReadingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetLatestReading(int patientId)
+    public async Task<IActionResult> GetLatestReading([FromQuery] int id)
     {
         var reading = await db.Glucoses
-            .Where(r => r.PatientId == patientId)
+            .Where(r => r.PatientId == id)
             .OrderByDescending(r => r.Timestamp)
             .FirstOrDefaultAsync();
 

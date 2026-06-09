@@ -71,7 +71,7 @@ export function usePatientDetailController(externalId: string) {
 
         const [readingsResult, multiWeekResult, tirResult, anomaliesResult] =
           await Promise.allSettled([
-            getGlucoseReadings(patient.id, { limit: 288 }),          // last 24 h (5-min intervals)
+            getGlucoseReadings(patient.id, { last: "24h" }),          // last 24 h as default
             getGlucoseReadings(patient.id, { start: fourWeeksAgo }), // last 4 weeks for multi-weekly chart
             getTimeInRange(patient.id),
             getAnomalies(patient.id, { limit: 50 }),
