@@ -62,7 +62,7 @@ from models.patch_tst.model import PatchTST
 # ── config ────────────────────────────────────────────────────────────────────
 
 CHECKPOINT    = Path("ml/data/checkpoints/patchtst_best.pt")
-PARQUET       = Path("ml/data/sim_data/results_500p_14d_clean.parquet")
+PARQUET       = Path("ml/data/sim_data/results_20000p_14d.parquet")
 N_CAL_DAYS    = 5      # days used to calibrate per-patient threshold
 MINUTES_PER_DAY = 1440
 

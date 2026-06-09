@@ -49,7 +49,7 @@ from models.patch_tst.model import PatchTST, MASK_RATIO, PATCH_LEN
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
 LOG_PATH       = Path("ml/data/checkpoints/pretrain_log.json")
-PARQUET        = Path("ml/data/sim_data/results_500p_14d_clean.parquet")
+PARQUET        = Path("ml/data/sim_data/results_20000p_14d.parquet")
 
 
 # ── loss ──────────────────────────────────────────────────────────────────────

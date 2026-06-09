@@ -126,7 +126,8 @@ class PatchTST(nn.Module):
         self,
         x: torch.Tensor,        # [B, 120, C]
         mask_ratio: float = 0.0,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return_embeddings: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
         B, T, C = x.shape
 
         # ── 1. split into patches ─────────────────────────────────────────────
@@ -163,6 +164,10 @@ class PatchTST(nn.Module):
             out_channels.append(t)
 
         out = torch.stack(out_channels, dim=1)                  # [B, C, 6, 128]
+
+        # CARLA path: mean-pool over channels and patches → [B, D_MODEL]
+        if return_embeddings:
+            return out.mean(dim=(1, 2))
 
         # ── 6. reconstruct ────────────────────────────────────────────────────
         recon = self.head(out)                                   # [B, C, 6, 20]
