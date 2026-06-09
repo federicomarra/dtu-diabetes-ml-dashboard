@@ -26,7 +26,7 @@ import type { CustomThresholds } from "@/views/TIRChart/TIRChart";
 import styles from "./GlucoseChart.module.css";
 
 interface GlucoseChartProps {
-  readings: GlucoseReading[];
+  readings?: GlucoseReading[];
   title?: string;
   thresholds?: CustomThresholds;
 }
@@ -38,7 +38,7 @@ export default function GlucoseChart({
 }: GlucoseChartProps) {
   const { unit } = useGlucoseUnit();
 
-  const chartData = readings
+  const chartData = (readings || [])
     .slice()
     .sort(
       (a, b) =>

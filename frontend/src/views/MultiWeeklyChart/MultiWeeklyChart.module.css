@@ -1,0 +1,279 @@
+/* ─── Container ─────────────────────────────────────────────── */
+
+.container {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ─── Legend ─────────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── Day-of-week header row ─────────────────────────────────── */
+
+.dayHeaderRow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.weekLabelSpacer {
+  width: 68px;
+  flex-shrink: 0;
+}
+
+.dayHeaderCells {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  flex: 1;
+}
+
+.dayHeaderCell {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Weeks container ────────────────────────────────────────── */
+
+.weeksContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ─── Week row ───────────────────────────────────────────────── */
+
+.weekRow {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.weekLabel {
+  width: 68px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding-right: 8px;
+  gap: 1px;
+}
+
+.weekNum {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.weekRange {
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.weekRangeSep {
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.weekDays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  flex: 1;
+}
+
+/* ─── Day panel ──────────────────────────────────────────────── */
+
+.dayPanel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 90px;
+}
+
+.dayPanel:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.dayPanelToday {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, var(--bg));
+}
+
+.dayPanelEmpty {
+  opacity: 0.5;
+}
+
+.dayHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 6px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dayName {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dayDate {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dayChart {
+  flex: 1;
+  min-height: 68px;
+  position: relative;
+}
+
+.noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 68px;
+  font-size: 1rem;
+  color: var(--text-secondary);
+  opacity: 0.4;
+}
+
+/* ─── Scale hint ─────────────────────────────────────────────── */
+
+.scaleHint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.scaleBar {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ─── Empty state ────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 3rem 0;
+  font-size: 0.9rem;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .dayPanel {
+    min-height: 70px;
+  }
+
+  .dayChart {
+    min-height: 50px;
+  }
+
+  .weekLabelSpacer,
+  .weekLabel {
+    width: 52px;
+  }
+}
+
+@media (max-width: 600px) {
+  .legend {
+    display: none;
+  }
+
+  .dayHeaderRow,
+  .weekLabel,
+  .weekLabelSpacer {
+    display: none;
+  }
+
+  .weekDays {
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+  }
+
+  .dayPanel {
+    min-height: 56px;
+  }
+
+  .dayChart {
+    min-height: 40px;
+  }
+
+  .dayHeader {
+    padding: 2px 3px;
+  }
+
+  .dayDate {
+    display: none;
+  }
+}

@@ -8,6 +8,7 @@ import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
 import TIRChart, { DEFAULT_THRESHOLDS, type CustomThresholds } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
+import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import styles from "./patient-detail.module.css";
 
@@ -61,7 +62,7 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, anomalies, latestReading, handleAcknowledge } =
+  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, handleAcknowledge } =
     ctrl;
 
   return (
@@ -97,6 +98,8 @@ export default function DoctorPatientDetail() {
           />
         )}
       </div>
+
+      <MultiWeeklyChart readings={multiWeekReadings} thresholds={thresholds} />
     </div>
   );
 }

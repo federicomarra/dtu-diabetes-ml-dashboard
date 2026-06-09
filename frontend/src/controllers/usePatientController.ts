@@ -13,6 +13,7 @@
 import { useState, useEffect } from "react";
 import {
   generateDemoReadings,
+  generateMultiWeekReadings,
   DEMO_ANOMALIES,
 } from "@/models/demoData";
 import type { Patient, TimeInRange, AnomalyDetection, GlucoseReading } from "@/models/types";
@@ -37,11 +38,13 @@ const DEMO_TIR: TimeInRange = {
 
 export function usePatientController() {
   const [readings, setReadings] = useState<GlucoseReading[]>([]);
+  const [multiWeekReadings, setMultiWeekReadings] = useState<GlucoseReading[]>([]);
   const anomalies: AnomalyDetection[] = DEMO_ANOMALIES[DEMO_PATIENT.id] ?? [];
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setReadings(generateDemoReadings());
+      setMultiWeekReadings(generateMultiWeekReadings(4)); // last 4 weeks
     }, 0);
     return () => clearTimeout(timer);
   }, []);
@@ -49,6 +52,7 @@ export function usePatientController() {
   return {
     patient: DEMO_PATIENT,
     readings,
+    multiWeekReadings,
     tir: DEMO_TIR,
     anomalies,
     latestReading: readings.length > 0 ? readings[readings.length - 1] : undefined,
@@ -59,3 +63,4 @@ export function usePatientController() {
     },
   };
 }
+

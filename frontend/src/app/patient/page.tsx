@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
 import TIRChart, { DEFAULT_THRESHOLDS, type CustomThresholds } from "@/views/TIRChart/TIRChart";
+import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import { usePatientController } from "@/controllers/usePatientController";
@@ -16,6 +17,7 @@ export default function PatientDashboard() {
   const {
     patient,
     readings,
+    multiWeekReadings,
     tir,
     anomalies,
     latestReading,
@@ -50,7 +52,11 @@ export default function PatientDashboard() {
           onThresholdsChange={handleThresholdsChange}
         />
       </div>
+
+      <MultiWeeklyChart readings={multiWeekReadings} thresholds={thresholds} />
     </div>
   );
 }
+
+
 
