@@ -64,7 +64,7 @@ python ml/models/patch_tst/pretrain.py \
     --epochs      40  \
     --batch_size  256 \
     --lr          1e-4 \
-    --num_workers 4
+    --num_workers 0
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────
 # Runs immediately after training on the same GPU allocation.

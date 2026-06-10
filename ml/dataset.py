@@ -279,6 +279,7 @@ class GlucoseWindowDataset(Dataset):
         self._data: dict[str, np.ndarray] = {
             pid: _apply_scalers(arr, scalers) for pid, arr in raw.items()
         }
+        del raw  # free the unscaled copy; self._data holds the only reference from here on
         self._index: list[tuple[str, int]] = _make_window_index(self._data, stride)
 
     def __len__(self) -> int:
@@ -350,6 +351,7 @@ def build_datasets(
     train_ds = GlucoseWindowDataset(
         train_ids, scalers, parquet, stride=train_stride, _preloaded=train_raw
     )
+    del train_raw  # scaled copy now lives only in train_ds._data
 
     print(f"Building val dataset ({len(val_ids)} patients, stride={eval_stride}) …")
     val_ds = GlucoseWindowDataset(val_ids, scalers, parquet, stride=eval_stride)

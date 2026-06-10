@@ -221,10 +221,12 @@ def main() -> None:
         scalers = fit_scalers(train_raw)
 
     train_scaled = {pid: _apply_scalers(arr, scalers) for pid, arr in train_raw.items()}
+    del train_raw  # free unscaled copy; scaled lives in train_scaled
 
     print(f"Loading {len(val_ids)} val patients …")
     val_raw    = load_patients(val_ids, args.parquet)
     val_scaled = {pid: _apply_scalers(arr, scalers) for pid, arr in val_raw.items()}
+    del val_raw
 
     train_ds = ContrastiveDataset(train_scaled)
     val_ds   = ContrastiveDataset(val_scaled)
@@ -233,9 +235,9 @@ def main() -> None:
     print(f"Val:   {val_ds.n_normal:,}  normal + {val_ds.n_anomaly:,}  anomaly windows")
 
     train_sampler = ContrastiveBatchSampler(train_ds, args.batch_size, args.normal_ratio)
-    train_loader  = DataLoader(train_ds, batch_sampler=train_sampler, num_workers=4, pin_memory=True)
+    train_loader  = DataLoader(train_ds, batch_sampler=train_sampler, num_workers=0, pin_memory=True)
     # Val loader: plain shuffle, no composition control needed (just measuring loss)
-    val_loader    = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    val_loader    = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     # ── model ──────────────────────────────────────────────────────────────────
     backbone = PatchTST().to(device)
