@@ -1,17 +1,18 @@
 """
 PatchTST anomaly scoring and evaluation.
 
-Anomaly score
--------------
-Option 1 (current): full-window reconstruction MSE.
-  - Feed a 120-min window to the model with no masking.
-  - Score = mean((recon - actual)^2) over all minutes and channels.
-  - High score → the model could not reconstruct this window well → anomaly.
+Anomaly score (two complementary scores; glucose channel only by default)
+-------------------------------------------------------------------------
+Option 1 — whole-window reconstruction deviation.
+  - Feed a 120-min window with no masking; score = mean((recon - actual)^2).
+  - Measures how unusual the whole window looks. NOT prediction.
 
-Option 2 (future): last-patch masking.
-  - Always mask the last patch (minutes 100-119) at inference.
-  - Score = MSE on that patch only → closer to "predict next 20 min."
-  - Requires no model change — just pass mask_ratio targeting the last patch.
+Option 2 — next-N-min prediction error (the "forecast" score).
+  - Mask the last `horizon_patches` patches (default 1 = 20 min) and score only
+    them. The model predicts the hidden tail from the visible prefix — same as
+    the masked training task, so no train/inference shift. This is genuine
+    prediction error.
+  - Horizon is a CLI flag (--horizon_patches); 2 = 40 min.
 
 Per-patient threshold calibration
 ----------------------------------
@@ -74,9 +75,16 @@ def score_dataset(
     model: PatchTST,
     loader: DataLoader,
     device: torch.device,
+    score_channels: tuple[int, ...] = (0,),
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """
     Run inference on every window in the loader.
+
+    score_channels selects which channels enter the MSE. Default (0,) = glucose
+    only. Glucose is the sensor-corrupted output where anomalies manifest;
+    insulin (ch 1) and carbs (ch 2) are known inputs whose reconstruction error
+    is mostly spike-noise and, when averaged in, can swamp the glucose signal.
+    Pass (0, 1, 2) to reproduce the old all-channel score.
 
     Returns
     -------
@@ -86,6 +94,7 @@ def score_dataset(
         Ground-truth binary label per window per anomaly class.
     """
     model.eval()
+    ch = list(score_channels)
 
     # Accumulate numpy chunks, not Python floats — 80M stride-1 windows as
     # Python list elements cost ~3 GB per metric column.
@@ -97,8 +106,8 @@ def score_dataset(
 
         recon, _ = model(x, mask_ratio=0.0)         # no masking at inference
 
-        # MSE per window: mean over time and channel dims → scalar per sample
-        mse = ((recon - x) ** 2).mean(dim=(1, 2))  # [B]
+        # MSE per window over selected channels (glucose only by default)
+        mse = ((recon[:, :, ch] - x[:, :, ch]) ** 2).mean(dim=(1, 2))  # [B]
         all_scores.append(mse.cpu().numpy())
 
         for cls in ANOMALY_CLASSES:
@@ -114,24 +123,37 @@ def score_dataset_last_patch(
     model: PatchTST,
     loader: DataLoader,
     device: torch.device,
+    score_channels: tuple[int, ...] = (0,),
+    horizon_patches: int = 1,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """
-    Option 2: last-patch masking at inference.
+    Prediction score: mask the last `horizon_patches` patches, score only them.
 
-    Always hides patch 5 (minutes 100–119) and scores only that patch.
-    This matches the training task — the model was trained to predict hidden
-    patches from visible context — so there is no train/inference distribution
-    shift. More principled than Option 1 (full reconstruction).
+    The model predicts the hidden tail from the visible context — matching the
+    masked training task, so there is no train/inference distribution shift.
+    This is true prediction error, not cropped full reconstruction.
 
-    For missed bolus specifically: the glucose consequence of a meal with no
-    insulin arrives in the later patches. Scoring only the last patch directly
-    tests whether the model predicted the anomalous glucose rise.
+    horizon_patches sets the forecast length: 1 patch = 20 min (default),
+    2 = 40 min. At least one context patch is always kept visible, so the value
+    is clamped to [1, N_PATCHES - 1]. Missed bolus is the motivation for a
+    longer horizon — its glucose consequence takes 60–90 min to develop, so a
+    20-min tail may end before the anomalous rise diverges. NB: with a
+    channel-independent backbone glucose is predicted from glucose alone, so a
+    longer horizon may still not separate missed bolus (see PATCHTST.md / the
+    iTransformer contingency).
 
     Returns same format as score_dataset.
     """
     from models.patch_tst.model import N_PATCHES, PATCH_LEN
 
     model.eval()
+    ch = list(score_channels)   # glucose only by default (see score_dataset)
+    k = max(1, min(horizon_patches, N_PATCHES - 1))   # keep ≥1 visible context patch
+
+    # fixed mask hiding the last k patches — broadcasts across the batch
+    last_mask = torch.zeros(N_PATCHES, dtype=torch.bool, device=device)
+    last_mask[-k:] = True
+    last_start = (N_PATCHES - k) * PATCH_LEN          # first masked minute
 
     all_scores: list[np.ndarray] = []
     all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
@@ -139,19 +161,12 @@ def score_dataset_last_patch(
     for x, label_dict in loader:
         x = x.to(device)                               # [B, 120, 3]
 
-        # build a fixed mask: only last patch is hidden
-        B = x.shape[0]
-        mask = torch.zeros(B, N_PATCHES, dtype=torch.bool, device=device)
-        mask[:, -1] = True                             # always mask patch 5
+        # hide the last k patches → model must predict them from the prefix
+        recon, _ = model(x, fixed_mask=last_mask)
 
-        # apply mask manually then forward with mask_ratio=0.0 to skip random masking
-        # instead we use the model internals: patch, embed, replace last token, transform
-        # simpler: call forward with mask_ratio=0.0 to get recon, then score last patch only
-        recon, _ = model(x, mask_ratio=0.0)
-
-        # score only last patch (minutes 100–119)
-        last_start = (N_PATCHES - 1) * PATCH_LEN      # = 100
-        mse = ((recon[:, last_start:, :] - x[:, last_start:, :]) ** 2).mean(dim=(1, 2))  # [B]
+        # score only the predicted (masked) tail, selected channels
+        err = (recon[:, last_start:, ch] - x[:, last_start:, ch]) ** 2  # [B, k*20, |ch|]
+        mse = err.mean(dim=(1, 2))                                       # [B]
         all_scores.append(mse.cpu().numpy())
 
         for cls in ANOMALY_CLASSES:
@@ -188,7 +203,49 @@ def calibrate_threshold(
     return float(mu + 2 * std)
 
 
+def calibrate_per_patient(
+    scores: np.ndarray,
+    patient_counts: list[tuple[str, int]],
+    n_cal_windows: int,
+) -> tuple[np.ndarray, float]:
+    """
+    Per-patient robust threshold, applied per patient.
+
+    Each patient is calibrated on its OWN first n_cal_windows scores (or all of
+    its windows if it has fewer — short real-data patients), then flagged
+    against its OWN threshold. This is the per-patient baseline the spec
+    requires: a global threshold would calibrate everyone on patient #1's first
+    days, which is meaningless.
+
+    `scores` must be in dataset order (eval loader shuffle=False), so each
+    patient's windows are the contiguous block given by patient_counts.
+
+    Returns (flagged_bool [N], overall_flagged_pct).
+    """
+    flagged = np.zeros(len(scores), dtype=bool)
+    offset = 0
+    for _pid, n in patient_counts:
+        s = scores[offset : offset + n]
+        thr = calibrate_threshold(s, min(n_cal_windows, n))   # short patient → use all
+        flagged[offset : offset + n] = s > thr
+        offset += n
+    return flagged, float(flagged.mean() * 100)
+
+
 # ── metrics ───────────────────────────────────────────────────────────────────
+
+def any_anomaly_label(labels: dict[str, np.ndarray]) -> np.ndarray:
+    """
+    OR the per-class labels → 1.0 where ANY anomaly class is present.
+
+    This is the headline DETECTION target (anomaly vs normal). Per-class AUPRC
+    is confounded: for class X, windows of other anomaly classes count as
+    negatives, so the model is penalised for correctly scoring them high. The
+    any-anomaly label removes that cross-class contamination.
+    """
+    stacked = np.stack([labels[cls] for cls in ANOMALY_CLASSES], axis=0)  # [C, N]
+    return (stacked.max(axis=0) > 0).astype(np.float32)
+
 
 def auroc_per_class(
     scores: np.ndarray,
@@ -241,9 +298,18 @@ def main() -> None:
     )
     parser.add_argument("--batch_size",  type=int, default=512)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--score_channels", type=int, nargs="+", default=[0],
+                        help="channels in the MSE score; 0=glucose 1=insulin 2=carbs "
+                             "(default: 0 = glucose only)")
+    parser.add_argument("--horizon_patches", type=int, default=1,
+                        help="prediction horizon for Option 2, in 20-min patches "
+                             "(1=20min default, 2=40min)")
+    parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
+                        help="normalization mode — MUST match the pretrain run")
     parser.add_argument("--smoke_test",  action="store_true",
                         help="Score 10 test patients only")
     args = parser.parse_args()
+    score_channels = tuple(args.score_channels)
 
     # ── device ────────────────────────────────────────────────────────────────
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -269,6 +335,7 @@ def main() -> None:
         max_per_split = max_per_split,
         include_train = False,
         include_val   = False,
+        norm          = args.norm,
     )
     print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
 
@@ -280,25 +347,38 @@ def main() -> None:
         pin_memory  = device.type == "cuda",
     )
 
-    # ── score: option 1 (full reconstruction) ────────────────────────────────
-    print("Scoring — Option 1: full reconstruction…")
-    scores_full, labels = score_dataset(model, loader, device)
+    _names = ["glucose", "insulin", "carbs"]
+    print(f"Scoring channels: {[_names[c] for c in score_channels]}")
+
+    # ── score: option 1 (whole-window reconstruction deviation) ──────────────
+    print("Scoring — Option 1: whole-window reconstruction deviation…")
+    scores_full, labels = score_dataset(model, loader, device, score_channels)
     print(f"Score range: min={scores_full.min():.4f}  max={scores_full.max():.4f}  mean={scores_full.mean():.4f}")
 
-    # ── score: option 2 (last-patch masking) ─────────────────────────────────
-    print("Scoring — Option 2: last-patch masking…")
-    scores_last, _ = score_dataset_last_patch(model, loader, device)
+    # ── score: option 2 (next-N-min prediction error) ────────────────────────
+    print(f"Scoring — Option 2: next-{args.horizon_patches * 20}-min prediction error…")
+    scores_last, _ = score_dataset_last_patch(model, loader, device, score_channels, args.horizon_patches)
     print(f"Score range: min={scores_last.min():.4f}  max={scores_last.max():.4f}  mean={scores_last.mean():.4f}")
 
     # ── per-patient threshold (informational) ─────────────────────────────────
-    n_cal = N_CAL_DAYS * MINUTES_PER_DAY
+    # n_cal_windows = first N_CAL_DAYS days, in windows. At stride 1 one window
+    # ≈ one minute, so this holds only for EVAL_STRIDE == 1.
+    n_cal = N_CAL_DAYS * MINUTES_PER_DAY // EVAL_STRIDE
+    patient_counts = test_ds.patient_window_counts()
     for name, scores in [("full", scores_full), ("last-patch", scores_last)]:
-        if len(scores) >= n_cal:
-            threshold = calibrate_threshold(scores, n_cal)
-            flagged   = (scores > threshold).mean() * 100
-            print(f"Threshold [{name}] (median+2×IQR/1.349, first {N_CAL_DAYS} days): {threshold:.4f}  →  {flagged:.1f}% flagged")
+        _, flagged = calibrate_per_patient(scores, patient_counts, n_cal)
+        print(f"Threshold [{name}] (per-patient median+2×IQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
 
-    # ── metrics comparison ────────────────────────────────────────────────────
+    # ── headline detection metric: any-anomaly (any class vs normal) ──────────
+    any_lbl = any_anomaly_label(labels)
+    any_prev = float(any_lbl.mean())
+    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_prev:.2%})")
+    for name, scores in [("full", scores_full), ("last", scores_last)]:
+        ap = average_precision_score(any_lbl, scores) if any_lbl.sum() > 0 else float("nan")
+        au = roc_auc_score(any_lbl, scores)           if any_lbl.sum() > 0 else float("nan")
+        print(f"  {name:<10}  AUPRC={ap:.4f}  AUROC={au:.4f}")
+
+    # ── per-class metrics (classification-flavoured; see any_anomaly_label) ────
     auroc_full = auroc_per_class(scores_full, labels)
     auprc_full = auprc_per_class(scores_full, labels)
     auroc_last = auroc_per_class(scores_last, labels)

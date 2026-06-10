@@ -128,6 +128,7 @@ class PatchTST(nn.Module):
         self,
         x: torch.Tensor,        # [B, 120, C]
         mask_ratio: float = 0.0,
+        fixed_mask: torch.Tensor | None = None,  # [n_patches] or [B, n_patches] bool
         return_embeddings: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
         B, T, C = x.shape
@@ -142,13 +143,20 @@ class PatchTST(nn.Module):
         tokens = self.patch_embed(x)                            # [B, C, 6, 128]
 
         # ── 3. build mask ─────────────────────────────────────────────────────
-        # Same patch positions masked across all channels (one mask per sample)
-        mask = torch.zeros(B, self.n_patches, dtype=torch.bool, device=x.device)
-        if mask_ratio > 0.0:
-            n_mask = max(1, int(self.n_patches * mask_ratio))   # e.g. 40% of 6 = 2
-            for b in range(B):
-                idx = torch.randperm(self.n_patches, device=x.device)[:n_mask]
-                mask[b, idx] = True                             # True = this patch is hidden
+        # Same patch positions masked across all channels (one mask per sample).
+        # fixed_mask: caller-supplied deterministic mask (used by validation and
+        # last-patch scoring). A [n_patches] vector broadcasts to the batch.
+        if fixed_mask is not None:
+            mask = fixed_mask.to(device=x.device, dtype=torch.bool)
+            if mask.dim() == 1:
+                mask = mask.unsqueeze(0).expand(B, self.n_patches)
+        else:
+            mask = torch.zeros(B, self.n_patches, dtype=torch.bool, device=x.device)
+            if mask_ratio > 0.0:
+                n_mask = max(1, int(self.n_patches * mask_ratio))   # e.g. 40% of 6 = 2
+                for b in range(B):
+                    idx = torch.randperm(self.n_patches, device=x.device)[:n_mask]
+                    mask[b, idx] = True                             # True = this patch is hidden
 
         # ── 4. apply mask ─────────────────────────────────────────────────────
         # Expand mask to match token shape, then replace hidden tokens

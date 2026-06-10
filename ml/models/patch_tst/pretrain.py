@@ -34,7 +34,6 @@ import time
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
@@ -42,8 +41,8 @@ from torch.utils.data import DataLoader
 # make ml/ importable regardless of working directory
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dataset import build_datasets, TRAIN_STRIDE, WINDOW_LEN, N_CHANNELS
-from models.patch_tst.model import PatchTST, MASK_RATIO, PATCH_LEN
+from dataset import build_datasets, set_seed, TRAIN_STRIDE, WINDOW_LEN, N_CHANNELS
+from models.patch_tst.model import PatchTST, MASK_RATIO, PATCH_LEN, N_PATCHES
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 
@@ -119,18 +118,27 @@ def eval_one_epoch(
     device: torch.device,
 ) -> float:
     """
-    Validation pass — no masking.
+    Validation pass — masked, matching the training objective.
 
-    We measure full reconstruction MSE here (not masked), which tells us
-    how well the model has learned the underlying signal structure.
+    Training optimises MSE on *hidden* patches only. Validating with no
+    masking would select the checkpoint on full reconstruction — an objective
+    the model never trains on — so we mask here too. We hide the last n_mask
+    patches with a FIXED mask (not random): deterministic val loss is what
+    checkpoint selection and ReduceLROnPlateau need, and hiding the tail
+    mirrors the last-patch ("predict the next minutes") anomaly score.
     """
     model.eval()
     total_loss = 0.0
 
+    # fixed mask: hide the last n_mask patches (n_mask matches the train ratio)
+    n_mask = max(1, int(N_PATCHES * MASK_RATIO))
+    val_mask = torch.zeros(N_PATCHES, dtype=torch.bool, device=device)
+    val_mask[-n_mask:] = True
+
     for x, _ in loader:
         x = x.to(device)
-        recon, _ = model(x, mask_ratio=0.0)   # no masking at eval time
-        loss = nn.functional.mse_loss(recon, x)
+        recon, mask = model(x, fixed_mask=val_mask)
+        loss = masked_mse_loss(recon, x, mask)
         total_loss += loss.item()
 
     return total_loss / len(loader)
@@ -144,9 +152,14 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int,   default=256)
     parser.add_argument("--lr",         type=float, default=1e-4)
     parser.add_argument("--num_workers",type=int,   default=4)
+    parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
+                        help="normalization mode (default: per_patient, spec)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="RNG seed for reproducibility")
     parser.add_argument("--smoke_test", action="store_true",
                         help="2 epochs, 10 patients — quick sanity check")
     args = parser.parse_args()
+    set_seed(args.seed)
 
     # smoke test: override for a fast local run
     if args.smoke_test:
@@ -169,6 +182,7 @@ def main() -> None:
         max_per_split = max_per_split,
         eval_stride   = TRAIN_STRIDE,
         include_test  = False,   # test set is loaded by anomaly_score.py, not here
+        norm          = args.norm,
     )
     print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}")
 
