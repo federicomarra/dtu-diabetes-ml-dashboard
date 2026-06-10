@@ -21,6 +21,8 @@ from dataset import (
     EVAL_STRIDE,
     fit_scalers,
     _apply_scalers,
+    _patient_zscore,
+    normalize_patients,
     GlucoseWindowDataset,
 )
 
@@ -163,11 +165,86 @@ class TestApplyScalers:
         assert scaled.dtype == arr.dtype
 
 
+# ── per-patient normalization ─────────────────────────────────────────────────
+
+class TestPerPatientNorm:
+    def test_each_patient_zero_mean_unit_std(self, fake_data):
+        # Per-patient z-score → EACH patient's signal cols have mean~0, std~1
+        for arr in fake_data.values():
+            z = _patient_zscore(arr)
+            sig = z[:, :N_CHANNELS]
+            np.testing.assert_allclose(sig.mean(axis=0), 0.0, atol=1e-4)
+            np.testing.assert_allclose(sig.std(axis=0),  1.0, atol=1e-4)
+
+    def test_labels_untouched(self, fake_data):
+        pid = list(fake_data.keys())[0]
+        arr = fake_data[pid]
+        z = _patient_zscore(arr)
+        np.testing.assert_array_equal(z[:, N_CHANNELS:], arr[:, N_CHANNELS:])
+
+    def test_does_not_mutate_when_not_inplace(self, fake_data):
+        pid = list(fake_data.keys())[0]
+        original = fake_data[pid].copy()
+        _patient_zscore(fake_data[pid], inplace=False)
+        np.testing.assert_array_equal(fake_data[pid], original)
+
+    def test_normalize_patients_per_patient_differs_from_global(self, fake_data, scalers):
+        # Per-patient and global give different results when patients differ
+        per = normalize_patients(fake_data, norm="per_patient")
+        glob = normalize_patients(fake_data, norm="global", scalers=scalers)
+        pid = list(fake_data.keys())[0]
+        assert not np.allclose(per[pid][:, :N_CHANNELS], glob[pid][:, :N_CHANNELS])
+
+    def test_global_requires_scalers(self, fake_data):
+        with pytest.raises(ValueError):
+            normalize_patients(fake_data, norm="global", scalers=None)
+
+    def test_unknown_mode_raises(self, fake_data):
+        with pytest.raises(ValueError):
+            normalize_patients(fake_data, norm="bogus")
+
+    def test_dataset_per_patient_default(self, fake_data):
+        # Dataset defaults to per_patient and needs no scalers
+        ds = GlucoseWindowDataset(
+            patient_ids=list(fake_data.keys()),
+            _preloaded=fake_data,
+            stride=TRAIN_STRIDE,
+        )
+        assert len(ds) > 0
+        x, _ = ds[0]
+        assert x.shape == (WINDOW_LEN, N_CHANNELS)
+
+
 # ── GlucoseWindowDataset ──────────────────────────────────────────────────────
 
 class TestGlucoseWindowDataset:
 
     # ── __len__ ───────────────────────────────────────────────────────────────
+
+    def test_patient_window_counts_sum_to_len(self, fake_data, scalers):
+        ds = GlucoseWindowDataset(
+            patient_ids=list(fake_data.keys()),
+            scalers=scalers,
+            stride=TRAIN_STRIDE,
+            _preloaded=fake_data,
+        )
+        counts = ds.patient_window_counts()
+        assert [pid for pid, _ in counts] == list(fake_data.keys())   # flat-index order
+        assert sum(n for _, n in counts) == len(ds)
+
+    def test_patient_window_counts_match_flat_blocks(self, fake_data, scalers):
+        # The window at flat index inside patient i's block must belong to patient i
+        ds = GlucoseWindowDataset(
+            patient_ids=list(fake_data.keys()),
+            scalers=scalers,
+            stride=TRAIN_STRIDE,
+            _preloaded=fake_data,
+        )
+        offset = 0
+        for pid, n in ds.patient_window_counts():
+            for j in (0, n - 1):
+                assert ds._pids[ds._pid_idx[offset + j]] == pid
+            offset += n
 
     def test_len_matches_expected_window_count(self, fake_data, scalers):
         # For each patient with T rows and a given stride,

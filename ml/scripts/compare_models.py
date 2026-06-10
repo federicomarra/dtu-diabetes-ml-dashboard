@@ -35,11 +35,12 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dataset import (
-    build_datasets, load_patients, load_scalers, _apply_scalers,
+    build_datasets, load_patients, load_scalers, normalize_patients,
     ANOMALY_CLASSES, EVAL_STRIDE,
 )
 from models.patch_tst.model import PatchTST
 from models.patch_tst.anomaly_score import score_dataset as patchtst_score_dataset
+from models.patch_tst.anomaly_score import any_anomaly_label
 from models.carla.model import CARLAModel
 from models.carla.anomaly_score import embed_dataset, fit_gmm, score_with_gmm
 from models.carla.dataset import ContrastiveDataset
@@ -93,20 +94,22 @@ def score_carla(
     test_loader: DataLoader,
     device: torch.device,
     parquet: Path,
+    norm: str = "per_patient",
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     backbone = PatchTST()
     model    = CARLAModel(backbone)
-    model.load_state_dict(torch.load(checkpoint, map_location=device))
+    ckpt  = torch.load(checkpoint, map_location=device)
+    state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
+    model.load_state_dict(state)
     model.to(device)
     model.eval()
 
-    scalers = load_scalers()
+    scalers = load_scalers() if norm == "global" else None
 
     # Fit GMM on normal training embeddings
     print("  Embedding training set for GMM fitting …")
     raw_train    = load_patients(train_ids, parquet)
-    scaled_train = {pid: _apply_scalers(arr, scalers, inplace=True)   # no 8 GB copy
-                    for pid, arr in raw_train.items()}
+    scaled_train = normalize_patients(raw_train, norm=norm, scalers=scalers, inplace=True)
     train_ds     = ContrastiveDataset(scaled_train, stride=15)
     train_loader = DataLoader(train_ds, batch_size=512, shuffle=False, num_workers=4)
     train_emb, train_normal = embed_dataset(model, train_loader, device)
@@ -194,6 +197,8 @@ def main() -> None:
     parser.add_argument("--patchtst_ckpt", type=Path, default=PATCHTST_CKPT)
     parser.add_argument("--carla_ckpt",    type=Path, default=CARLA_CKPT)
     parser.add_argument("--parquet",       type=Path, default=PARQUET)
+    parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
+                        help="normalization mode — MUST match both pretrain runs")
     parser.add_argument("--smoke_test", action="store_true",
                         help="10 test patients only — fast sanity check")
     args = parser.parse_args()
@@ -208,18 +213,18 @@ def main() -> None:
         train_ids = train_ids[:10]
         test_ids  = test_ids[:10]
 
-    # Build shared test loader (GlucoseWindowDataset for per-class labels)
+    # Build shared test loader (GlucoseWindowDataset for per-class labels).
+    # include_train=False: per-patient norm needs no train load; global norm
+    # reads the cached scalers written during pretraining. Keep the full train
+    # list in the split so a global refit (if cache missing) uses all patients.
     print("Building test dataset …")
-    # include_train=False: scalers come from the cache written during
-    # pretraining, so the 12k-patient train split is never loaded here.
-    # Keep the full train list in the split — if the scaler cache is ever
-    # missing, scalers must be refit on all train patients, not a subset.
     _, _, test_ds = build_datasets(
         split={"train": split["train"], "val": split["val"], "test": test_ids},
         parquet=args.parquet,
         eval_stride=EVAL_STRIDE if not args.smoke_test else 15,
         include_train=False,
         include_val=False,
+        norm=args.norm,
     )
     test_loader = DataLoader(test_ds, batch_size=512, shuffle=False, num_workers=4)
 
@@ -231,11 +236,21 @@ def main() -> None:
     # ── CARLA ──────────────────────────────────────────────────────────────────
     print(f"\n[CARLA] Loading checkpoint: {args.carla_ckpt}")
     ca_scores, ca_labels = score_carla(
-        args.carla_ckpt, train_ids, test_loader, device, args.parquet
+        args.carla_ckpt, train_ids, test_loader, device, args.parquet, args.norm
     )
     ca_auprc, ca_auroc   = _metrics(ca_scores, ca_labels)
 
     prevalence = {cls: float(pt_labels[cls].mean()) for cls in ANOMALY_CLASSES}
+
+    # headline detection metric: any-anomaly (any class vs normal), free of the
+    # cross-class contamination that depresses per-class AUPRC
+    pt_any = any_anomaly_label(pt_labels)
+    ca_any = any_anomaly_label(ca_labels)
+    print(f"\nANY-ANOMALY detection (any class vs normal | baseline ≈ {pt_any.mean():.2%})")
+    print(f"  PatchTST  AUPRC={average_precision_score(pt_any, pt_scores):.4f}  "
+          f"AUROC={roc_auc_score(pt_any, pt_scores):.4f}")
+    print(f"  CARLA     AUPRC={average_precision_score(ca_any, ca_scores):.4f}  "
+          f"AUROC={roc_auc_score(ca_any, ca_scores):.4f}")
 
     print_table(pt_auprc, pt_auroc, ca_auprc, ca_auroc, prevalence)
     save_bar_chart(pt_auprc, ca_auprc, prevalence)

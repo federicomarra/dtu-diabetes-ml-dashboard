@@ -1,6 +1,12 @@
 """
 CARLA encoder for CGM anomaly detection.
 
+This module is the shared CARLA architecture (encoder + projection head). It is
+agnostic to how negatives are sourced: the current supervised training uses
+oracle simulator labels (see pretrain.py), the planned label-free variant will
+use synthetically injected anomalies. Only the negative source differs — the
+model is the same.
+
 Architecture
 ------------
 Input  : [B, 120, C] — 120-minute context window, C channels

@@ -1,5 +1,12 @@
 """
-CARLA contrastive pretraining.
+CARLA contrastive pretraining — SUPERVISED (oracle-negative) variant.
+
+IMPORTANT: this is not the published CARLA. Negatives here are the simulator's
+ground-truth anomaly windows, so this model sees labels PatchTST never sees and
+cannot run on unlabelled real data. Treat its synthetic AUPRC as an oracle upper
+bound, not a fair peer to PatchTST. The label-free CARLA (synthetic anomaly
+injection — the actual Darban et al. method, fair vs PatchTST and real-data
+capable) is planned separately. See ml/docs/CARLA.md (top note).
 
 What this script does
 ---------------------
@@ -50,7 +57,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from dataset import (
     load_patients, fit_scalers, load_scalers,
-    _apply_scalers, make_patient_split,
+    normalize_patients, make_patient_split, set_seed,
     WINDOW_LEN, N_CHANNELS,
 )
 from models.patch_tst.model import PatchTST
@@ -167,19 +174,45 @@ def validate(
     loader: DataLoader,
     device: torch.device,
     tau:    float,
-) -> float:
-    """Val loss = SupCon loss on val set with no BatchSampler (all windows, stride=15)."""
+) -> tuple[float, float, float]:
+    """
+    Val SupCon loss + collapse diagnostics on the ENCODER embedding z.
+
+    SupCon with all-normals-as-positives can collapse every normal window to a
+    single point. Then z (what the GMM scores) has ~zero variance and anomaly
+    scores become noise — while the loss still looks fine. We monitor z, not
+    z_proj, because z is what scoring uses.
+
+    Returns (val_loss, emb_std, mean_cos):
+      emb_std : mean per-dim std of z across the val set → 0.0 means collapsed.
+      mean_cos: mean off-diagonal cosine of z on a capped sample → 1.0 means
+                collapsed (all embeddings point the same way).
+    """
     model.eval()
     total_loss = 0.0
     n_batches  = 0
+    z_chunks: list[torch.Tensor] = []
     for windows, labels in loader:
         windows   = windows.to(device)
         is_normal = labels.to(device)
-        _, z_proj = model(windows)
+        z, z_proj = model(windows)
         loss = supcon_loss(z_proj, is_normal, tau)
         total_loss += loss.item()
         n_batches  += 1
-    return total_loss / max(n_batches, 1)
+        z_chunks.append(z.cpu())
+
+    z_all   = torch.cat(z_chunks)                       # [N, D]
+    emb_std = z_all.std(dim=0).mean().item()            # → 0 if collapsed
+
+    sample  = F.normalize(z_all[:2048], dim=1)          # cap to keep O(n²) cheap
+    n       = sample.size(0)
+    if n > 1:
+        cos = sample @ sample.T
+        mean_cos = ((cos.sum() - n) / (n * (n - 1))).item()   # exclude diagonal
+    else:
+        mean_cos = float("nan")
+
+    return total_loss / max(n_batches, 1), emb_std, mean_cos
 
 
 # ── main ───────────────────────────────────────────────────────────────────────
@@ -191,10 +224,14 @@ def main() -> None:
     parser.add_argument("--lr",         type=float, default=1e-4)
     parser.add_argument("--tau",        type=float, default=0.07)
     parser.add_argument("--normal_ratio", type=float, default=0.7)
+    parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
+                        help="normalization mode (default: per_patient, spec)")
+    parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
     parser.add_argument("--parquet",    type=Path,  default=PARQUET)
     parser.add_argument("--smoke_test", action="store_true",
                         help="2 epochs on 10 patients — verify setup works")
     args = parser.parse_args()
+    set_seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -216,30 +253,29 @@ def main() -> None:
     print(f"Loading {len(train_ids)} training patients …")
     train_raw = load_patients(train_ids, args.parquet)
 
-    # Re-use cached scalers only if they were fit on this parquet —
-    # a stale cache from the 500p cohort would silently mis-scale everything.
+    # Global mode only: fit/cache population scalers on train. Per-patient mode
+    # needs none — each patient self-normalizes.
     scalers = None
-    if SCALER_FILE.exists():
-        cached = load_scalers()
-        if cached.get("_parquet") == str(args.parquet):
-            scalers = cached
-            print(f"Re-using cached scalers  ←  {SCALER_FILE}")
-    if scalers is None:
-        # never tag a smoke-test fit (10 patients) as valid for the full cohort
-        scalers = fit_scalers(
-            train_raw, parquet=args.parquet if not args.smoke_test else None
-        )
+    if args.norm == "global":
+        if SCALER_FILE.exists():
+            cached = load_scalers()
+            if cached.get("_parquet") == str(args.parquet):   # reject stale 500p cache
+                scalers = cached
+                print(f"Re-using cached scalers  ←  {SCALER_FILE}")
+        if scalers is None:
+            # never tag a smoke-test fit (10 patients) as valid for the full cohort
+            scalers = fit_scalers(
+                train_raw, parquet=args.parquet if not args.smoke_test else None
+            )
 
-    # inplace=True: z-score the arrays where they sit instead of copying the
+    # inplace=True: normalize the arrays where they sit instead of copying the
     # ~8 GB training dict
-    train_scaled = {pid: _apply_scalers(arr, scalers, inplace=True)
-                    for pid, arr in train_raw.items()}
+    train_scaled = normalize_patients(train_raw, norm=args.norm, scalers=scalers, inplace=True)
     del train_raw
 
     print(f"Loading {len(val_ids)} val patients …")
     val_raw    = load_patients(val_ids, args.parquet)
-    val_scaled = {pid: _apply_scalers(arr, scalers, inplace=True)
-                  for pid, arr in val_raw.items()}
+    val_scaled = normalize_patients(val_raw, norm=args.norm, scalers=scalers, inplace=True)
     del val_raw
 
     train_ds = ContrastiveDataset(train_scaled)
@@ -267,26 +303,44 @@ def main() -> None:
     log: list[dict] = []
 
     # ── training ───────────────────────────────────────────────────────────────
+    COLLAPSE_STD = 1e-3   # mean per-dim std of z below this ⇒ representation collapse
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
         train_loss = train_one_epoch(model, train_loader, optimiser, device, args.tau)
-        val_loss   = validate(model, val_loader, device, args.tau)
+        val_loss, emb_std, mean_cos = validate(model, val_loader, device, args.tau)
         scheduler.step(val_loss)
         elapsed = time.time() - t0
 
         lr_now = optimiser.param_groups[0]["lr"]
         print(f"Epoch {epoch:3d}/{args.epochs}  train={train_loss:.4f}  val={val_loss:.4f}  "
-              f"lr={lr_now:.2e}  {elapsed:.0f}s")
+              f"emb_std={emb_std:.4f}  mean_cos={mean_cos:.3f}  lr={lr_now:.2e}  {elapsed:.0f}s")
+        if emb_std < COLLAPSE_STD:
+            print(f"  ⚠ COLLAPSE WARNING: encoder embedding std {emb_std:.2e} < {COLLAPSE_STD:.0e} — "
+                  f"GMM scoring will be noise. Consider same-patient positives or a variance term.")
 
-        log.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, "lr": lr_now})
+        log.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss,
+                    "emb_std": emb_std, "mean_cos": mean_cos, "lr": lr_now})
         LOG_PATH.write_text(json.dumps(log, indent=2))
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), CHECKPOINT_DIR / "carla_best.pt")
+            torch.save(
+                {
+                    "epoch":       epoch,
+                    "model_state": model.state_dict(),
+                    "val_loss":    val_loss,
+                    "emb_std":     emb_std,
+                    "mean_cos":    mean_cos,
+                    "args":        vars(args),
+                },
+                CHECKPOINT_DIR / "carla_best.pt",
+            )
             print(f"  ✓ saved best checkpoint (val={best_val_loss:.4f})")
 
-    torch.save(model.state_dict(), CHECKPOINT_DIR / "carla_final.pt")
+    torch.save(
+        {"epoch": args.epochs, "model_state": model.state_dict(), "args": vars(args)},
+        CHECKPOINT_DIR / "carla_final.pt",
+    )
     print(f"\nDone. Best val loss: {best_val_loss:.4f}")
     print(f"Checkpoint: {CHECKPOINT_DIR}/carla_best.pt")
 

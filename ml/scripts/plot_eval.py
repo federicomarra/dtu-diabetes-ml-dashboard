@@ -163,6 +163,8 @@ def main() -> None:
     parser.add_argument("--checkpoint",  type=Path, default=CHECKPOINT)
     parser.add_argument("--batch_size",  type=int,  default=512)
     parser.add_argument("--num_workers", type=int,  default=4)
+    parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
+                        help="normalization mode — MUST match the pretrain run")
     parser.add_argument("--smoke_test",  action="store_true",
                         help="Use 10 test patients only — fast local run")
     args = parser.parse_args()
@@ -185,7 +187,7 @@ def main() -> None:
     max_per_split = 10 if args.smoke_test else None
     _, _, test_ds = build_datasets(
         parquet=PARQUET, max_per_split=max_per_split,
-        include_train=False, include_val=False,
+        include_train=False, include_val=False, norm=args.norm,
     )
     print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
 

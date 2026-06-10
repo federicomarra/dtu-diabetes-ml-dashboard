@@ -23,6 +23,8 @@ from models.patch_tst.model import (
 from models.patch_tst.pretrain import masked_mse_loss
 from models.patch_tst.anomaly_score import (
     calibrate_threshold,
+    calibrate_per_patient,
+    any_anomaly_label,
     auroc_per_class,
     auprc_per_class,
 )
@@ -106,6 +108,28 @@ class TestPatchTST:
             assert n == expected_n_masked, (
                 f"Sample {b}: expected {expected_n_masked} masked patches, got {n}"
             )
+
+    def test_fixed_mask_returned_verbatim(self, model, x):
+        # fixed_mask [n_patches] broadcasts to the batch and is returned unchanged
+        fixed = torch.zeros(N_PATCHES, dtype=torch.bool)
+        fixed[-1] = True
+        _, mask = model(x, fixed_mask=fixed)
+        assert mask.shape == (B, N_PATCHES)
+        for b in range(B):
+            assert mask[b, -1].item() is True or mask[b, -1].item() == 1
+            assert mask[b, :-1].sum().item() == 0
+
+    def test_fixed_mask_changes_masked_patch_output(self, model, x):
+        # Hiding the last patch must change its reconstruction vs no masking —
+        # proves the mask token actually replaces the patch (not dead code).
+        torch.manual_seed(0)
+        recon_open, _ = model(x, mask_ratio=0.0)
+        fixed = torch.zeros(N_PATCHES, dtype=torch.bool)
+        fixed[-1] = True
+        recon_masked, _ = model(x, fixed_mask=fixed)
+        last_start = (N_PATCHES - 1) * 20
+        diff = (recon_masked[:, last_start:, :] - recon_open[:, last_start:, :]).abs().max()
+        assert diff > 1e-6, "Masking the last patch did not change its output"
 
     def test_output_dtype_is_float32(self, model, x):
         recon, _ = model(x, mask_ratio=0.0)
@@ -262,6 +286,63 @@ class TestCalibrateThreshold:
             f"Threshold shifted too much with outliers: "
             f"clean={thresh_clean:.3f}, with outliers={thresh_outliers:.3f}"
         )
+
+
+# ── any_anomaly_label ─────────────────────────────────────────────────────────
+
+class TestAnyAnomalyLabel:
+    def test_or_of_classes(self):
+        n = 6
+        labels = {cls: np.zeros(n, np.float32) for cls in ANOMALY_CLASSES}
+        labels["missed"][0] = 1.0
+        labels["late"][1]   = 1.0
+        labels["large"][1]  = 1.0   # overlapping classes on same window
+        any_lbl = any_anomaly_label(labels)
+        np.testing.assert_array_equal(any_lbl, [1, 1, 0, 0, 0, 0])
+
+    def test_all_zero_gives_all_zero(self):
+        labels = {cls: np.zeros(4, np.float32) for cls in ANOMALY_CLASSES}
+        assert any_anomaly_label(labels).sum() == 0
+
+    def test_dtype_float32(self):
+        labels = {cls: np.zeros(3, np.float32) for cls in ANOMALY_CLASSES}
+        labels["anaerobic"][2] = 1.0
+        assert any_anomaly_label(labels).dtype == np.float32
+
+
+# ── calibrate_per_patient ─────────────────────────────────────────────────────
+
+class TestCalibratePerPatient:
+
+    def test_each_patient_uses_own_baseline(self):
+        # Patient A: low baseline (~1) with a spike at the end.
+        # Patient B: high baseline (~100), no anomaly.
+        # A global threshold from A's baseline would flag ALL of B.
+        # Per-patient must flag A's spike and leave B's high-but-normal scores alone.
+        a = np.concatenate([np.ones(50, np.float32), np.full(10, 20.0, np.float32)])
+        b = np.full(60, 100.0, np.float32)
+        scores = np.concatenate([a, b])
+        counts = [("A", 60), ("B", 60)]
+
+        flagged, pct = calibrate_per_patient(scores, counts, n_cal_windows=50)
+
+        assert flagged[50:60].all(), "A's spike windows should be flagged"
+        assert not flagged[60:].any(), "B's constant baseline must not be flagged"
+        assert pct == pytest.approx(100 * 10 / 120, abs=1e-6)
+
+    def test_short_patient_calibrates_on_all_windows(self):
+        # Patient has fewer windows than n_cal_windows → calibrate on all of them.
+        scores = np.concatenate([np.ones(20, np.float32), np.full(5, 50.0, np.float32)])
+        counts = [("short", 25)]
+        flagged, _ = calibrate_per_patient(scores, counts, n_cal_windows=7200)
+        assert flagged[20:].all()       # the 5 spikes
+        assert not flagged[:20].any()   # the flat baseline
+
+    def test_flagged_length_matches_scores(self):
+        scores = np.random.default_rng(0).normal(1.0, 0.2, size=300).astype(np.float32)
+        counts = [("p1", 100), ("p2", 100), ("p3", 100)]
+        flagged, _ = calibrate_per_patient(scores, counts, n_cal_windows=50)
+        assert flagged.shape == scores.shape
 
 
 # ─��� auroc_per_class / auprc_per_class ────��────────────────────────────────────

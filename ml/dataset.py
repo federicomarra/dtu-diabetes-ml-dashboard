@@ -43,6 +43,7 @@ object-dtype string columns need >64 GB and OOM-killed the HPC jobs.
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from typing import Optional
 
@@ -68,6 +69,16 @@ EVAL_STRIDE: int = 1    # 1-min stride → per-minute anomaly scores at inferenc
 _PARQUET = Path("ml/data/sim_data/results_20000p_14d.parquet")
 _SCALER_FILE = Path("ml/data/scalers.json")
 _SPLIT_FILE = Path("ml/data/patient_split.json")
+
+# ── reproducibility ─────────────────────────────────────────────────────────
+
+def set_seed(seed: int = 42) -> None:
+    """Seed Python, NumPy and torch (CPU+CUDA) RNGs for reproducible runs."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 
 # Which parquet column carries each anomaly class label
 _CLASS_TO_COL: dict[str, str] = {
@@ -262,7 +273,8 @@ def _apply_scalers(
     inplace: bool = False,
 ) -> np.ndarray:
     """
-    Z-score signal columns (0-2). Labels untouched.
+    GLOBAL z-score: signal columns (0-2) scaled by population stats. Labels
+    untouched.
 
     inplace=True mutates arr and returns it — skips the full-array copy,
     which matters when scaling the 12k-patient training dict (~8 GB).
@@ -271,6 +283,52 @@ def _apply_scalers(
     for i, ch in enumerate(CHANNELS):
         out[:, i] = (out[:, i] - scalers[ch]["mean"]) / scalers[ch]["std"]
     return out
+
+
+# ── normalization modes ──────────────────────────────────────────────────────
+
+NORM_MODES = ("per_patient", "global")
+
+
+def _patient_zscore(arr: np.ndarray, inplace: bool = False) -> np.ndarray:
+    """
+    PER-PATIENT z-score: signal columns (0-2) scaled by THIS patient's own
+    mean/std (full series). Labels untouched.
+
+    This is the spec default. It removes the cross-patient baseline confound
+    (a patient with naturally high glucose no longer looks "elevated" vs the
+    population), puts every patient on a comparable scale for population
+    pretraining, and matches the per-patient threshold calibration downstream.
+
+    Uses the patient's whole series, so it is acausal — fine for synthetic
+    training/eval. The causal, deployment-faithful version (baseline-days
+    stats only) is scheduled separately for real-data evaluation.
+    """
+    out = arr if inplace else arr.copy()
+    sig = out[:, :N_CHANNELS]
+    mean = sig.mean(axis=0)
+    std = np.maximum(sig.std(axis=0), 1e-8)   # guard constant channels
+    out[:, :N_CHANNELS] = (sig - mean) / std
+    return out
+
+
+def normalize_patients(
+    patient_data: dict[str, np.ndarray],
+    norm: str = "per_patient",
+    scalers: Optional[dict[str, dict[str, float]]] = None,
+    inplace: bool = False,
+) -> dict[str, np.ndarray]:
+    """
+    Scale a patient_data dict. norm='per_patient' (default, spec) scales each
+    patient by its own stats; norm='global' requires fitted population scalers.
+    """
+    if norm == "per_patient":
+        return {pid: _patient_zscore(arr, inplace) for pid, arr in patient_data.items()}
+    if norm == "global":
+        if scalers is None:
+            raise ValueError("norm='global' requires fitted scalers")
+        return {pid: _apply_scalers(arr, scalers, inplace) for pid, arr in patient_data.items()}
+    raise ValueError(f"unknown norm mode {norm!r}; expected one of {NORM_MODES}")
 
 
 # ── window index ───────────────────────────────────────────────────────────────
@@ -322,33 +380,49 @@ class GlucoseWindowDataset(Dataset):
     def __init__(
         self,
         patient_ids: list[str],
-        scalers: dict[str, dict[str, float]],
+        scalers: Optional[dict[str, dict[str, float]]] = None,
         parquet: Path = _PARQUET,
         stride: int = TRAIN_STRIDE,
         _preloaded: Optional[dict[str, np.ndarray]] = None,
+        norm: str = "per_patient",
     ) -> None:
         """
         Parameters
         ----------
         patient_ids : list of patient ID strings to include
-        scalers     : per-channel mean/std from fit_scalers() (training set only)
+        scalers     : population mean/std from fit_scalers(); required only for
+                      norm='global', ignored (may be None) for norm='per_patient'
         parquet     : path to the Parquet file
         stride      : window step in minutes (TRAIN_STRIDE or EVAL_STRIDE)
         _preloaded  : if given, skip the Parquet read and use this dict directly
                       (used internally by build_datasets to avoid a double load)
+        norm        : 'per_patient' (default, spec) or 'global'
         """
         raw = _preloaded if _preloaded is not None else load_patients(patient_ids, parquet)
         # Scale in place only when we loaded the data ourselves — a caller's
         # _preloaded dict must not be mutated (build_datasets frees its copy).
         own = _preloaded is None
-        self._data: dict[str, np.ndarray] = {
-            pid: _apply_scalers(arr, scalers, inplace=own) for pid, arr in raw.items()
-        }
+        self._data: dict[str, np.ndarray] = normalize_patients(
+            raw, norm=norm, scalers=scalers, inplace=own
+        )
         del raw  # free the unscaled copy; self._data holds the only reference from here on
         self._pids, self._pid_idx, self._starts = _make_window_index(self._data, stride)
 
     def __len__(self) -> int:
         return len(self._starts)
+
+    def patient_window_counts(self) -> list[tuple[str, int]]:
+        """
+        (pid, n_windows) per patient, in flat-index order.
+
+        Windows are stored contiguous per patient (see _make_window_index) and
+        the eval loader runs shuffle=False, so a score array produced in this
+        same order can be sliced into per-patient blocks — needed for
+        per-patient threshold calibration. Within each block the windows are in
+        time order, so "first N days" means this patient's first N days.
+        """
+        counts = np.bincount(self._pid_idx, minlength=len(self._pids))
+        return [(pid, int(counts[i])) for i, pid in enumerate(self._pids)]
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, dict[str, float]]:
         pid = self._pids[self._pid_idx[idx]]
@@ -375,13 +449,14 @@ def build_datasets(
     include_train: bool = True,
     include_val: bool = True,
     include_test: bool = True,
+    norm: str = "per_patient",
 ) -> tuple[
     Optional[GlucoseWindowDataset],
     Optional[GlucoseWindowDataset],
     Optional[GlucoseWindowDataset],
 ]:
     """
-    One-call setup: load/create split, fit scalers, build the requested datasets.
+    One-call setup: load/create split, build the requested datasets.
 
     Parameters
     ----------
@@ -395,19 +470,27 @@ def build_datasets(
                    place. Pretraining doesn't need test; anomaly scoring
                    doesn't need train/val. Skipping the 12k-patient train
                    load saves minutes of I/O and ~16 GB of RAM.
+    norm         : 'per_patient' (default, spec) or 'global'.
 
-    Scaler cache
-    ------------
-    Scalers are written to ml/data/scalers.json tagged with the parquet path.
-    A matching cache is re-used, so eval-only runs (include_train=False) skip
-    loading the training split entirely. Caching is disabled when
-    max_per_split is set — scalers fit on a subset must never leak into full
-    runs.
+    Normalization
+    -------------
+    norm='per_patient' (default): each patient is z-scored by its own stats —
+    no population scalers, no cache, and eval-only runs never touch the train
+    split (so include_train=False skips it for free).
+
+    norm='global': population scalers are fit on the train split, written to
+    ml/data/scalers.json tagged with the parquet path, and re-used when the
+    tag matches (lets eval-only runs skip the train load). Caching is disabled
+    when max_per_split is set — scalers fit on a subset must never leak into
+    full runs.
 
     Returns
     -------
     (train_ds, val_ds, test_ds)  — GlucoseWindowDataset or None per include flag
     """
+    if norm not in NORM_MODES:
+        raise ValueError(f"unknown norm mode {norm!r}; expected one of {NORM_MODES}")
+
     if split is None:
         if _SPLIT_FILE.exists():
             cached = json.loads(_SPLIT_FILE.read_text())
@@ -428,7 +511,9 @@ def build_datasets(
         val_ids   = val_ids[:max_per_split]
         test_ids  = test_ids[:max_per_split]
 
-    use_scaler_cache = max_per_split is None
+    # Global mode fits/caches population scalers on the train split. Per-patient
+    # mode needs none of this — each patient self-normalizes.
+    use_scaler_cache = norm == "global" and max_per_split is None
     scalers: Optional[dict[str, dict[str, float]]] = None
     if use_scaler_cache and _SCALER_FILE.exists():
         cached_sc = load_scalers()
@@ -438,28 +523,30 @@ def build_datasets(
 
     train_ds = val_ds = test_ds = None
 
-    # Train patients are loaded if the train dataset is wanted OR scalers
-    # still need fitting (they must be fit on train patients only).
-    if include_train or scalers is None:
+    # Train patients are loaded if the train dataset is wanted, OR (global mode
+    # only) population scalers still need fitting on the train split.
+    need_scalers = norm == "global" and scalers is None
+    if include_train or need_scalers:
         print(f"Loading {len(train_ids)} training patients …")
         train_raw = load_patients(train_ids, parquet)
-        if scalers is None:
+        if need_scalers:
             scalers = fit_scalers(
                 train_raw, parquet=parquet if use_scaler_cache else None
             )
         if include_train:
-            print(f"Building train dataset ({len(train_ids)} patients, stride={train_stride}) …")
+            print(f"Building train dataset ({len(train_ids)} patients, stride={train_stride}, norm={norm}) …")
             train_ds = GlucoseWindowDataset(
-                train_ids, scalers, parquet, stride=train_stride, _preloaded=train_raw
+                train_ids, scalers, parquet, stride=train_stride,
+                _preloaded=train_raw, norm=norm,
             )
         del train_raw  # scaled copy now lives only in train_ds._data
 
     if include_val:
-        print(f"Building val dataset ({len(val_ids)} patients, stride={eval_stride}) …")
-        val_ds = GlucoseWindowDataset(val_ids, scalers, parquet, stride=eval_stride)
+        print(f"Building val dataset ({len(val_ids)} patients, stride={eval_stride}, norm={norm}) …")
+        val_ds = GlucoseWindowDataset(val_ids, scalers, parquet, stride=eval_stride, norm=norm)
 
     if include_test:
-        print(f"Building test dataset ({len(test_ids)} patients, stride={eval_stride}) …")
-        test_ds = GlucoseWindowDataset(test_ids, scalers, parquet, stride=eval_stride)
+        print(f"Building test dataset ({len(test_ids)} patients, stride={eval_stride}, norm={norm}) …")
+        test_ds = GlucoseWindowDataset(test_ids, scalers, parquet, stride=eval_stride, norm=norm)
 
     return train_ds, val_ds, test_ds
