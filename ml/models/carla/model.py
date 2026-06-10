@@ -37,6 +37,8 @@ Usage
     z = model.encode(x)             # [B, 128]
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 

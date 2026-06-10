@@ -34,6 +34,8 @@ Usage
     recon, _ = model(x, mask_ratio=0.0)
 """
 
+from __future__ import annotations
+
 import math
 
 import torch
