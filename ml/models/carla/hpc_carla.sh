@@ -59,7 +59,8 @@ echo "-----"
 
 mkdir -p logs ml/data/checkpoints
 
-### ─── 1. pretraining ────────────────────────────────────────────────────
+# Flags pinned explicitly so this script is the run's reproducibility record.
+# NB: supervised oracle-negative CARLA (uses simulator labels) — see CARLA.md.
 echo "=== CARLA PRETRAINING ==="
 python ml/models/carla/pretrain.py \
     --epochs        30  \
@@ -67,13 +68,18 @@ python ml/models/carla/pretrain.py \
     --lr           1e-4 \
     --tau          0.07 \
     --normal_ratio 0.7 \
+    --norm         per_patient \
+    --seed         42 \
     || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────
+# --norm MUST match pretraining. --gmm_sample caps the GMM fit (default 300k).
 echo ""
 echo "=== CARLA EVALUATION ==="
 python ml/models/carla/anomaly_score.py \
-    --checkpoint ml/data/checkpoints/carla_best.pt
+    --checkpoint  ml/data/checkpoints/carla_best.pt \
+    --norm        per_patient \
+    --gmm_sample  300000
 
 echo "-----"
 echo "Finished: $(date)"

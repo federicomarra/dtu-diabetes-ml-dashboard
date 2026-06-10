@@ -61,23 +61,30 @@ mkdir -p logs ml/data/checkpoints
 ### ─── 1. pretraining ────────────────────────────────────────────────────
 # num_workers=4: the dataset is plain numpy arrays now, so forked workers
 # share memory copy-on-write without duplicating it
+# Flags pinned explicitly so this script is the run's reproducibility record:
+# per-patient z-score, fixed seed (defaults, stated for the record).
 echo "=== PRETRAINING ==="
 python ml/models/patch_tst/pretrain.py \
     --epochs      40  \
     --batch_size  256 \
     --lr          1e-4 \
     --num_workers 4 \
+    --norm        per_patient \
+    --seed        42 \
     || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────
 # Runs immediately after training on the same GPU allocation.
-# Loads the best checkpoint and prints AUPRC + AUROC per anomaly class.
+# --norm MUST match pretraining. Glucose-only score, 20-min prediction horizon.
 echo ""
 echo "=== EVALUATION ==="
 python ml/models/patch_tst/anomaly_score.py \
-    --checkpoint ml/data/checkpoints/patchtst_best.pt \
-    --batch_size  512 \
-    --num_workers 4
+    --checkpoint     ml/data/checkpoints/patchtst_best.pt \
+    --batch_size     512 \
+    --num_workers    4 \
+    --norm           per_patient \
+    --score_channels 0 \
+    --horizon_patches 1
 
 echo "-----"
 echo "Finished: $(date)"
