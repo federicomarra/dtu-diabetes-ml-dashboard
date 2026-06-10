@@ -24,9 +24,9 @@
 #BSUB -gpu "num=1:mode=exclusive_process"
 
 ### ─── memory ──────────────────────────────────────────────────────────────
-# 4 GB per core = 16 GB total; kill if any core exceeds 5 GB
-#BSUB -R "rusage[mem=4GB]"
-#BSUB -M 5GB
+# 8 GB per core = 32 GB total; training data alone ~10 GB in RAM
+#BSUB -R "rusage[mem=8GB]"
+#BSUB -M 12GB
 
 ### ─── walltime ────────────────────────────────────────────────────────────
 # 30 epochs ≈ 2–3 h + GMM fitting + evaluation ≈ 30 min; 8 h is safe
