@@ -199,7 +199,8 @@ def main() -> None:
 
     def make_contrastive_loader(ids: list[str], stride: int) -> DataLoader:
         raw    = load_patients(ids, args.parquet)
-        scaled = {pid: _apply_scalers(arr, scalers) for pid, arr in raw.items()}
+        scaled = {pid: _apply_scalers(arr, scalers, inplace=True)   # no 8 GB copy
+                  for pid, arr in raw.items()}
         ds     = ContrastiveDataset(scaled, stride=stride)
         return DataLoader(ds, batch_size=256, shuffle=False, num_workers=4)
 
@@ -217,24 +218,29 @@ def main() -> None:
     # For evaluation we need per-window anomaly class labels (not just is_normal).
     # Re-use GlucoseWindowDataset for test set — it returns the full label dict.
     print("Scoring test set …")
-    _, _, test_ds = build_datasets(split=split, parquet=args.parquet, eval_stride=EVAL_STRIDE)
+    _, _, test_ds = build_datasets(
+        split=split, parquet=args.parquet, eval_stride=EVAL_STRIDE,
+        include_train=False, include_val=False,
+    )
 
     test_loader = DataLoader(test_ds, batch_size=256, shuffle=False, num_workers=4)
 
-    all_scores: list[float]                    = []
-    all_labels: dict[str, list[float]]         = {cls: [] for cls in ANOMALY_CLASSES}
+    # numpy chunks, not Python floats — 80M stride-1 windows × 6 columns of
+    # Python floats would cost >15 GB
+    all_scores: list[np.ndarray]               = []
+    all_labels: dict[str, list[np.ndarray]]    = {cls: [] for cls in ANOMALY_CLASSES}
 
     model.eval()
     with torch.no_grad():
         for x, label_dict in test_loader:
             z      = model.encode(x.to(device))
             scores = score_with_gmm(pca, gmm, z.cpu().numpy())
-            all_scores.extend(scores.tolist())
+            all_scores.append(scores)
             for cls in ANOMALY_CLASSES:
-                all_labels[cls].extend(label_dict[cls].tolist())
+                all_labels[cls].append(label_dict[cls].numpy())
 
-    scores_arr = np.array(all_scores, dtype=np.float32)
-    labels_arr = {cls: np.array(v, dtype=np.float32) for cls, v in all_labels.items()}
+    scores_arr = np.concatenate(all_scores).astype(np.float32)
+    labels_arr = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
 
     auprc = auprc_per_class(scores_arr, labels_arr)
     auroc = auroc_per_class(scores_arr, labels_arr)

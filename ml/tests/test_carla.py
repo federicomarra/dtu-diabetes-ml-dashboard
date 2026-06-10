@@ -92,21 +92,28 @@ class TestContrastiveDataset:
 
     def test_normal_windows_have_no_flags(self, data, ds):
         # Verify: every window labelled normal truly has all-zero flags in raw data
-        for pid, start in ds._normal_index[:10]:
+        for i in range(min(10, ds.n_normal)):
+            pid   = ds._pids[ds._normal_pid_idx[i]]
+            start = int(ds._normal_starts[i])
             arr = data[pid][start : start + WINDOW_LEN, 3:]
             assert arr.max() == 0.0, f"Normal window {pid}@{start} has anomaly flags set"
 
     def test_anomaly_windows_have_at_least_one_flag(self, data, ds):
         # Verify: every window labelled anomaly has at least one flag set
-        for pid, start in ds._anomaly_index[:10]:
+        for i in range(min(10, ds.n_anomaly)):
+            pid   = ds._pids[ds._anomaly_pid_idx[i]]
+            start = int(ds._anomaly_starts[i])
             arr = data[pid][start : start + WINDOW_LEN, 3:]
             assert arr.max() > 0.0, f"Anomaly window {pid}@{start} has no flags set"
 
     def test_normal_by_patient_covers_all_normals(self, ds):
-        # normal_by_patient should contain exactly the same starts as _normal_index
-        from_index   = set((pid, start) for pid, start in ds._normal_index)
-        from_lookup  = set(
-            (pid, start)
+        # normal_by_patient should contain exactly the same starts as the normal pool
+        from_index = set(
+            (ds._pids[p], int(s))
+            for p, s in zip(ds._normal_pid_idx, ds._normal_starts)
+        )
+        from_lookup = set(
+            (pid, int(start))
             for pid, starts in ds.normal_by_patient.items()
             for start in starts
         )

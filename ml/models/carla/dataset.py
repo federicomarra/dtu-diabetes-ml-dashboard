@@ -39,7 +39,6 @@ Usage
 """
 
 import random
-from collections import defaultdict
 from typing import Iterator
 
 import numpy as np
@@ -73,49 +72,71 @@ class ContrastiveDataset(Dataset):
     ) -> None:
         self._data = patient_data
         self._window_len = window_len
+        self._pids: list[str] = list(patient_data.keys())
 
-        # Separate index lists so BatchSampler can address each pool independently.
-        # Each entry: (patient_id, start_row_index).
-        self._normal_index:  list[tuple[str, int]] = []
-        self._anomaly_index: list[tuple[str, int]] = []
+        # Separate index pools so BatchSampler can address each independently.
+        # Stored as parallel int32 numpy arrays (pid_idx into self._pids +
+        # window start row) — a Python list of (pid, start) tuples on the
+        # 12k-patient training split is ~16M tuples ≈ 2 GB.
+        self._normal_pid_idx:  np.ndarray
+        self._normal_starts:   np.ndarray
+        self._anomaly_pid_idx: np.ndarray
+        self._anomaly_starts:  np.ndarray
 
         # O(1) lookup for positive pair sampling (used by pretrain.py if needed).
-        # Maps patient_id -> sorted list of normal window start indices.
-        self.normal_by_patient: dict[str, list[int]] = defaultdict(list)
+        # Maps patient_id -> sorted array of normal window start indices.
+        self.normal_by_patient: dict[str, np.ndarray] = {}
 
         self._build_index(stride)
 
     def _build_index(self, stride: int) -> None:
-        for pid, arr in self._data.items():
+        n_pid, n_start, a_pid, a_start = [], [], [], []
+        for i, pid in enumerate(self._pids):
+            arr = self._data[pid]
             T = arr.shape[0]
-            for start in range(0, T - self._window_len + 1, stride):
-                # Anomaly if ANY flag (cols 3-7) is non-zero at ANY minute in the window
-                is_anomaly = bool(arr[start : start + self._window_len, 3:].any())
-                if is_anomaly:
-                    self._anomaly_index.append((pid, start))
-                else:
-                    self._normal_index.append((pid, start))
-                    self.normal_by_patient[pid].append(start)
+            starts = np.arange(0, T - self._window_len + 1, stride, dtype=np.int32)
+
+            # Anomaly if ANY flag (cols 3-7) is non-zero at ANY minute in the
+            # window. Vectorised: cumulative sum of the per-minute flag turns
+            # "any flag inside [start, start+W)" into two lookups per window.
+            flags = (arr[:, N_CHANNELS:] != 0).any(axis=1)
+            csum = np.concatenate(([0], np.cumsum(flags, dtype=np.int64)))
+            is_anom = (csum[starts + self._window_len] - csum[starts]) > 0
+
+            n_pid.append(np.full(int((~is_anom).sum()), i, dtype=np.int32))
+            n_start.append(starts[~is_anom])
+            a_pid.append(np.full(int(is_anom.sum()), i, dtype=np.int32))
+            a_start.append(starts[is_anom])
+            self.normal_by_patient[pid] = starts[~is_anom]
+
+        empty = np.empty(0, dtype=np.int32)
+        self._normal_pid_idx  = np.concatenate(n_pid)   if n_pid   else empty
+        self._normal_starts   = np.concatenate(n_start) if n_start else empty
+        self._anomaly_pid_idx = np.concatenate(a_pid)   if a_pid   else empty
+        self._anomaly_starts  = np.concatenate(a_start) if a_start else empty
 
     # ── flat indexing: normals first, then anomalies ──────────────────────────
 
     @property
     def n_normal(self) -> int:
-        return len(self._normal_index)
+        return len(self._normal_starts)
 
     @property
     def n_anomaly(self) -> int:
-        return len(self._anomaly_index)
+        return len(self._anomaly_starts)
 
     def __len__(self) -> int:
         return self.n_normal + self.n_anomaly
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         if idx < self.n_normal:
-            pid, start = self._normal_index[idx]
+            pid = self._pids[self._normal_pid_idx[idx]]
+            start = int(self._normal_starts[idx])
             is_normal = 1
         else:
-            pid, start = self._anomaly_index[idx - self.n_normal]
+            j = idx - self.n_normal
+            pid = self._pids[self._anomaly_pid_idx[j]]
+            start = int(self._anomaly_starts[j])
             is_normal = 0
 
         window = self._data[pid][start : start + self._window_len, :N_CHANNELS]

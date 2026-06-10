@@ -28,8 +28,9 @@
 #BSUB -R "rusage[mem=16GB]"
 
 ### ─── walltime ────────────────────────────────────────────────────────────
-# 30 epochs ≈ 2–3 h + GMM fitting + evaluation ≈ 30 min; 8 h is safe
-#BSUB -W 8:00
+# 20k cohort: ~73k contrastive steps/epoch × 30 epochs could reach 5–6 h,
+# plus GMM fitting + stride-1 test scoring ≈ 1 h. 12 h gives headroom.
+#BSUB -W 12:00
 
 ### ─── email notifications ─────────────────────────────────────────────────
 #BSUB -u furlanettoguido@gmail.com
@@ -65,7 +66,8 @@ python ml/models/carla/pretrain.py \
     --batch_size   256  \
     --lr           1e-4 \
     --tau          0.07 \
-    --normal_ratio 0.7
+    --normal_ratio 0.7 \
+    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────
 echo ""

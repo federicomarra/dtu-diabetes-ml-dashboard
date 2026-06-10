@@ -215,17 +215,31 @@ def main() -> None:
     # ── data ───────────────────────────────────────────────────────────────────
     print(f"Loading {len(train_ids)} training patients …")
     train_raw = load_patients(train_ids, args.parquet)
-    if SCALER_FILE.exists():
-        scalers = load_scalers()
-    else:
-        scalers = fit_scalers(train_raw)
 
-    train_scaled = {pid: _apply_scalers(arr, scalers) for pid, arr in train_raw.items()}
-    del train_raw  # free unscaled copy; scaled lives in train_scaled
+    # Re-use cached scalers only if they were fit on this parquet —
+    # a stale cache from the 500p cohort would silently mis-scale everything.
+    scalers = None
+    if SCALER_FILE.exists():
+        cached = load_scalers()
+        if cached.get("_parquet") == str(args.parquet):
+            scalers = cached
+            print(f"Re-using cached scalers  ←  {SCALER_FILE}")
+    if scalers is None:
+        # never tag a smoke-test fit (10 patients) as valid for the full cohort
+        scalers = fit_scalers(
+            train_raw, parquet=args.parquet if not args.smoke_test else None
+        )
+
+    # inplace=True: z-score the arrays where they sit instead of copying the
+    # ~8 GB training dict
+    train_scaled = {pid: _apply_scalers(arr, scalers, inplace=True)
+                    for pid, arr in train_raw.items()}
+    del train_raw
 
     print(f"Loading {len(val_ids)} val patients …")
     val_raw    = load_patients(val_ids, args.parquet)
-    val_scaled = {pid: _apply_scalers(arr, scalers) for pid, arr in val_raw.items()}
+    val_scaled = {pid: _apply_scalers(arr, scalers, inplace=True)
+                  for pid, arr in val_raw.items()}
     del val_raw
 
     train_ds = ContrastiveDataset(train_scaled)
@@ -234,10 +248,13 @@ def main() -> None:
     print(f"Train: {train_ds.n_normal:,} normal + {train_ds.n_anomaly:,} anomaly windows")
     print(f"Val:   {val_ds.n_normal:,}  normal + {val_ds.n_anomaly:,}  anomaly windows")
 
+    # num_workers=4 is safe again: the dataset now holds a few large numpy
+    # arrays, so forked workers share pages copy-on-write without duplicating
+    # them (the old pandas-object layout forced per-worker copies).
     train_sampler = ContrastiveBatchSampler(train_ds, args.batch_size, args.normal_ratio)
-    train_loader  = DataLoader(train_ds, batch_sampler=train_sampler, num_workers=0, pin_memory=True)
+    train_loader  = DataLoader(train_ds, batch_sampler=train_sampler, num_workers=4, pin_memory=True)
     # Val loader: plain shuffle, no composition control needed (just measuring loss)
-    val_loader    = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    val_loader    = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     # ── model ──────────────────────────────────────────────────────────────────
     backbone = PatchTST().to(device)
