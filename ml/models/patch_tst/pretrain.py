@@ -42,7 +42,7 @@ from torch.utils.data import DataLoader
 # make ml/ importable regardless of working directory
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dataset import build_datasets, WINDOW_LEN, N_CHANNELS
+from dataset import build_datasets, TRAIN_STRIDE, WINDOW_LEN, N_CHANNELS
 from models.patch_tst.model import PatchTST, MASK_RATIO, PATCH_LEN
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -161,9 +161,14 @@ def main() -> None:
     # ── data ──────────────────────────────────────────────────────────────────
     max_per_split = 10 if args.smoke_test else None
     print("Building datasets…")
+    # eval_stride=TRAIN_STRIDE: per-epoch validation at 15-min stride — stride=1
+    # would mean 80M val windows per epoch (5× the training work) for no gain.
+    # Stride-1 scoring stays where it belongs: anomaly_score.py on the test set.
     train_ds, val_ds, _ = build_datasets(
         parquet       = PARQUET,
         max_per_split = max_per_split,
+        eval_stride   = TRAIN_STRIDE,
+        include_test  = False,   # test set is loaded by anomaly_score.py, not here
     )
     print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}")
 

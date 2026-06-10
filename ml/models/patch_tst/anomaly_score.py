@@ -87,8 +87,10 @@ def score_dataset(
     """
     model.eval()
 
-    all_scores: list[float] = []
-    all_labels: dict[str, list[float]] = {cls: [] for cls in ANOMALY_CLASSES}
+    # Accumulate numpy chunks, not Python floats — 80M stride-1 windows as
+    # Python list elements cost ~3 GB per metric column.
+    all_scores: list[np.ndarray] = []
+    all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
     for x, label_dict in loader:
         x = x.to(device)                            # [B, 120, 3]
@@ -97,13 +99,13 @@ def score_dataset(
 
         # MSE per window: mean over time and channel dims → scalar per sample
         mse = ((recon - x) ** 2).mean(dim=(1, 2))  # [B]
-        all_scores.extend(mse.cpu().tolist())
+        all_scores.append(mse.cpu().numpy())
 
         for cls in ANOMALY_CLASSES:
-            all_labels[cls].extend(label_dict[cls].tolist())
+            all_labels[cls].append(label_dict[cls].numpy())
 
-    scores = np.array(all_scores, dtype=np.float32)
-    labels = {cls: np.array(v, dtype=np.float32) for cls, v in all_labels.items()}
+    scores = np.concatenate(all_scores).astype(np.float32)
+    labels = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
     return scores, labels
 
 
@@ -131,8 +133,8 @@ def score_dataset_last_patch(
 
     model.eval()
 
-    all_scores: list[float] = []
-    all_labels: dict[str, list[float]] = {cls: [] for cls in ANOMALY_CLASSES}
+    all_scores: list[np.ndarray] = []
+    all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
     for x, label_dict in loader:
         x = x.to(device)                               # [B, 120, 3]
@@ -150,13 +152,13 @@ def score_dataset_last_patch(
         # score only last patch (minutes 100–119)
         last_start = (N_PATCHES - 1) * PATCH_LEN      # = 100
         mse = ((recon[:, last_start:, :] - x[:, last_start:, :]) ** 2).mean(dim=(1, 2))  # [B]
-        all_scores.extend(mse.cpu().tolist())
+        all_scores.append(mse.cpu().numpy())
 
         for cls in ANOMALY_CLASSES:
-            all_labels[cls].extend(label_dict[cls].tolist())
+            all_labels[cls].append(label_dict[cls].numpy())
 
-    scores = np.array(all_scores, dtype=np.float32)
-    labels = {cls: np.array(v, dtype=np.float32) for cls, v in all_labels.items()}
+    scores = np.concatenate(all_scores).astype(np.float32)
+    labels = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
     return scores, labels
 
 
@@ -260,9 +262,13 @@ def main() -> None:
 
     # ── data ──────────────────────────────────────────────────────────────────
     max_per_split = 10 if args.smoke_test else None
+    # Only the test set is needed; cached scalers (written by pretrain.py)
+    # let build_datasets skip the 12k-patient train load entirely.
     _, _, test_ds = build_datasets(
         parquet       = PARQUET,
         max_per_split = max_per_split,
+        include_train = False,
+        include_val   = False,
     )
     print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
 

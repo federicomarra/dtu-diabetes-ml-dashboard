@@ -59,12 +59,15 @@ echo "-----"
 mkdir -p logs ml/data/checkpoints
 
 ### ─── 1. pretraining ────────────────────────────────────────────────────
+# num_workers=4: the dataset is plain numpy arrays now, so forked workers
+# share memory copy-on-write without duplicating it
 echo "=== PRETRAINING ==="
 python ml/models/patch_tst/pretrain.py \
     --epochs      40  \
     --batch_size  256 \
     --lr          1e-4 \
-    --num_workers 0
+    --num_workers 4 \
+    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────
 # Runs immediately after training on the same GPU allocation.
