@@ -106,6 +106,7 @@ def make_patient_split(
     n_val = int(n * ratios[1])
 
     split: dict[str, list[str]] = {
+        "_parquet": str(parquet),
         "train": all_ids[:n_train],
         "val":   all_ids[n_train : n_train + n_val],
         "test":  all_ids[n_train + n_val :],
@@ -323,7 +324,12 @@ def build_datasets(
     """
     if split is None:
         if _SPLIT_FILE.exists():
-            split = json.loads(_SPLIT_FILE.read_text())
+            cached = json.loads(_SPLIT_FILE.read_text())
+            if cached.get("_parquet") == str(parquet):
+                split = cached
+            else:
+                print(f"Split cache is for a different parquet — regenerating…")
+                split = make_patient_split(parquet)
         else:
             split = make_patient_split(parquet)
 
