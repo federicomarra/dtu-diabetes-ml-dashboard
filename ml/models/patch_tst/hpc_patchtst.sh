@@ -24,9 +24,9 @@
 #BSUB -gpu "num=1:mode=exclusive_process"
 
 ### ─── memory ──────────────────────────────────────────────────────────────
-# 8 GB per core = 32 GB total; training data alone ~10 GB in RAM
-#BSUB -R "rusage[mem=8GB]"
-#BSUB -M 12GB
+# 16 GB per core = 64 GB total; -M must be rusage+1 per DTU esub rule
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 17GB
 
 ### ─── walltime ────────────────────────────────────────────────────────────
 # pretraining 15 epochs ≈ 1–2 h + evaluation ≈ 20 min; 4 h is safe
