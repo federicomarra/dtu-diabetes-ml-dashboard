@@ -183,7 +183,10 @@ def main() -> None:
 
     # ── data ──────────────────────────────────────────────────────────────────
     max_per_split = 10 if args.smoke_test else None
-    _, _, test_ds = build_datasets(parquet=PARQUET, max_per_split=max_per_split)
+    _, _, test_ds = build_datasets(
+        parquet=PARQUET, max_per_split=max_per_split,
+        include_train=False, include_val=False,
+    )
     print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
 
     loader = DataLoader(

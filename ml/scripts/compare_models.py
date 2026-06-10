@@ -105,7 +105,8 @@ def score_carla(
     # Fit GMM on normal training embeddings
     print("  Embedding training set for GMM fitting …")
     raw_train    = load_patients(train_ids, parquet)
-    scaled_train = {pid: _apply_scalers(arr, scalers) for pid, arr in raw_train.items()}
+    scaled_train = {pid: _apply_scalers(arr, scalers, inplace=True)   # no 8 GB copy
+                    for pid, arr in raw_train.items()}
     train_ds     = ContrastiveDataset(scaled_train, stride=15)
     train_loader = DataLoader(train_ds, batch_size=512, shuffle=False, num_workers=4)
     train_emb, train_normal = embed_dataset(model, train_loader, device)
@@ -114,19 +115,20 @@ def score_carla(
 
     # Score test set (reuse GlucoseWindowDataset from test_loader for labels)
     print("  Scoring test set …")
-    all_scores: list[float]           = []
-    all_labels: dict[str, list[float]] = {cls: [] for cls in ANOMALY_CLASSES}
+    # numpy chunks, not Python floats — stride-1 test scoring is 80M windows
+    all_scores: list[np.ndarray]            = []
+    all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
     with torch.no_grad():
         for x, label_dict in test_loader:
             z      = model.encode(x.to(device))
             scores = score_with_gmm(pca, gmm, z.cpu().numpy())
-            all_scores.extend(scores.tolist())
+            all_scores.append(scores)
             for cls in ANOMALY_CLASSES:
-                all_labels[cls].extend(label_dict[cls].tolist())
+                all_labels[cls].append(label_dict[cls].numpy())
 
-    scores_arr = np.array(all_scores, dtype=np.float32)
-    labels_arr = {cls: np.array(v, dtype=np.float32) for cls, v in all_labels.items()}
+    scores_arr = np.concatenate(all_scores).astype(np.float32)
+    labels_arr = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
     return scores_arr, labels_arr
 
 
@@ -208,10 +210,16 @@ def main() -> None:
 
     # Build shared test loader (GlucoseWindowDataset for per-class labels)
     print("Building test dataset …")
+    # include_train=False: scalers come from the cache written during
+    # pretraining, so the 12k-patient train split is never loaded here.
+    # Keep the full train list in the split — if the scaler cache is ever
+    # missing, scalers must be refit on all train patients, not a subset.
     _, _, test_ds = build_datasets(
-        split={"train": train_ids, "val": split["val"][:1], "test": test_ids},
+        split={"train": split["train"], "val": split["val"], "test": test_ids},
         parquet=args.parquet,
         eval_stride=EVAL_STRIDE if not args.smoke_test else 15,
+        include_train=False,
+        include_val=False,
     )
     test_loader = DataLoader(test_ds, batch_size=512, shuffle=False, num_workers=4)
 
