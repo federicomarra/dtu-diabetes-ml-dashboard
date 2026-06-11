@@ -70,10 +70,6 @@ const RANGE_COLORS = {
 
 type ViewMode = "stacked" | "barchart";
 
-/** Format a Date as DD/MM — locale-independent to avoid SSR hydration mismatches. */
-function formatDayMonth(d: Date): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
 
 
 function returnNodeFromSpanDays(days: number): ReactNode {
@@ -356,9 +352,9 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
         />
         <Bar
           dataKey="pct"
-          shape={(props: any) => {
-            const { x, y, width, height, payload } = props;
-            const color = RANGE_COLORS[payload.key as keyof typeof RANGE_COLORS];
+          shape={(props: { x?: number; y?: number; width?: number; height?: number; payload?: { key: string } }) => {
+            const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+            const color = RANGE_COLORS[(payload?.key ?? "") as keyof typeof RANGE_COLORS];
             return <Rectangle x={x} y={y} width={width} height={height} fill={color} radius={[0, 4, 4, 0]} />;
           }}
         />

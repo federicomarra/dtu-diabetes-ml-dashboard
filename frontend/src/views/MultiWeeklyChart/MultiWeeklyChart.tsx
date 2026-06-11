@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -23,7 +23,6 @@ import {
   CHART_DOMAIN_MIN,
   CHART_DOMAIN_MAX,
 } from "@/models/glucoseConfig";
-import type { CustomThresholds } from "@/views/TIRChart/TIRChart";
 import styles from "./MultiWeeklyChart.module.css";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -68,6 +67,14 @@ function minuteOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** Returns "YYYY-MM-DD" in local timezone. */
+function getLocalDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 // ─── Data grouping ──────────────────────────────────────────
 
 function groupByWeek(
@@ -87,7 +94,7 @@ function groupByWeek(
   for (const r of sorted) {
     const d = new Date(r.timestamp);
     const monday = isoWeekMonday(d);
-    const key = monday.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const key = getLocalDateStr(monday); // "YYYY-MM-DD" in local time
     if (!weekMap.has(key)) {
       weekMap.set(key, { monday, readings: [] });
     }
@@ -104,10 +111,10 @@ function groupByWeek(
     const days: DayData[] = DAY_NAMES.map((dayLabel, i) => {
       const dayDate = new Date(monday);
       dayDate.setDate(monday.getDate() + i);
-      const dateStr = dayDate.toISOString().slice(0, 10);
+      const dateStr = getLocalDateStr(dayDate);
 
       const points = weekReadings
-        .filter((r) => r.timestamp.slice(0, 10) === dateStr)
+        .filter((r) => getLocalDateStr(new Date(r.timestamp)) === dateStr)
         .map((r) => ({
           minuteOfDay: minuteOfDay(new Date(r.timestamp)),
           glucose: convertGlucose(r.glucose_mmoll, unit),
@@ -144,9 +151,10 @@ interface DayPanelProps {
   domainMax: number;
   unit: string;
   isToday: boolean;
+  mounted: boolean;
 }
 
-function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToday }: DayPanelProps) {
+function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToday, mounted }: DayPanelProps) {
   const hasData = day.points.length > 0;
 
   // Recharts needs a 'key' field — use minuteOfDay
@@ -178,8 +186,8 @@ function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToda
 
       {/* Mini chart */}
       <div className={styles.dayChart}>
-        {hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
+        {hasData && mounted ? (
+          <ResponsiveContainer width="100%" height="100%" minHeight={0} minWidth={0}>
             <LineChart
               data={chartData}
               margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
@@ -269,9 +277,10 @@ interface WeekRowProps {
   domainMax: number;
   unit: string;
   todayStr: string;
+  mounted: boolean;
 }
 
-function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayStr }: WeekRowProps) {
+function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayStr, mounted }: WeekRowProps) {
   const mondayLabel = fmtDayMonth(week.startDate);
   const sundayLabel = fmtDayMonth(week.endDate);
 
@@ -288,7 +297,7 @@ function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayS
       {/* 7 day panels */}
       <div className={styles.weekDays}>
         {week.days.map((day) => {
-          const dayStr = day.date.toISOString().slice(0, 10);
+          const dayStr = getLocalDateStr(day.date);
           const isToday = dayStr === todayStr;
           return (
             <DayPanel
@@ -301,6 +310,7 @@ function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayS
               domainMax={domainMax}
               unit={unit}
               isToday={isToday}
+              mounted={mounted}
             />
           );
         })}
@@ -328,7 +338,13 @@ export default function MultiWeeklyChart({
     [readings, unit]
   );
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const todayStr = getLocalDateStr(new Date());
 
   if (weeks.length === 0) {
     return (
@@ -362,40 +378,63 @@ export default function MultiWeeklyChart({
         </div>
       </div>
 
-      {/* Day-of-week header row */}
-      <div className={styles.dayHeaderRow}>
-        <div className={styles.weekLabelSpacer} />
-        <div className={styles.dayHeaderCells}>
-          {DAY_NAMES.map((d) => (
-            <div key={d} className={styles.dayHeaderCell}>{d}</div>
-          ))}
+      <div className={styles.mainBody}>
+        <div className={styles.gridArea}>
+          {/* Day-of-week header row */}
+          <div className={styles.dayHeaderRow}>
+            <div className={styles.weekLabelSpacer} />
+            <div className={styles.dayHeaderCells}>
+              {DAY_NAMES.map((d) => (
+                <div key={d} className={styles.dayHeaderCell}>{d}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Week rows */}
+          <div className={styles.weeksContainer}>
+            {weeks.map((week) => (
+              <WeekRow
+                key={week.weekKey}
+                week={week}
+                low={low}
+                high={high}
+                veryHigh={veryHigh}
+                domainMin={domainMin}
+                domainMax={domainMax}
+                unit={unit}
+                todayStr={todayStr}
+                mounted={mounted}
+              />
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Week rows */}
-      <div className={styles.weeksContainer}>
-        {weeks.map((week) => (
-          <WeekRow
-            key={week.weekKey}
-            week={week}
-            low={low}
-            high={high}
-            veryHigh={veryHigh}
-            domainMin={domainMin}
-            domainMax={domainMax}
-            unit={unit}
-            todayStr={todayStr}
-          />
-        ))}
-      </div>
+        {/* Approximate Y-axis legend on the right */}
+        <div className={styles.verticalScaleHint}>
+           <div className={styles.verticalScaleLabel}>{domainMax}</div>
+           <div className={styles.verticalScaleBar} />
+           
+           {weeks.length > 2 && (
+             <>
+               <div className={styles.verticalScaleLabel} style={{ color: "var(--danger)" }}>{veryHigh}</div>
+               <div className={styles.verticalScaleBar} />
+             </>
+           )}
 
-      {/* Y-axis scale legend */}
-      <div className={styles.scaleHint}>
-        <span>{domainMax} {unit}</span>
-        <span className={styles.scaleBar} />
-        <span>{low}–{high} {unit} target</span>
-        <span className={styles.scaleBar} />
-        <span>{domainMin} {unit}</span>
+           {weeks.length > 1 && (
+             <>
+               <div className={styles.verticalScaleTarget}>
+                  <div style={{ color: "var(--warning)" }}>{high}</div>
+                  <div className={styles.verticalScaleTargetText}>Target</div>
+                  <div style={{ color: "var(--warning)" }}>{low}</div>
+               </div>
+               <div className={styles.verticalScaleBar} />
+             </>
+           )}
+
+           <div className={styles.verticalScaleLabel}>{domainMin}</div>
+           <div className={styles.verticalScaleUnit}>{unit}</div>
+        </div>
       </div>
     </div>
   );

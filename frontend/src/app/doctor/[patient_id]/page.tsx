@@ -85,7 +85,7 @@ export default function DoctorPatientDetail() {
       )}
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} />
+        <GlucoseChart readings={readings} patientId={patient!.id} />
         {tir && (
           <TIRChart
             tir={tir}
