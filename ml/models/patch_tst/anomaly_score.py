@@ -311,6 +311,11 @@ def main() -> None:
                              "(1=20min default, 2=40min)")
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
                         help="normalization mode — MUST match the pretrain run")
+    parser.add_argument("--test_stride", type=int, default=1,
+                        help="eval window stride. 1 = per-minute (80M windows, slow); "
+                             "5 ≈ same AUPRC at 5x less compute (windows overlap ~99%)")
+    parser.add_argument("--last_only", action="store_true",
+                        help="score only Option 2 (prediction); skip Option 1 full reconstruction")
     parser.add_argument("--smoke_test",  action="store_true",
                         help="Score 10 test patients only")
     args = parser.parse_args()
@@ -338,11 +343,12 @@ def main() -> None:
     _, _, test_ds = build_datasets(
         parquet       = PARQUET,
         max_per_split = max_per_split,
+        eval_stride   = args.test_stride,
         include_train = False,
         include_val   = False,
         norm          = args.norm,
     )
-    print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
+    print(f"Test windows: {len(test_ds):,}  (stride={args.test_stride} min)")
 
     loader = DataLoader(
         test_ds,
@@ -355,54 +361,53 @@ def main() -> None:
     _names = ["glucose", "insulin", "carbs"]
     print(f"Scoring channels: {[_names[c] for c in score_channels]}")
 
-    # ── score: option 1 (whole-window reconstruction deviation) ──────────────
-    print("Scoring — Option 1: whole-window reconstruction deviation…")
-    scores_full, labels = score_dataset(model, loader, device, score_channels)
-    print(f"Score range: min={scores_full.min():.4f}  max={scores_full.max():.4f}  mean={scores_full.mean():.4f}")
+    # Active scores: Option 2 (prediction) always; Option 1 (full recon) unless
+    # --last_only. Everything below iterates `scored`, so dropping Option 1 just
+    # removes a column.
+    scored: list[tuple[str, np.ndarray]] = []
+    labels: dict[str, np.ndarray] | None = None
 
-    # ── score: option 2 (next-N-min prediction error) ────────────────────────
+    if not args.last_only:
+        print("Scoring — Option 1: whole-window reconstruction deviation…")
+        scores_full, labels = score_dataset(model, loader, device, score_channels)
+        print(f"  range min={scores_full.min():.4f} max={scores_full.max():.4f} mean={scores_full.mean():.4f}")
+        scored.append(("full", scores_full))
+
     print(f"Scoring — Option 2: next-{args.horizon_patches * 20}-min prediction error…")
-    scores_last, _ = score_dataset_last_patch(model, loader, device, score_channels, args.horizon_patches)
-    print(f"Score range: min={scores_last.min():.4f}  max={scores_last.max():.4f}  mean={scores_last.mean():.4f}")
+    scores_last, labels_last = score_dataset_last_patch(model, loader, device, score_channels, args.horizon_patches)
+    print(f"  range min={scores_last.min():.4f} max={scores_last.max():.4f} mean={scores_last.mean():.4f}")
+    scored.append(("last", scores_last))
+    if labels is None:
+        labels = labels_last
 
     # ── per-patient threshold (informational) ─────────────────────────────────
-    # n_cal_windows = first N_CAL_DAYS days, in windows. At stride 1 one window
-    # ≈ one minute, so this holds only for EVAL_STRIDE == 1.
-    n_cal = N_CAL_DAYS * MINUTES_PER_DAY // EVAL_STRIDE
+    # n_cal_windows = first N_CAL_DAYS days, in windows (one window ≈ test_stride min).
+    n_cal = N_CAL_DAYS * MINUTES_PER_DAY // args.test_stride
     patient_counts = test_ds.patient_window_counts()
-    for name, scores in [("full", scores_full), ("last-patch", scores_last)]:
+    for name, scores in scored:
         _, flagged = calibrate_per_patient(scores, patient_counts, n_cal)
         print(f"Threshold [{name}] (per-patient median+2×IQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
 
     # ── headline detection metric: any-anomaly (any class vs normal) ──────────
     any_lbl = any_anomaly_label(labels)
-    any_prev = float(any_lbl.mean())
-    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_prev:.2%})")
-    for name, scores in [("full", scores_full), ("last", scores_last)]:
+    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_lbl.mean():.2%})")
+    for name, scores in scored:
         ap = average_precision_score(any_lbl, scores) if any_lbl.sum() > 0 else float("nan")
         au = roc_auc_score(any_lbl, scores)           if any_lbl.sum() > 0 else float("nan")
         print(f"  {name:<10}  AUPRC={ap:.4f}  AUROC={au:.4f}")
 
     # ── per-class metrics (classification-flavoured; see any_anomaly_label) ────
-    auroc_full = auroc_per_class(scores_full, labels)
-    auprc_full = auprc_per_class(scores_full, labels)
-    auroc_last = auroc_per_class(scores_last, labels)
-    auprc_last = auprc_per_class(scores_last, labels)
+    def _fmt(v): return f"{v:.4f}" if not np.isnan(v) else "   n/a"
+    metrics = {name: (auprc_per_class(s, labels), auroc_per_class(s, labels)) for name, s in scored}
+    n_total = len(scored[0][1])
 
-    n_total = len(scores_full)
-    header = f"  {'class':<12}  {'AUPRC-full':>10}  {'AUPRC-last':>10}  {'AUROC-full':>10}  {'AUROC-last':>10}  {'prevalence':>10}"
+    cols = "  ".join(f"{name+'-AUPRC':>11} {name+'-AUROC':>11}" for name, _ in scored)
     print(f"\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ≈ prevalence)")
-    print(header)
-    print(f"  {'-'*12}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}")
-
+    print(f"  {'class':<12} {'prev':>7}  {cols}")
     for cls in ANOMALY_CLASSES:
-        n_pos      = int(labels[cls].sum())
-        prevalence = n_pos / n_total if n_total > 0 else 0.0
-        def fmt(v): return f"{v:.4f}" if not np.isnan(v) else "   n/a"
-        print(
-            f"  {cls:<12}  {fmt(auprc_full[cls]):>10}  {fmt(auprc_last[cls]):>10}"
-            f"  {fmt(auroc_full[cls]):>10}  {fmt(auroc_last[cls]):>10}  {prevalence:>9.2%}"
-        )
+        prevalence = labels[cls].sum() / n_total if n_total > 0 else 0.0
+        row = "  ".join(f"{_fmt(metrics[n][0][cls]):>11} {_fmt(metrics[n][1][cls]):>11}" for n, _ in scored)
+        print(f"  {cls:<12} {prevalence:>7.2%}  {row}")
 
 
 if __name__ == "__main__":
