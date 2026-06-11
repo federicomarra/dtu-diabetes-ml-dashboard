@@ -139,7 +139,7 @@ public class GlucoseService(AppDbContext db)
         // Temporal span: difference between the earliest and latest reading.
         DateTime minTs = rows.Min(r => r.Timestamp);
         DateTime maxTs = rows.Max(r => r.Timestamp);
-        int temporalSpanDays = (int)(maxTs - minTs).TotalDays + 1;
+        int temporalSpanDays = (int)(maxTs - minTs).TotalDays;
 
         var values = rows.Select(r => r.GlucoseMmoll).ToList();
 

@@ -15,6 +15,7 @@ interface PatientOverviewProps {
   tir?: TimeInRange;
   anomalyCount?: number;
   averageGlucose?: number | null;
+  timeRangeLast?: string;
 }
 
 function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
@@ -59,6 +60,7 @@ export default function PatientOverview({
   tir,
   anomalyCount = 0,
   averageGlucose,
+  timeRangeLast = "2w",
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: glucoseRanges } = useGlucoseRanges();
@@ -126,7 +128,7 @@ export default function PatientOverview({
               <Droplets size={18} />
             </div>
             <div>
-            <div className={styles.metricLabel}>Avg Glucose (2w)</div>
+            <div className={styles.metricLabel}>Avg Glucose ({timeRangeLast})</div>
             <div
               className={styles.metricValue}
               style={{ color: getStatusColor(averageStatus) }}

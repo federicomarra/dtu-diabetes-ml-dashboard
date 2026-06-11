@@ -1,15 +1,40 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRChart from "@/views/TIRChart/TIRChart";
+import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
+import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import styles from "./patient-detail.module.css";
+
+const parseLast = (lastStr?: string) => {
+  const defaultVal = { value: 2, unit: "w" as const };
+  if (!lastStr) return defaultVal;
+  const match = lastStr.match(/^(\d+)([dwm])$/);
+  if (!match) return defaultVal;
+  const value = parseInt(match[1], 10);
+  const unit = match[2] as "d" | "w" | "m";
+  
+  if (unit === "d" && (value < 1 || value > 7)) {
+    if (value === 14) return { value: 2, unit: "w" as const };
+    return { value: Math.min(Math.max(value, 1), 7), unit };
+  }
+  if (unit === "w" && (value < 1 || value > 4)) {
+    return { value: Math.min(Math.max(value, 1), 4), unit };
+  }
+  if (unit === "m" && (value < 1 || value > 6)) {
+    return { value: Math.min(Math.max(value, 1), 6), unit };
+  }
+  return { value, unit };
+};
 
 /**
  * Doctor — Patient Detail Page (/doctor/[patient_id]) — thin shell.
@@ -18,6 +43,30 @@ import styles from "./patient-detail.module.css";
 export default function DoctorPatientDetail() {
   const { patient_id } = useParams<{ patient_id: string }>();
   const ctrl = usePatientDetailController(patient_id);
+  const { timeRange, setLast } = useTimeRange();
+  const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
+  const { unit } = useGlucoseUnit();
+  const [showRangesModal, setShowRangesModal] = useState(false);
+
+  const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
+  const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
+  const valuesArray = Array.from({ length: maxVal }, (_, i) => i + 1);
+
+  const handleUnitChange = (newUnit: "d" | "w" | "m") => {
+    let newValue = activeVal;
+    if (newUnit === "d") {
+      newValue = Math.min(Math.max(activeVal, 1), 7);
+    } else if (newUnit === "w") {
+      newValue = Math.min(Math.max(activeVal, 1), 4);
+    } else if (newUnit === "m") {
+      newValue = Math.min(Math.max(activeVal, 1), 6);
+    }
+    setLast(`${newValue}${newUnit}`);
+  };
+
+  const handleValueChange = (newValue: number) => {
+    setLast(`${newValue}${activeUnit}`);
+  };
 
   if (ctrl.loading) {
     return (
@@ -68,7 +117,58 @@ export default function DoctorPatientDetail() {
         Back to Doctor Dashboard
       </Link>
 
-      <h2 className={styles.pageTitle}>Patient Detail View</h2>
+      <div className={styles.titleRow}>
+        <h2 className={styles.pageTitle}>Patient Detail View</h2>
+        <div className={styles.controls}>
+          <div className={styles.timeRangeSelector}>
+            <span className={styles.selectorLabel}>Last</span>
+            <select
+              className={styles.selectInput}
+              value={activeVal}
+              onChange={(e) => handleValueChange(Number(e.target.value))}
+            >
+              {valuesArray.map((val) => (
+                <option key={val} value={val}>
+                  {val}
+                </option>
+              ))}
+            </select>
+            <select
+              className={styles.selectInput}
+              value={activeUnit}
+              onChange={(e) => handleUnitChange(e.target.value as "d" | "w" | "m")}
+            >
+              <option value="d">Days</option>
+              <option value="w">Weeks</option>
+              <option value="m">Months</option>
+            </select>
+          </div>
+
+          <button
+            id="page-customize-ranges-btn"
+            className={`${styles.rangesBtn} ${
+              showRangesModal ? styles.rangesBtnActive : ""
+            }`}
+            onClick={() => setShowRangesModal(true)}
+            title="Customize glucose ranges"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
+              />
+            </svg>
+            Custom Ranges
+          </button>
+        </div>
+      </div>
 
       <PatientOverview
         patientName={patient!.name}
@@ -78,6 +178,7 @@ export default function DoctorPatientDetail() {
         tir={tir ?? undefined}
         anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
         averageGlucose={averageGlucose}
+        timeRangeLast={timeRange.last}
       />
 
       {anomalies.length > 0 && (
@@ -95,7 +196,15 @@ export default function DoctorPatientDetail() {
       </div>
 
       <MultiWeeklyChart readings={multiWeekReadings} />
+
+      {showRangesModal && (
+        <RangesModal
+          unit={unit}
+          thresholds={glucoseRanges}
+          onApply={onThresholdsChange}
+          onClose={() => setShowRangesModal(false)}
+        />
+      )}
     </div>
   );
 }
-

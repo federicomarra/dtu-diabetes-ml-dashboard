@@ -72,13 +72,9 @@ export function usePatientDetailController(externalId: string) {
         if (cancelled) return;
 
         // 2. Fetch all data for this patient in parallel
-        // Start date for multi-week view: 4 weeks ago
-        const fourWeeksAgo = new Date(Date.now() - 4 * 7 * 24 * 60 * 60 * 1000).toISOString();
-
-        const [readingsResult, multiWeekResult, tirResult, anomaliesResult, averageResult] =
+        const [readingsResult, tirResult, anomaliesResult, averageResult] =
           await Promise.allSettled([
             getGlucoseReadings(patient.id, timeRange),
-            getGlucoseReadings(patient.id, { start: fourWeeksAgo }), // last 4 weeks for multi-weekly chart
             getTimeInRange(patient.id, {
               ...timeRange,
               VeryLow: glucoseRanges.veryLow,
@@ -92,17 +88,16 @@ export function usePatientDetailController(externalId: string) {
 
         if (cancelled) return;
 
+        const fetchedReadings =
+          readingsResult.status === "fulfilled"
+            ? readingsResult.value.readings
+            : [];
+
         setState({
           status: "ready",
           patient,
-          readings:
-            readingsResult.status === "fulfilled"
-              ? readingsResult.value.readings
-              : [],
-          multiWeekReadings:
-            multiWeekResult.status === "fulfilled"
-              ? multiWeekResult.value.readings
-              : [],
+          readings: fetchedReadings,
+          multiWeekReadings: fetchedReadings,
           tir:
             tirResult.status === "fulfilled" ? tirResult.value : null,
           anomalies:

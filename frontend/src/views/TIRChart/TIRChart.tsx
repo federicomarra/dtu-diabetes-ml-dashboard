@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -12,7 +12,7 @@ import {
   Rectangle,
 } from "recharts";
 import type { TimeInRange } from "@/models/types";
-import { getTimeInRange } from "@/models/api";
+
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
@@ -368,14 +368,14 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
 
 // ─── Range Customization Modal ─────────────────────────────
 
-interface RangesModalProps {
+export interface RangesModalProps {
   unit: GlucoseUnit;
   thresholds: CustomThresholds;
   onApply: (t: CustomThresholds) => void;
   onClose: () => void;
 }
 
-function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
+export function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   const [draft, setDraft] = useState({
     veryHigh: toDisplay(thresholds.veryHigh, unit),
     high: toDisplay(thresholds.high, unit),
@@ -500,42 +500,9 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
 
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) {
-  const { ranges: thresholds, setRanges: onThresholdsChange } = useGlucoseRanges();
+export default function TIRChart({ tir }: TIRChartProps) {
+  const { ranges: thresholds } = useGlucoseRanges();
   const [mode, setMode] = useState<ViewMode>("stacked");
-  const [showRangesModal, setShowRangesModal] = useState(false);
-  const [liveTir, setLiveTir] = useState<TimeInRange>(initialTir);
-  const [loading, setLoading] = useState(false);
-  const { unit } = useGlucoseUnit();
-
-  // Keep liveTir in sync when the parent provides new initial data
-  useEffect(() => { setLiveTir(initialTir); }, [initialTir]);
-
-  const handleApplyThresholds = useCallback(async (t: CustomThresholds) => {
-    onThresholdsChange(t);
-
-    // Only call backend when thresholds differ from defaults
-    const isDefault =
-      t.veryLow === DEFAULT_THRESHOLDS.veryLow &&
-      t.low === DEFAULT_THRESHOLDS.low &&
-      t.high === DEFAULT_THRESHOLDS.high &&
-      t.veryHigh === DEFAULT_THRESHOLDS.veryHigh;
-
-    setLoading(true);
-    try {
-      const params = isDefault
-        ? undefined
-        : { VeryLow: t.veryLow, Low: t.low, High: t.high, VeryHigh: t.veryHigh };
-      const result = await getTimeInRange(patientId, params);
-      setLiveTir(result);
-    } catch (err) {
-      console.error("Failed to re-compute TIR with custom ranges:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [patientId, onThresholdsChange]);
-
-  const tir = liveTir;
 
   return (
     <div className={styles.container}>
@@ -564,24 +531,11 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
               BarChart
             </button>
           </div>
-
-          {/* Ranges customization button */}
-          <button
-            id="tir-customize-ranges-btn"
-            className={`${styles.rangesBtn} ${showRangesModal ? styles.rangesBtnActive : ""}`}
-            onClick={() => setShowRangesModal((v) => !v)}
-            title="Customize glucose ranges"
-          >
-            <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" clipRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" />
-            </svg>
-            Custom Ranges
-          </button>
         </div>
       </div>
 
       {/* Chart — fixed-height wrapper keeps the card size stable on toggle */}
-      <div className={`${styles.chartArea} ${loading ? styles.chartLoading : ""}`}>
+      <div className={styles.chartArea}>
         {mode === "stacked" ? (
           <StackedView tir={tir} thresholds={thresholds} />
         ) : (
@@ -603,16 +557,6 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
           }}
         />
       </div>
-
-      {/* Ranges customization modal */}
-      {showRangesModal && (
-        <RangesModal
-          unit={unit}
-          thresholds={thresholds}
-          onApply={handleApplyThresholds}
-          onClose={() => setShowRangesModal(false)}
-        />
-      )}
     </div>
   );
 }
