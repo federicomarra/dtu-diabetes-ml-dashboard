@@ -28,9 +28,9 @@
 #BSUB -R "rusage[mem=16GB]"
 
 ### ─── walltime ────────────────────────────────────────────────────────────
-# 20k cohort: ~73k contrastive steps/epoch × 30 epochs could reach 5–6 h,
-# plus GMM fitting + stride-1 test scoring ≈ 1 h. 12 h gives headroom.
-#BSUB -W 12:00
+# 20k cohort, batch 512. 30 epochs + GMM fit + stride-1 test scoring.
+# 24 h gives headroom.
+#BSUB -W 24:00
 
 ### ─── email notifications ─────────────────────────────────────────────────
 #BSUB -u furlanettoguido@gmail.com
@@ -61,15 +61,18 @@ mkdir -p logs ml/data/checkpoints
 
 # Flags pinned explicitly so this script is the run's reproducibility record.
 # NB: supervised oracle-negative CARLA (uses simulator labels) — see CARLA.md.
+# batch 512: SupCon benefits from more negatives per anchor; also fewer steps.
+# val capped at 800 patients for fast per-epoch checkpoint selection.
 echo "=== CARLA PRETRAINING ==="
 python ml/models/carla/pretrain.py \
     --epochs        30  \
-    --batch_size   256  \
-    --lr           1e-4 \
-    --tau          0.07 \
-    --normal_ratio 0.7 \
-    --norm         per_patient \
-    --seed         42 \
+    --batch_size    512 \
+    --lr            1e-4 \
+    --tau           0.07 \
+    --normal_ratio  0.7 \
+    --norm          per_patient \
+    --seed          42 \
+    --val_patients  800 \
     || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────

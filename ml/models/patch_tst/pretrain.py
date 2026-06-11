@@ -89,12 +89,19 @@ def train_one_epoch(
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    log_every: int = 500,
 ) -> float:
-    """One full pass over the training set. Returns mean loss."""
+    """One full pass over the training set. Returns mean loss.
+
+    Logs every log_every steps (running loss, it/s, ETA) so 60k-step epochs
+    are not a silent black box.
+    """
     model.train()
     total_loss = 0.0
+    n = len(loader)
+    t0 = time.time()
 
-    for x, _ in loader:             # _ = labels dict, not used during pretraining
+    for i, (x, _) in enumerate(loader, 1):   # _ = labels dict, unused in pretraining
         x = x.to(device)            # [B, 120, 3]
 
         recon, mask = model(x, mask_ratio=MASK_RATIO)
@@ -108,7 +115,14 @@ def train_one_epoch(
 
         total_loss += loss.item()
 
-    return total_loss / len(loader)
+        if i % log_every == 0 or i == n:
+            el  = time.time() - t0
+            ips = i / el
+            eta = (n - i) / ips / 60
+            print(f"    step {i:>6}/{n}  loss={total_loss/i:.4f}  "
+                  f"{ips:.1f} it/s  ETA {eta:.1f}m", flush=True)
+
+    return total_loss / n
 
 
 @torch.no_grad()
@@ -156,6 +170,8 @@ def main() -> None:
                         help="normalization mode (default: per_patient, spec)")
     parser.add_argument("--seed", type=int, default=42,
                         help="RNG seed for reproducibility")
+    parser.add_argument("--val_patients", type=int, default=800,
+                        help="cap val to N patients for fast per-epoch checkpoint selection")
     parser.add_argument("--smoke_test", action="store_true",
                         help="2 epochs, 10 patients — quick sanity check")
     args = parser.parse_args()
@@ -180,6 +196,7 @@ def main() -> None:
     train_ds, val_ds, _ = build_datasets(
         parquet       = PARQUET,
         max_per_split = max_per_split,
+        max_val       = args.val_patients,
         eval_stride   = TRAIN_STRIDE,
         include_test  = False,   # test set is loaded by anomaly_score.py, not here
         norm          = args.norm,

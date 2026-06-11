@@ -28,8 +28,9 @@
 #BSUB -R "rusage[mem=16GB]"
 
 ### ─── walltime ────────────────────────────────────────────────────────────
-# pretraining 15 epochs ≈ 1–2 h + evaluation ≈ 20 min; 4 h is safe
-#BSUB -W 8:00
+# 20k cohort: 16M train windows/epoch. batch 1024 → ~16k steps/epoch.
+# 40 epochs + stride-1 test eval can run long; 24 h gives headroom.
+#BSUB -W 24:00
 
 ### ─── email notifications ─────────────────────────────────────────────────
 #BSUB -u furlanettoguido@gmail.com
@@ -62,15 +63,18 @@ mkdir -p logs ml/data/checkpoints
 # num_workers=4: the dataset is plain numpy arrays now, so forked workers
 # share memory copy-on-write without duplicating it
 # Flags pinned explicitly so this script is the run's reproducibility record:
-# per-patient z-score, fixed seed (defaults, stated for the record).
+# per-patient z-score, fixed seed, val capped at 800 patients for fast
+# checkpoint selection. batch 1024 (tiny model underutilises the V100 at 256);
+# lr 2e-4 compensates for the ~4x fewer gradient updates per epoch.
 echo "=== PRETRAINING ==="
 python ml/models/patch_tst/pretrain.py \
-    --epochs      40  \
-    --batch_size  256 \
-    --lr          1e-4 \
-    --num_workers 4 \
-    --norm        per_patient \
-    --seed        42 \
+    --epochs        40  \
+    --batch_size    1024 \
+    --lr            2e-4 \
+    --num_workers   4 \
+    --norm          per_patient \
+    --seed          42 \
+    --val_patients  800 \
     || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
 ### ─── 2. evaluation ─────────────────────────────────────────────────────

@@ -446,6 +446,7 @@ def build_datasets(
     train_stride: int = TRAIN_STRIDE,
     eval_stride: int = EVAL_STRIDE,
     max_per_split: Optional[int] = None,
+    max_val: Optional[int] = None,
     include_train: bool = True,
     include_val: bool = True,
     include_test: bool = True,
@@ -466,6 +467,10 @@ def build_datasets(
     train_stride : window stride for the training set (default 15 min)
     eval_stride  : window stride for val/test (default 1 min)
     max_per_split: cap each split to N patients (for memory-limited dev runs)
+    max_val      : cap the val split to N patients (after max_per_split) — a
+                   stable checkpoint-selection signal needs far fewer than the
+                   full 4k val patients, and scoring 5M val windows every epoch
+                   is wasteful. Train and test are untouched.
     include_*    : skip building unused splits — None is returned in their
                    place. Pretraining doesn't need test; anomaly scoring
                    doesn't need train/val. Skipping the 12k-patient train
@@ -510,6 +515,12 @@ def build_datasets(
         train_ids = train_ids[:max_per_split]
         val_ids   = val_ids[:max_per_split]
         test_ids  = test_ids[:max_per_split]
+
+    # Validation only needs a representative subset for a stable checkpoint-
+    # selection signal — capping it avoids scoring millions of val windows
+    # every epoch. Does not touch train (gradient steps) or test (final eval).
+    if max_val is not None:
+        val_ids = val_ids[:max_val]
 
     # Global mode fits/caches population scalers on the train split. Per-patient
     # mode needs none of this — each patient self-normalizes.

@@ -146,11 +146,13 @@ def train_one_epoch(
     optimiser: torch.optim.Optimizer,
     device:   torch.device,
     tau:      float,
+    log_every: int = 500,
 ) -> float:
     model.train()
     total_loss = 0.0
-    n_batches  = 0
-    for windows, labels in loader:
+    n = len(loader)
+    t0 = time.time()
+    for i, (windows, labels) in enumerate(loader, 1):
         windows   = windows.to(device)                           # [B, 120, 3]
         is_normal = labels.to(device)                            # [B]
 
@@ -163,9 +165,15 @@ def train_one_epoch(
         optimiser.step()
 
         total_loss += loss.item()
-        n_batches  += 1
 
-    return total_loss / max(n_batches, 1)
+        if i % log_every == 0 or i == n:
+            el  = time.time() - t0
+            ips = i / el
+            eta = (n - i) / ips / 60
+            print(f"    step {i:>6}/{n}  loss={total_loss/i:.4f}  "
+                  f"{ips:.1f} it/s  ETA {eta:.1f}m", flush=True)
+
+    return total_loss / max(n, 1)
 
 
 @torch.no_grad()
@@ -227,6 +235,8 @@ def main() -> None:
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
                         help="normalization mode (default: per_patient, spec)")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility")
+    parser.add_argument("--val_patients", type=int, default=800,
+                        help="cap val to N patients for fast per-epoch checkpoint selection")
     parser.add_argument("--parquet",    type=Path,  default=PARQUET)
     parser.add_argument("--smoke_test", action="store_true",
                         help="2 epochs on 10 patients — verify setup works")
@@ -248,6 +258,9 @@ def main() -> None:
         train_ids = train_ids[:10]
         val_ids   = val_ids[:5]
         args.epochs = 2
+    else:
+        # cap val for a fast, stable checkpoint-selection signal (see PatchTST)
+        val_ids = val_ids[:args.val_patients]
 
     # ── data ───────────────────────────────────────────────────────────────────
     print(f"Loading {len(train_ids)} training patients …")

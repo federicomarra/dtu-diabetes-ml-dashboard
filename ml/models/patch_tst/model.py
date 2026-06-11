@@ -154,9 +154,12 @@ class PatchTST(nn.Module):
             mask = torch.zeros(B, self.n_patches, dtype=torch.bool, device=x.device)
             if mask_ratio > 0.0:
                 n_mask = max(1, int(self.n_patches * mask_ratio))   # e.g. 40% of 6 = 2
-                for b in range(B):
-                    idx = torch.randperm(self.n_patches, device=x.device)[:n_mask]
-                    mask[b, idx] = True                             # True = this patch is hidden
+                # Vectorised over the batch: per sample, random scores + topk pick
+                # a uniform random subset of n_mask patches to hide. Replaces a
+                # per-sample Python loop that throttled large-batch training.
+                noise = torch.rand(B, self.n_patches, device=x.device)
+                idx = noise.topk(n_mask, dim=1).indices             # [B, n_mask]
+                mask.scatter_(1, idx, True)                         # True = this patch is hidden
 
         # ── 4. apply mask ─────────────────────────────────────────────────────
         # Expand mask to match token shape, then replace hidden tokens
