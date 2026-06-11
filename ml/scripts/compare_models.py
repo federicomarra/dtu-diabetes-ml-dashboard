@@ -110,7 +110,7 @@ def score_carla(
     print("  Embedding training set for GMM fitting …")
     raw_train    = load_patients(train_ids, parquet)
     scaled_train = normalize_patients(raw_train, norm=norm, scalers=scalers, inplace=True)
-    train_ds     = ContrastiveDataset(scaled_train, stride=15)
+    train_ds     = ContrastiveDataset(scaled_train, stride=60)   # GMM subsamples anyway
     train_loader = DataLoader(train_ds, batch_size=512, shuffle=False, num_workers=4)
     train_emb, train_normal = embed_dataset(model, train_loader, device)
     normal_emb = train_emb[train_normal == 1]

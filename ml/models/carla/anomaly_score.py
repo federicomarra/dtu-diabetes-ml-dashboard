@@ -52,12 +52,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from dataset import (
     build_datasets, load_patients, load_scalers,
-    normalize_patients, ANOMALY_CLASSES, EVAL_STRIDE,
+    normalize_patients, progress_log, ANOMALY_CLASSES, EVAL_STRIDE,
 )
 from models.patch_tst.model import PatchTST
 from models.patch_tst.anomaly_score import any_anomaly_label
 from models.carla.model import CARLAModel
 from models.carla.dataset import ContrastiveDataset
+import time
 
 # ── config ────────────────────────────────────────────────────────────────────
 
@@ -88,11 +89,13 @@ def embed_dataset(
     all_emb:    list[np.ndarray] = []
     all_normal: list[int]        = []
 
-    for windows, labels in loader:
+    n = len(loader); t0 = time.time()
+    for i, (windows, labels) in enumerate(loader, 1):
         windows = windows.to(device)
         z = model.encode(windows)          # [B, D_MODEL]
         all_emb.append(z.cpu().numpy())
         all_normal.extend(labels.tolist())
+        progress_log(i, n, t0, label="embed")
 
     return np.concatenate(all_emb, axis=0), np.array(all_normal, dtype=np.int32)
 
@@ -228,9 +231,11 @@ def main() -> None:
         ds     = ContrastiveDataset(scaled, stride=stride)
         return DataLoader(ds, batch_size=256, shuffle=False, num_workers=4)
 
-    # Training embeddings: stride=15 (fast), only normal windows needed for GMM
-    print("Embedding training set …")
-    train_loader            = make_contrastive_loader(split["train"], stride=15)
+    # Training embeddings for GMM fitting. stride=60 not 15: fit_gmm subsamples
+    # to ~300k anyway, so embedding all 16M stride-15 windows is pure waste.
+    # stride 60 → ~4M windows (still >>300k), ~4× faster, no quality loss.
+    print("Embedding training set (stride 60) …")
+    train_loader            = make_contrastive_loader(split["train"], stride=60)
     train_emb, train_normal = embed_dataset(model, train_loader, device)
     normal_emb = train_emb[train_normal == 1]
     print(f"Normal training embeddings: {normal_emb.shape}")
@@ -255,13 +260,15 @@ def main() -> None:
     all_labels: dict[str, list[np.ndarray]]    = {cls: [] for cls in ANOMALY_CLASSES}
 
     model.eval()
+    n = len(test_loader); t0 = time.time()
     with torch.no_grad():
-        for x, label_dict in test_loader:
+        for i, (x, label_dict) in enumerate(test_loader, 1):
             z      = model.encode(x.to(device))
             scores = score_with_gmm(pca, gmm, z.cpu().numpy())
             all_scores.append(scores)
             for cls in ANOMALY_CLASSES:
                 all_labels[cls].append(label_dict[cls].numpy())
+            progress_log(i, n, t0, label="score")
 
     scores_arr = np.concatenate(all_scores).astype(np.float32)
     labels_arr = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}

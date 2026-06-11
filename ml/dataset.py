@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -78,6 +79,21 @@ def set_seed(seed: int = 42) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def progress_log(i: int, n: int, t0: float, label: str = "", every: int = 500) -> None:
+    """
+    Print throughput + ETA every `every` steps (and on the last step).
+
+    For the stride-1 eval loops (~80M test windows) so they are not a silent
+    multi-hour black box.
+    """
+    if i % every == 0 or i == n:
+        el  = time.time() - t0
+        ips = i / el if el > 0 else 0.0
+        eta = (n - i) / ips / 60 if ips > 0 else 0.0
+        tag = f"{label} " if label else ""
+        print(f"    {tag}{i:>7}/{n}  {ips:.1f} it/s  ETA {eta:.1f}m", flush=True)
 
 
 # Which parquet column carries each anomaly class label

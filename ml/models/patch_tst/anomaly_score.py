@@ -57,7 +57,8 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dataset import build_datasets, ANOMALY_CLASSES, EVAL_STRIDE
+from dataset import build_datasets, progress_log, ANOMALY_CLASSES, EVAL_STRIDE
+import time
 from models.patch_tst.model import PatchTST
 
 # ── config ────────────────────────────────────────────────────────────────────
@@ -101,7 +102,8 @@ def score_dataset(
     all_scores: list[np.ndarray] = []
     all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
-    for x, label_dict in loader:
+    n = len(loader); t0 = time.time()
+    for i, (x, label_dict) in enumerate(loader, 1):
         x = x.to(device)                            # [B, 120, 3]
 
         recon, _ = model(x, mask_ratio=0.0)         # no masking at inference
@@ -112,6 +114,7 @@ def score_dataset(
 
         for cls in ANOMALY_CLASSES:
             all_labels[cls].append(label_dict[cls].numpy())
+        progress_log(i, n, t0, label="score")
 
     scores = np.concatenate(all_scores).astype(np.float32)
     labels = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
@@ -158,7 +161,8 @@ def score_dataset_last_patch(
     all_scores: list[np.ndarray] = []
     all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
-    for x, label_dict in loader:
+    n = len(loader); t0 = time.time()
+    for i, (x, label_dict) in enumerate(loader, 1):
         x = x.to(device)                               # [B, 120, 3]
 
         # hide the last k patches → model must predict them from the prefix
@@ -171,6 +175,7 @@ def score_dataset_last_patch(
 
         for cls in ANOMALY_CLASSES:
             all_labels[cls].append(label_dict[cls].numpy())
+        progress_log(i, n, t0, label="predict")
 
     scores = np.concatenate(all_scores).astype(np.float32)
     labels = {cls: np.concatenate(v).astype(np.float32) for cls, v in all_labels.items()}
