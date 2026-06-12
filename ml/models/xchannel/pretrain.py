@@ -90,7 +90,7 @@ def build_loaders(args, device):
     def make(ids):
         return ForecastWindowDataset(
             ids, scalers=scalers, parquet=args.parquet, stride=args.stride,
-            norm=args.norm, train_on=args.train_on,
+            norm=args.norm, train_on=args.train_on, features=args.features,
         )
     train_ds, val_ds = make(train_ids), make(val_ids)
     print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}", flush=True)
@@ -111,6 +111,8 @@ def main():
     p.add_argument("--stride",      type=int,   default=TRAIN_STRIDE)
     p.add_argument("--num_workers", type=int,   default=4)
     p.add_argument("--train_on", choices=["normal", "all"], default="normal")
+    p.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
+                   help="input channels: raw insulin/carbs, or IOB/COB physiology")
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
@@ -134,6 +136,9 @@ def main():
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    tag = "iobcob" if args.features == "iob_cob" else None
+    best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
+    final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
     best_val, log = float("inf"), []
 
     for epoch in range(1, args.epochs + 1):
@@ -151,11 +156,11 @@ def main():
             best_val = val_loss
             torch.save({"epoch": epoch, "model_state": model.state_dict(),
                         "val_loss": val_loss, "args": vars(args)},
-                       CHECKPOINT_DIR / "xchannel_best.pt")
+                       CHECKPOINT_DIR / best_name)
             print(f"  ✓ saved best checkpoint (val={val_loss:.4f})", flush=True)
 
     torch.save({"epoch": args.epochs, "model_state": model.state_dict(), "args": vars(args)},
-               CHECKPOINT_DIR / "xchannel_final.pt")
+               CHECKPOINT_DIR / final_name)
     LOG_PATH.write_text(json.dumps(log, indent=2))
     print(f"\nDone. Best val loss: {best_val:.4f}", flush=True)
 

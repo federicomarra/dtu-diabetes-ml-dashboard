@@ -77,6 +77,8 @@ def main():
     p.add_argument("--test_stride", type=int, default=5,
                    help="eval window stride (min). 5 ≈ same AUPRC at 5x less compute")
     p.add_argument("--parquet", type=Path, default=PARQUET)
+    p.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
+                   help="MUST match the pretrain run")
     p.add_argument("--smoke_test", action="store_true")
     args = p.parse_args()
 
@@ -98,7 +100,7 @@ def main():
         scalers = fit_scalers(load_patients(split["train"], args.parquet), parquet=args.parquet)
     test_ds = ForecastWindowDataset(
         test_ids, scalers=scalers, parquet=args.parquet,
-        stride=args.test_stride, norm=args.norm, train_on="all",
+        stride=args.test_stride, norm=args.norm, train_on="all", features=args.features,
     )
     print(f"Test windows: {len(test_ds):,}  (stride={args.test_stride} min, norm={args.norm})")
 

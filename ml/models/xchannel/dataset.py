@@ -31,6 +31,7 @@ from dataset import (  # noqa: E402
     ANOMALY_CLASSES, N_CHANNELS, _PARQUET,
 )
 from models.xchannel.model import CONTEXT_LEN, HORIZON  # noqa: E402
+from features.iob_cob import to_iob_cob  # noqa: E402
 
 GLU_COL, INS_COL, CARB_COL = 0, 1, 2          # signal columns in the [T, 8] array
 WIN = CONTEXT_LEN + HORIZON                     # full window length we slide
@@ -70,9 +71,15 @@ class ForecastWindowDataset(Dataset):
         _preloaded: Optional[dict[str, np.ndarray]] = None,
         norm: str = "per_patient",
         train_on: str = "normal",               # 'normal' (clean only) or 'all'
+        features: str = "raw",                  # 'raw' or 'iob_cob'
     ) -> None:
         raw = _preloaded if _preloaded is not None else load_patients(patient_ids, parquet)
         own = _preloaded is None
+        if features == "iob_cob":
+            # replace raw insulin/carb rates with IOB/COB BEFORE z-scoring
+            # (to_iob_cob returns copies, so the caller's _preloaded is untouched)
+            raw = {pid: to_iob_cob(a) for pid, a in raw.items()}
+            own = True
         self._data = normalize_patients(raw, norm=norm, scalers=scalers, inplace=own)
         del raw
         self._pids, self._pid_idx, self._starts = _make_index(self._data, stride, train_on)
