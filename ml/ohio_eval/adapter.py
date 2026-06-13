@@ -56,6 +56,12 @@ class Bolus:
 
 
 @dataclass
+class Meal:
+    minute: int
+    carb_g: float         # carbs actually eaten (logged), grams
+
+
+@dataclass
 class OhioPatient:
     pid: str
     T: int
@@ -63,6 +69,7 @@ class OhioPatient:
     valid: np.ndarray            # [T] bool
     basal_mU_min: np.ndarray     # [T] mU/min (basal only)
     boluses: list[Bolus]
+    meals: list[Meal]            # logged meals (independent of boluses) — for rule labels
 
     def render(self, boluses: list[Bolus] | None = None) -> np.ndarray:
         """Build the [T, 8] array (flags zero) from basal + a bolus list."""
@@ -145,8 +152,15 @@ def load_ohio_patient(path: Path) -> OhioPatient:
             carb_g = float(ev.get("bwz_carb_input") or 0.0)
             boluses.append(Bolus(minute=m, units=float(ev.get("dose")), carb_g=carb_g))
 
+    # ── meals (logged carbs, independent of boluses) ─────────────────────────
+    meals: list[Meal] = []
+    for ev in _events(root, "meal"):
+        m = minute(_ts(ev.get("ts")))
+        if 0 <= m < T:
+            meals.append(Meal(minute=m, carb_g=float(ev.get("carbs"))))
+
     return OhioPatient(pid=pid, T=T, glucose=glucose, valid=valid,
-                       basal_mU_min=basal_mU_min, boluses=boluses)
+                       basal_mU_min=basal_mU_min, boluses=boluses, meals=meals)
 
 
 def load_ohio_cohort(root_dir: Path, year: str = "both", split: str = "test") -> list[OhioPatient]:
