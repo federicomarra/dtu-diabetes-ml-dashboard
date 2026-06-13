@@ -12,7 +12,7 @@ import pytest
 
 from dataset import N_CHANNELS, ANOMALY_CLASSES
 from ohio_eval.adapter import (
-    load_ohio_patient, OhioPatient, Bolus,
+    load_ohio_patient, OhioPatient, Bolus, Meal,
     MGDL_PER_MMOL, BOLUS_DURATION, ANNOUNCE_DURATION, MAX_GAP_MIN,
 )
 from ohio_eval.eval_xchannel import inject, CLASS_IDX
@@ -22,7 +22,7 @@ CLS_COL = {c: N_CHANNELS + i for c, i in CLASS_IDX.items()}   # flag column per 
 
 # ── synthetic XML for the parser ────────────────────────────────────────────────
 
-def _xml(glucose_events, boluses=(), basals=(), temp_basals=()):
+def _xml(glucose_events, boluses=(), basals=(), temp_basals=(), meals=()):
     def evs(items):
         return "\n".join(items)
     g = evs(f'<event ts="{ts}" value="{v}"/>' for ts, v in glucose_events)
@@ -30,13 +30,14 @@ def _xml(glucose_events, boluses=(), basals=(), temp_basals=()):
             for ts, d, c in boluses)
     ba = evs(f'<event ts="{ts}" value="{v}"/>' for ts, v in basals)
     tb = evs(f'<event ts_begin="{s}" ts_end="{e}" value="{v}"/>' for s, e, v in temp_basals)
+    me = evs(f'<event ts="{ts}" type="Meal" carbs="{c}"/>' for ts, c in meals)
     return f"""<?xml version="1.0"?>
 <patient id="999">
   <glucose_level>{g}</glucose_level>
   <basal>{ba}</basal>
   <temp_basal>{tb}</temp_basal>
   <bolus>{b}</bolus>
-  <meal></meal>
+  <meal>{me}</meal>
 </patient>"""
 
 
@@ -46,8 +47,9 @@ def patient_file(tmp_path):
     glu = [(f"01-01-2022 00:{m:02d}:00", 180) for m in range(0, 60, 5)] + [("01-01-2022 01:00:00", 180)]
     boluses = [("01-01-2022 00:30:00", 5.0, 40)]
     basals = [("01-01-2022 00:00:00", 1.0)]
+    meals = [("01-01-2022 00:40:00", 45)]
     p = tmp_path / "999-ws-testing.xml"
-    p.write_text(_xml(glu, boluses, basals))
+    p.write_text(_xml(glu, boluses, basals, meals=meals))
     return p
 
 
@@ -80,6 +82,11 @@ class TestAdapter:
         p = load_ohio_patient(patient_file)
         assert (p.basal_mU_min > 0).all()
 
+    def test_meals_captured(self, patient_file):
+        p = load_ohio_patient(patient_file)
+        assert len(p.meals) == 1
+        assert p.meals[0].minute == 40 and p.meals[0].carb_g == 45
+
     def test_large_gap_marked_invalid(self, tmp_path):
         # readings at 0 and 5 min, then a 50-min jump (> MAX_GAP_MIN) to 55
         glu = [("01-01-2022 00:00:00", 150), ("01-01-2022 00:05:00", 150),
@@ -102,6 +109,7 @@ def _patient(T=400):
         basal_mU_min=np.full(T, 16.0, np.float32),
         boluses=[Bolus(minute=100, units=5.0, carb_g=40.0),
                  Bolus(minute=250, units=0.5, carb_g=0.0)],   # correction, not a meal
+        meals=[Meal(minute=100, carb_g=40.0)],
     )
 
 
