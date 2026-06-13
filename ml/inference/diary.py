@@ -32,7 +32,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import N_CHANNELS  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import CONTEXT_LEN, HORIZON  # noqa: E402
+from models.xchannel.model import CONTEXT_LEN, HORIZON, anomaly_score as compute_score  # noqa: E402
 from models.patch_tst.anomaly_score import calibrate_threshold  # noqa: E402
 from characterization.head import mc_predict, ood_distance, CLASSES  # noqa: E402
 from characterization.rules import classify_meals, RuleConfig  # noqa: E402
@@ -77,8 +77,7 @@ def _score_windows(arr, valid, detector, device, stride):
         ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in ch]).to(device)
         car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in ch]).to(device)
         tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in ch]).to(device)
-        pred = detector(glu, ins, car)
-        scores.append(((pred - tgt) ** 2).mean(1).cpu().numpy())
+        scores.append(compute_score(detector(glu, ins, car), tgt).cpu().numpy())
         embs.append(detector(glu, ins, car, return_embeddings=True).cpu().numpy())
     return starts, np.concatenate(scores), np.concatenate(embs)
 

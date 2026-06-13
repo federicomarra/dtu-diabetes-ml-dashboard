@@ -57,11 +57,12 @@ class XChannelForecaster(nn.Module):
 
     def __init__(self, context_len=CONTEXT_LEN, horizon=HORIZON,
                  d_model=D_MODEL, n_heads=N_HEADS, n_layers=N_LAYERS,
-                 dropout=DROPOUT, patch_len=0):
+                 dropout=DROPOUT, patch_len=0, probabilistic=False):
         super().__init__()
         self.context_len = context_len
         self.horizon = horizon
         self.patch_len = patch_len
+        self.probabilistic = probabilistic       # predict mean + log-variance (NLL)
         exo_len = context_len + horizon          # insulin/carbs see the horizon
 
         if patch_len == 0:
@@ -89,7 +90,9 @@ class XChannelForecaster(nn.Module):
             batch_first=True,                    # input is [B, tokens, D]
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
-        self.head = nn.Linear(d_model, horizon)
+        self.head = nn.Linear(d_model, horizon)                # mean
+        if probabilistic:
+            self.head_logvar = nn.Linear(d_model, horizon)     # log-variance
 
     def forward(self, glu_hist, ins_full, carb_full, return_embeddings=False):
         """
@@ -118,7 +121,34 @@ class XChannelForecaster(nn.Module):
 
         if return_embeddings:
             return rep
-        return self.head(rep)                     # [B, H]
+        mean = self.head(rep)                     # [B, H]
+        if self.probabilistic:
+            logvar = self.head_logvar(rep).clamp(-10.0, 10.0)   # stable exp()
+            return mean, logvar
+        return mean
+
+
+# ── loss + score helpers (handle deterministic vs probabilistic uniformly) ──────
+
+def forecast_loss(out, target):
+    """MSE for a point forecast; Gaussian NLL for a (mean, logvar) forecast."""
+    if isinstance(out, tuple):
+        mean, logvar = out
+        return 0.5 * ((target - mean) ** 2 * torch.exp(-logvar) + logvar).mean()
+    return nn.functional.mse_loss(out, target)
+
+
+def anomaly_score(out, target):
+    """Per-window score [B]. Squared residual (point) or per-element NLL (prob.).
+
+    The NLL score is 'surprise under predicted uncertainty': a big residual the
+    model EXPECTED (high σ) scores lower than the same residual where the model
+    was confident — this is what curbs false positives on naturally-variable
+    but-normal windows (the over-detection the point-MSE score suffers)."""
+    if isinstance(out, tuple):
+        mean, logvar = out
+        return 0.5 * ((target - mean) ** 2 * torch.exp(-logvar) + logvar).mean(dim=1)
+    return ((out - target) ** 2).mean(dim=1)
 
 
 def forecaster_from_ckpt(ckpt: dict, device=None) -> "XChannelForecaster":
@@ -127,6 +157,7 @@ def forecaster_from_ckpt(ckpt: dict, device=None) -> "XChannelForecaster":
     model = XChannelForecaster(
         patch_len=int(a.get("patch_len", 0)),
         n_layers=int(a.get("n_layers", N_LAYERS)),
+        probabilistic=bool(a.get("probabilistic", False)),
     )
     if device is not None:
         model = model.to(device)

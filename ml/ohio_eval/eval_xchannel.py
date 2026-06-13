@@ -38,7 +38,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))   # put ml/ on the path
 from dataset import ANOMALY_CLASSES, N_CHANNELS  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort, OhioPatient, Bolus  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import forecaster_from_ckpt, CONTEXT_LEN, HORIZON  # noqa: E402
+from models.xchannel.model import (  # noqa: E402
+    forecaster_from_ckpt, anomaly_score as compute_score, CONTEXT_LEN, HORIZON,
+)
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 CLASS_IDX = {c: i for i, c in enumerate(ANOMALY_CLASSES)}   # missed=0 late=1 large=2
@@ -94,8 +96,7 @@ def score_patient(model, device, arr, valid, mean, std, fcol, stride, batch_size
         ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in chunk]).to(device)
         car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in chunk]).to(device)
         tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in chunk]).to(device)
-        pred = model(glu, ins, car)
-        scores.append(((pred - tgt) ** 2).mean(dim=1).cpu().numpy())
+        scores.append(compute_score(model(glu, ins, car), tgt).cpu().numpy())
         labels.append(np.array([arr[s + L : s + WIN, fcol].max() for s in chunk], dtype=np.float32))
     return np.concatenate(scores), np.concatenate(labels)
 

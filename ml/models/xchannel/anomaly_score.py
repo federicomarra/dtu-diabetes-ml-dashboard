@@ -34,7 +34,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from dataset import (  # noqa: E402
     make_patient_split, fit_scalers, load_patients, progress_log, ANOMALY_CLASSES,
 )
-from models.xchannel.model import XChannelForecaster, forecaster_from_ckpt  # noqa: E402
+from models.xchannel.model import (  # noqa: E402
+    XChannelForecaster, forecaster_from_ckpt, anomaly_score as compute_score,
+)
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 from models.patch_tst.anomaly_score import (  # noqa: E402  — reuse, don't duplicate
     calibrate_per_patient, any_anomaly_label, auprc_per_class, auroc_per_class,
@@ -56,9 +58,8 @@ def score_dataset(model, loader, device):
     for i, (glu, ins, carb, target, label_dict) in enumerate(loader, 1):
         glu, ins, carb = glu.to(device), ins.to(device), carb.to(device)
         target = target.to(device)
-        pred = model(glu, ins, carb)                       # [B, H]
-        mse = ((pred - target) ** 2).mean(dim=1)           # [B]
-        all_scores.append(mse.cpu().numpy())
+        score = compute_score(model(glu, ins, carb), target)   # MSE or NLL [B]
+        all_scores.append(score.cpu().numpy())
         for c in ANOMALY_CLASSES:
             all_labels[c].append(label_dict[c].numpy())
         progress_log(i, n, t0, label="forecast")

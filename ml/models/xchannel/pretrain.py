@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from dataset import (  # noqa: E402
     make_patient_split, fit_scalers, load_patients, set_seed, TRAIN_STRIDE,
 )
-from models.xchannel.model import XChannelForecaster  # noqa: E402
+from models.xchannel.model import XChannelForecaster, forecast_loss  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
@@ -49,15 +49,14 @@ def run_epoch(model, loader, device, optimizer=None, log_every=500):
     model.train() if train else model.eval()
     total, n = 0.0, len(loader)
     t0 = time.time()
-    loss_fn = nn.MSELoss()
 
     torch.set_grad_enabled(train)
     for i, (glu, ins, carb, target, _) in enumerate(loader, 1):
         glu, ins = glu.to(device), ins.to(device)
         carb, target = carb.to(device), target.to(device)
 
-        pred = model(glu, ins, carb)               # [B, H]
-        loss = loss_fn(pred, target)
+        # MSE for a point forecast, Gaussian NLL for a (mean, logvar) forecast
+        loss = forecast_loss(model(glu, ins, carb), target)
 
         if train:
             optimizer.zero_grad()
@@ -117,6 +116,8 @@ def main():
                    help="0 = 3-token iTransformer; >0 = temporal patch tokens (e.g. 20)")
     p.add_argument("--n_layers", type=int, default=2,
                    help="transformer layers (use 3 with patching)")
+    p.add_argument("--probabilistic", action="store_true",
+                   help="predict mean+variance, train with Gaussian NLL (score = surprise)")
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
@@ -133,15 +134,18 @@ def main():
     print("Building datasets…", flush=True)
     train_loader, val_loader = build_loaders(args, device)
 
-    model = XChannelForecaster(patch_len=args.patch_len, n_layers=args.n_layers).to(device)
-    print(f"Model: patch_len={args.patch_len} n_layers={args.n_layers} | "
-          f"params={sum(p.numel() for p in model.parameters()):,}", flush=True)
+    model = XChannelForecaster(patch_len=args.patch_len, n_layers=args.n_layers,
+                               probabilistic=args.probabilistic).to(device)
+    print(f"Model: patch_len={args.patch_len} n_layers={args.n_layers} "
+          f"prob={args.probabilistic} | params={sum(p.numel() for p in model.parameters()):,}", flush=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    parts = (["iobcob"] if args.features == "iob_cob" else []) + (["patched"] if args.patch_len else [])
+    parts = ((["iobcob"] if args.features == "iob_cob" else [])
+             + (["patched"] if args.patch_len else [])
+             + (["nll"] if args.probabilistic else []))
     tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
