@@ -113,6 +113,10 @@ def main():
     p.add_argument("--train_on", choices=["normal", "all"], default="normal")
     p.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
                    help="input channels: raw insulin/carbs, or IOB/COB physiology")
+    p.add_argument("--patch_len", type=int, default=0,
+                   help="0 = 3-token iTransformer; >0 = temporal patch tokens (e.g. 20)")
+    p.add_argument("--n_layers", type=int, default=2,
+                   help="transformer layers (use 3 with patching)")
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
@@ -129,14 +133,16 @@ def main():
     print("Building datasets…", flush=True)
     train_loader, val_loader = build_loaders(args, device)
 
-    model = XChannelForecaster().to(device)
-    print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}", flush=True)
+    model = XChannelForecaster(patch_len=args.patch_len, n_layers=args.n_layers).to(device)
+    print(f"Model: patch_len={args.patch_len} n_layers={args.n_layers} | "
+          f"params={sum(p.numel() for p in model.parameters()):,}", flush=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    tag = "iobcob" if args.features == "iob_cob" else None
+    parts = (["iobcob"] if args.features == "iob_cob" else []) + (["patched"] if args.patch_len else [])
+    tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
     best_val, log = float("inf"), []

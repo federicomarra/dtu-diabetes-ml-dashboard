@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))   # put ml/ on the path
 from dataset import ANOMALY_CLASSES, N_CHANNELS  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort, OhioPatient, Bolus  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import XChannelForecaster, CONTEXT_LEN, HORIZON  # noqa: E402
+from models.xchannel.model import forecaster_from_ckpt, CONTEXT_LEN, HORIZON  # noqa: E402
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 CLASS_IDX = {c: i for i, c in enumerate(ANOMALY_CLASSES)}   # missed=0 late=1 large=2
@@ -136,8 +136,7 @@ def main():
     print(f"Device: {device}  | features={args.features}")
 
     ckpt = torch.load(args.checkpoint, map_location=device)
-    model = XChannelForecaster().to(device)
-    model.load_state_dict(ckpt["model_state"])
+    model = forecaster_from_ckpt(ckpt, device)
     model.eval()
     print(f"Loaded checkpoint epoch {ckpt['epoch']}  (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 

@@ -39,7 +39,7 @@ from dataset import (  # noqa: E402
     load_patients, make_patient_split, ANOMALY_CLASSES, N_CHANNELS,
 )
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import XChannelForecaster, CONTEXT_LEN, HORIZON  # noqa: E402
+from models.xchannel.model import forecaster_from_ckpt, CONTEXT_LEN, HORIZON  # noqa: E402
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 CLASS_IDX = {c: i for i, c in enumerate(ANOMALY_CLASSES)}
@@ -118,7 +118,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}  | features={args.features}")
     ckpt = torch.load(args.checkpoint, map_location=device)
-    model = XChannelForecaster().to(device); model.load_state_dict(ckpt["model_state"]); model.eval()
+    model = forecaster_from_ckpt(ckpt, device); model.eval()
     print(f"Loaded epoch {ckpt['epoch']} (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
     split = make_patient_split(args.parquet)

@@ -43,23 +43,45 @@ GLU, INS, CARB = 0, 1, 2
 
 
 class XChannelForecaster(nn.Module):
+    """
+    Cross-channel conditional glucose forecaster.
+
+    patch_len = 0 (default): the original iTransformer layout — ONE token per
+        channel (3 tokens), each channel's whole series embedded by one Linear.
+    patch_len > 0: temporal patching — each channel is split into patch_len-min
+        patches, every patch is a token, so attention runs over BOTH time and
+        channels (≈ 6 glucose + 8 insulin + 8 carb tokens at L=120,H=40,P=20).
+        Lifts the near-linear ceiling of the 3-token model. Quality-program
+        Step 1; see project_quality_program memory.
+    """
+
     def __init__(self, context_len=CONTEXT_LEN, horizon=HORIZON,
                  d_model=D_MODEL, n_heads=N_HEADS, n_layers=N_LAYERS,
-                 dropout=DROPOUT):
+                 dropout=DROPOUT, patch_len=0):
         super().__init__()
         self.context_len = context_len
         self.horizon = horizon
+        self.patch_len = patch_len
         exo_len = context_len + horizon          # insulin/carbs see the horizon
 
-        # one input embedding PER channel (different visible lengths)
-        self.embed_glu = nn.Linear(context_len, d_model)
-        self.embed_ins = nn.Linear(exo_len, d_model)
-        self.embed_carb = nn.Linear(exo_len, d_model)
-
-        # learned "which channel is this" embedding, added to each token so the
-        # attention can tell glucose/insulin/carbs apart (tokens are otherwise
-        # order-only, like positional encodings but over channels)
-        self.channel_embed = nn.Parameter(torch.zeros(N_CHANNELS, d_model))
+        if patch_len == 0:
+            # one input embedding PER channel (different visible lengths)
+            self.embed_glu = nn.Linear(context_len, d_model)
+            self.embed_ins = nn.Linear(exo_len, d_model)
+            self.embed_carb = nn.Linear(exo_len, d_model)
+            # learned "which channel is this" embedding (3 channel tokens)
+            self.channel_embed = nn.Parameter(torch.zeros(N_CHANNELS, d_model))
+        else:
+            assert context_len % patch_len == 0 and exo_len % patch_len == 0, \
+                "patch_len must divide both context and context+horizon"
+            self.n_g = context_len // patch_len           # glucose patches
+            self.n_e = exo_len // patch_len               # insulin/carb patches
+            # one patch embedding per channel (shared across that channel's patches)
+            self.patch_glu = nn.Linear(patch_len, d_model)
+            self.patch_ins = nn.Linear(patch_len, d_model)
+            self.patch_carb = nn.Linear(patch_len, d_model)
+            # joint channel+position embedding, one slot per token
+            self.pos_embed = nn.Parameter(torch.zeros(self.n_g + 2 * self.n_e, d_model))
 
         layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=n_heads,
@@ -67,8 +89,6 @@ class XChannelForecaster(nn.Module):
             batch_first=True,                    # input is [B, tokens, D]
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
-
-        # glucose output token -> H-step glucose forecast
         self.head = nn.Linear(d_model, horizon)
 
     def forward(self, glu_hist, ins_full, carb_full, return_embeddings=False):
@@ -78,15 +98,37 @@ class XChannelForecaster(nn.Module):
         carb_full [B, L+H]   announced carbs known through the horizon
         returns   [B, H]     forecast glucose over (t, t+H]
         """
-        tokens = torch.stack([
-            self.embed_glu(glu_hist),
-            self.embed_ins(ins_full),
-            self.embed_carb(carb_full),
-        ], dim=1)                                # [B, 3, D]
-        tokens = tokens + self.channel_embed     # broadcast [3, D] over batch
+        if self.patch_len == 0:
+            tokens = torch.stack([
+                self.embed_glu(glu_hist),
+                self.embed_ins(ins_full),
+                self.embed_carb(carb_full),
+            ], dim=1)                            # [B, 3, D]
+            tokens = tokens + self.channel_embed
+            enc = self.encoder(tokens)
+            rep = enc[:, GLU]                     # glucose token
+        else:
+            B = glu_hist.shape[0]
+            g = self.patch_glu(glu_hist.reshape(B, self.n_g, self.patch_len))     # [B,n_g,D]
+            i = self.patch_ins(ins_full.reshape(B, self.n_e, self.patch_len))     # [B,n_e,D]
+            c = self.patch_carb(carb_full.reshape(B, self.n_e, self.patch_len))   # [B,n_e,D]
+            tokens = torch.cat([g, i, c], dim=1) + self.pos_embed                 # [B,N,D]
+            enc = self.encoder(tokens)
+            rep = enc.mean(dim=1)                 # pool all tokens
 
-        enc = self.encoder(tokens)               # [B, 3, D] — cross-channel mix
-        glu_token = enc[:, GLU]                   # [B, D]
         if return_embeddings:
-            return glu_token
-        return self.head(glu_token)              # [B, H]
+            return rep
+        return self.head(rep)                     # [B, H]
+
+
+def forecaster_from_ckpt(ckpt: dict, device=None) -> "XChannelForecaster":
+    """Reconstruct a forecaster matching how it was trained (reads arch args)."""
+    a = ckpt.get("args", {})
+    model = XChannelForecaster(
+        patch_len=int(a.get("patch_len", 0)),
+        n_layers=int(a.get("n_layers", N_LAYERS)),
+    )
+    if device is not None:
+        model = model.to(device)
+    model.load_state_dict(ckpt["model_state"])
+    return model

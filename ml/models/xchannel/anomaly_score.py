@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from dataset import (  # noqa: E402
     make_patient_split, fit_scalers, load_patients, progress_log, ANOMALY_CLASSES,
 )
-from models.xchannel.model import XChannelForecaster  # noqa: E402
+from models.xchannel.model import XChannelForecaster, forecaster_from_ckpt  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 from models.patch_tst.anomaly_score import (  # noqa: E402  — reuse, don't duplicate
     calibrate_per_patient, any_anomaly_label, auprc_per_class, auroc_per_class,
@@ -88,8 +88,7 @@ def main():
     if not args.checkpoint.exists():
         raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}\nRun pretrain.py first.")
     ckpt = torch.load(args.checkpoint, map_location=device)
-    model = XChannelForecaster().to(device)
-    model.load_state_dict(ckpt["model_state"])
+    model = forecaster_from_ckpt(ckpt, device)
     print(f"Loaded checkpoint from epoch {ckpt['epoch']}  (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
     # ── test data: ALL windows (train_on='all') so anomalies are scored ───────

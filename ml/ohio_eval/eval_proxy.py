@@ -33,7 +33,7 @@ from features.iob_cob import to_iob_cob  # noqa: E402
 from characterization.rules import classify_meals, RuleConfig  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort  # noqa: E402
 from ohio_eval.eval_xchannel import score_patient, _zscore_stats, CLASS_IDX  # noqa: E402
-from models.xchannel.model import XChannelForecaster  # noqa: E402
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 
 LABEL_POST_MIN = 60          # flag [meal, meal+POST] — the early post-meal excursion
 
@@ -66,7 +66,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}  | features={args.features}")
     ckpt = torch.load(args.checkpoint, map_location=device)
-    model = XChannelForecaster().to(device); model.load_state_dict(ckpt["model_state"]); model.eval()
+    model = forecaster_from_ckpt(ckpt, device); model.eval()
     print(f"Loaded epoch {ckpt['epoch']} (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
     cohort = load_ohio_cohort(args.ohio_root, year=args.year, split=args.split)

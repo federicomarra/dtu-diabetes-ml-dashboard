@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import make_patient_split, set_seed, ANOMALY_CLASSES, TRAIN_STRIDE  # noqa: E402
-from models.xchannel.model import XChannelForecaster  # noqa: E402
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 from characterization.head import CharacterizationHead, fit_ood, CLASSES, N_CLASSES  # noqa: E402
 
@@ -100,8 +100,7 @@ def main():
 
     # ── frozen encoder ────────────────────────────────────────────────────────
     ckpt = torch.load(args.xchannel_checkpoint, map_location=device)
-    encoder = XChannelForecaster().to(device)
-    encoder.load_state_dict(ckpt["model_state"])
+    encoder = forecaster_from_ckpt(ckpt, device)
     encoder.eval()
     for prm in encoder.parameters():
         prm.requires_grad_(False)

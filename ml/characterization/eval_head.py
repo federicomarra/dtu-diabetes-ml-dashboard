@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import make_patient_split, ANOMALY_CLASSES  # noqa: E402
-from models.xchannel.model import XChannelForecaster  # noqa: E402
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 from characterization.head import CharacterizationHead, mc_predict, ood_distance, CLASSES, N_CLASSES  # noqa: E402
 from characterization.train_head import _batch_classes  # noqa: E402
@@ -49,8 +49,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     hk = torch.load(args.head, map_location=device)
     feats = hk["features"]
-    encoder = XChannelForecaster().to(device)
-    encoder.load_state_dict(torch.load(hk["xchannel_checkpoint"], map_location=device)["model_state"])
+    encoder = forecaster_from_ckpt(torch.load(hk["xchannel_checkpoint"], map_location=device), device)
     encoder.eval()
     head = CharacterizationHead().to(device); head.load_state_dict(hk["head_state"]); head.eval()
     mu, inv_cov = np.asarray(hk["ood_mu"]), np.asarray(hk["ood_inv_cov"])
