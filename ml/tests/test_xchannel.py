@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from dataset import ANOMALY_CLASSES, N_CHANNELS as DS_NCHAN
 from models.xchannel.model import (
-    XChannelForecaster, CONTEXT_LEN, HORIZON, D_MODEL, GLU,
+    XChannelForecaster, forecaster_from_ckpt, CONTEXT_LEN, HORIZON, D_MODEL, GLU,
 )
 from models.xchannel.dataset import ForecastWindowDataset, _make_index, WIN
 from models.xchannel.anomaly_score import score_dataset
@@ -118,6 +118,48 @@ class TestXChannelForecaster:
         out.mean().backward()
         for name, p in model.named_parameters():
             assert p.grad is not None, f"no gradient reached {name}"
+
+
+# ── patched architecture (quality-program Step 1) ───────────────────────────────
+
+class TestPatching:
+
+    def test_patched_forecast_and_embedding_shape(self, inputs):
+        m = XChannelForecaster(patch_len=20, n_layers=3)
+        glu, ins, carb = inputs
+        assert m(glu, ins, carb).shape == (B, H)
+        assert m(glu, ins, carb, return_embeddings=True).shape == (B, D_MODEL)
+
+    def test_patched_has_more_params_than_default(self):
+        small = sum(p.numel() for p in XChannelForecaster(patch_len=0).parameters())
+        big = sum(p.numel() for p in XChannelForecaster(patch_len=20, n_layers=3).parameters())
+        assert big > small                       # more tokens/layers → more capacity
+
+    def test_patch_len_must_divide_lengths(self):
+        with pytest.raises(AssertionError):
+            XChannelForecaster(patch_len=7)       # 120 % 7 != 0
+
+    def test_patched_still_cross_channel(self, inputs):
+        glu, ins, carb = inputs
+        m = XChannelForecaster(patch_len=20, n_layers=3).eval()
+        with torch.no_grad():
+            base = m(glu, ins, carb)
+            alt = m(glu, ins * 5.0, carb)
+        assert not torch.allclose(base, alt)      # insulin still influences forecast
+
+    def test_forecaster_from_ckpt_roundtrips_arch(self):
+        m = XChannelForecaster(patch_len=20, n_layers=3).eval()
+        ckpt = {"model_state": m.state_dict(), "args": {"patch_len": 20, "n_layers": 3}}
+        m2 = forecaster_from_ckpt(ckpt).eval()
+        assert m2.patch_len == 20
+        g, i, c = torch.randn(2, L), torch.randn(2, L + H), torch.randn(2, L + H)
+        with torch.no_grad():
+            torch.testing.assert_close(m(g, i, c), m2(g, i, c))
+
+    def test_forecaster_from_ckpt_defaults_to_3token(self):
+        m = XChannelForecaster()                  # patch_len=0
+        ckpt = {"model_state": m.state_dict(), "args": {}}   # legacy ckpt, no patch_len
+        assert forecaster_from_ckpt(ckpt).patch_len == 0
 
 
 # ── _make_index (window index + clean-window filter) ────────────────────────────
