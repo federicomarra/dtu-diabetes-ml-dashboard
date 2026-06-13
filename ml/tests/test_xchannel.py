@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader
 
 from dataset import ANOMALY_CLASSES, N_CHANNELS as DS_NCHAN
 from models.xchannel.model import (
-    XChannelForecaster, forecaster_from_ckpt, CONTEXT_LEN, HORIZON, D_MODEL, GLU,
+    XChannelForecaster, forecaster_from_ckpt, forecast_loss, anomaly_score,
+    CONTEXT_LEN, HORIZON, D_MODEL, GLU,
 )
 from models.xchannel.dataset import ForecastWindowDataset, _make_index, WIN
 from models.xchannel.anomaly_score import score_dataset
@@ -160,6 +161,48 @@ class TestPatching:
         m = XChannelForecaster()                  # patch_len=0
         ckpt = {"model_state": m.state_dict(), "args": {}}   # legacy ckpt, no patch_len
         assert forecaster_from_ckpt(ckpt).patch_len == 0
+
+
+# ── probabilistic / NLL (quality-program Step 2) ────────────────────────────────
+
+class TestProbabilistic:
+
+    def test_forward_returns_mean_and_logvar(self, inputs):
+        m = XChannelForecaster(probabilistic=True)
+        out = m(*inputs)
+        assert isinstance(out, tuple) and len(out) == 2
+        mean, logvar = out
+        assert mean.shape == (B, H) and logvar.shape == (B, H)
+
+    def test_embeddings_unaffected_by_probabilistic(self, inputs):
+        m = XChannelForecaster(probabilistic=True)
+        assert m(*inputs, return_embeddings=True).shape == (B, D_MODEL)
+
+    def test_forecast_loss_point_is_mse(self):
+        out = torch.randn(B, H); tgt = torch.randn(B, H)
+        torch.testing.assert_close(forecast_loss(out, tgt),
+                                   torch.nn.functional.mse_loss(out, tgt))
+
+    def test_anomaly_score_point_is_mean_sq_residual(self):
+        out = torch.randn(B, H); tgt = torch.randn(B, H)
+        torch.testing.assert_close(anomaly_score(out, tgt), ((out - tgt) ** 2).mean(1))
+
+    def test_nll_score_is_surprise_under_uncertainty(self):
+        # same residual, but higher predicted variance → LOWER anomaly score
+        tgt = torch.zeros(B, H); mean = torch.ones(B, H)            # residual = 1
+        confident = anomaly_score((mean, torch.full((B, H), -2.0)), tgt)   # small σ²
+        uncertain = anomaly_score((mean, torch.full((B, H),  2.0)), tgt)   # large σ²
+        assert (uncertain < confident).all()
+
+    def test_forecaster_from_ckpt_roundtrips_probabilistic(self):
+        m = XChannelForecaster(probabilistic=True).eval()
+        ckpt = {"model_state": m.state_dict(), "args": {"probabilistic": True}}
+        m2 = forecaster_from_ckpt(ckpt).eval()
+        assert m2.probabilistic
+        g, i, c = torch.randn(2, L), torch.randn(2, L + H), torch.randn(2, L + H)
+        with torch.no_grad():
+            mean1, lv1 = m(g, i, c); mean2, lv2 = m2(g, i, c)
+        torch.testing.assert_close(mean1, mean2); torch.testing.assert_close(lv1, lv2)
 
 
 # ── _make_index (window index + clean-window filter) ────────────────────────────
