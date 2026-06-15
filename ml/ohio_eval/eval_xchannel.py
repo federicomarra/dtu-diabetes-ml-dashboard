@@ -120,7 +120,7 @@ def main():
                     help="default: xchannel_best.pt (raw) or xchannel_iobcob_best.pt (iob_cob)")
     ap.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
                     help="MUST match the checkpoint's training features")
-    ap.add_argument("--ohio_root",  type=Path, default=Path("ml/data/OhioT1DM"))
+    ap.add_argument("--ohio_root",  type=Path, default=Path("ml/data/real/ohio"))
     ap.add_argument("--year",  default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)

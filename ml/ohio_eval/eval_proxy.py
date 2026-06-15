@@ -53,7 +53,7 @@ def main():
     ap = argparse.ArgumentParser(description="XCHANNEL OhioT1DM eval via rule-derived labels")
     ap.add_argument("--checkpoint", type=Path, default=None)
     ap.add_argument("--features", choices=["raw", "iob_cob"], default="raw")
-    ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/OhioT1DM"))
+    ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/real/ohio"))
     ap.add_argument("--year", default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)

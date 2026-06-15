@@ -1,0 +1,24 @@
+# DTU MSc — CGM anomaly detection. Reproduces the .venv used locally + on HPC.
+# HPC: `module load python3/3.10.12 cuda/12.1` then `pip install -r requirements.txt`
+# (torch pinned without a build tag so pip selects the CPU/CUDA wheel for the host).
+
+# ── core ML / data ──────────────────────────────────────────────────────────
+torch==2.1.2
+numpy==1.26.4
+pandas==2.2.0
+scipy==1.15.3
+scikit-learn==1.4.0
+pyarrow==15.0.0
+
+# ── plotting (figures) ──────────────────────────────────────────────────────
+matplotlib==3.8.3
+seaborn==0.13.2
+
+# ── real-dataset adapters (ml/realdata) ─────────────────────────────────────
+# HUPA / Manchester are CSV (no extra dep); Shanghai_T1DM ships .xls + .xlsx.
+openpyxl==3.1.5          # .xlsx
+xlrd==1.2.0              # legacy .xls
+python-calamine==0.6.2   # fast engine for pandas read_excel (handles both)
+
+# ── testing ─────────────────────────────────────────────────────────────────
+pytest
