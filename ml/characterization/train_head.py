@@ -29,7 +29,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import make_patient_split, set_seed, ANOMALY_CLASSES, TRAIN_STRIDE  # noqa: E402
 from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
-from characterization.head import CharacterizationHead, fit_ood, CLASSES, N_CLASSES  # noqa: E402
+from characterization.head import (  # noqa: E402
+    CharacterizationHead, fit_ood, ood_distance, CLASSES, N_CLASSES,
+)
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
 PARQUET = Path("ml/data/sim_data/results_20000p_14d.parquet")
@@ -138,12 +140,14 @@ def main():
                 acc = (head(Zt).argmax(-1) == yt).float().mean().item()
             print(f"Epoch {ep:02d}/{args.epochs}  loss={tot/n:.4f}  train_acc={acc:.3f}", flush=True)
 
-    # ── OOD cluster on normal embeddings + save ──────────────────────────────
+    # ── OOD cluster on normal embeddings (+ a calibrated radius) + save ───────
     mu, inv_cov = fit_ood(Z[y == 0])
+    ood_radius = float(np.percentile(ood_distance(Z[y == 0], mu, inv_cov), 99))  # 99th pct of normal
+    print(f"OOD: normal-cluster radius (99th pct) = {ood_radius:.2f}")
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     out = CHECKPOINT_DIR / "characterization_head.pt"
     torch.save({"head_state": head.state_dict(), "classes": CLASSES,
-                "ood_mu": mu, "ood_inv_cov": inv_cov,
+                "ood_mu": mu, "ood_inv_cov": inv_cov, "ood_radius": ood_radius,
                 "features": args.features, "xchannel_checkpoint": str(args.xchannel_checkpoint),
                 "args": vars(args)}, out)
     print(f"\nSaved → {out}")

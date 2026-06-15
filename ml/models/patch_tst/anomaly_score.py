@@ -187,9 +187,10 @@ def score_dataset_last_patch(
 def calibrate_threshold(
     scores: np.ndarray,
     n_cal_windows: int,
+    k: float = 2.0,
 ) -> float:
     """
-    Robust threshold: median + 2 × (IQR-derived σ).
+    Robust threshold: median + k × (IQR-derived σ).
 
     Uses median and IQR instead of mean/std — both are resistant to
     outlier anomaly windows in the calibration period. Works without
@@ -200,12 +201,14 @@ def calibrate_threshold(
     scores        : all anomaly scores for one patient, in time order
     n_cal_windows : number of windows from the start to use for calibration
                     (= N_CAL_DAYS × MINUTES_PER_DAY when stride=1)
+    k             : sensitivity. Higher = fewer flags (curbs over-detection);
+                    2.0 ≈ flags the top few % under a Gaussian.
     """
     cal = scores[:n_cal_windows]
     mu  = np.median(cal)
     std = iqr(cal) / 1.349   # IQR ≈ 1.349σ for a Gaussian → converts to std-equivalent
     std = max(std, 1e-6)
-    return float(mu + 2 * std)
+    return float(mu + k * std)
 
 
 def calibrate_per_patient(

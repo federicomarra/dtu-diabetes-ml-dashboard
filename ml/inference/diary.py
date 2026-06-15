@@ -50,16 +50,19 @@ class Event:
     class_probs: dict                    # {class: prob}
     mc_uncertainty: float
     ood_distance: float
-    ood_flag: bool                       # True → "uncharacterised"
+    ood_flag: bool                       # True → far from normal cluster
+    characterised: bool = True           # False → label withheld (OOD / normal / low-conf)
     rule_label: str | None = None        # deterministic, when inputs logged
 
     def to_text(self) -> str:
-        hrs = self.duration_min
-        rule = f"rule={self.rule_label}" if self.rule_label else "rule=n/a (no inputs)"
-        char = ("uncharacterised (OOD)" if self.ood_flag
-                else f"resembles {self.soft_label} ({self.class_probs[self.soft_label]:.0%})")
-        return (f"t+{self.start_min}min  dur={hrs}min  score={self.anomaly_score:.3f}  "
-                f"| DETECTED anomaly | {char}  unc={self.mc_uncertainty:.3f}  {rule}")
+        if self.rule_label:                               # deterministic, leads
+            label = f"{self.rule_label} (rule)"
+        elif self.characterised:                          # humble similarity
+            label = f"~{self.soft_label} ({self.class_probs[self.soft_label]:.0%})"
+        else:                                             # gated: don't force a class
+            label = "uncharacterised"
+        return (f"t+{self.start_min}min  dur={self.duration_min}min  "
+                f"score={self.anomaly_score:.3f}  | {label}  unc={self.mc_uncertainty:.3f}")
 
 
 @torch.no_grad()
@@ -98,7 +101,8 @@ def _group_events(flagged_starts, stride):
 
 def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=float("inf"),
                 features="raw", meals=None, boluses=None, device=None, stride=5,
-                n_cal_days=5, mc_passes=30, rule_cfg=RuleConfig()) -> list[Event]:
+                n_cal_days=5, threshold_k=2.0, min_event_min=30, min_confidence=0.30,
+                mc_passes=30, rule_cfg=RuleConfig()) -> list[Event]:
     device = device or torch.device("cpu")
     feat_arr = to_iob_cob(arr) if features == "iob_cob" else arr
 
@@ -106,9 +110,10 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
     if not starts:
         return []
 
-    # per-patient robust threshold on the first n_cal_days of (baseline) scores
+    # per-patient robust threshold on the first n_cal_days of (baseline) scores.
+    # threshold_k curbs over-detection (higher k → fewer flags).
     n_cal = min(len(scores), n_cal_days * 1440 // stride)
-    thr = calibrate_threshold(scores, n_cal)
+    thr = calibrate_threshold(scores, n_cal, k=threshold_k)
     flagged = [s for s, sc in zip(starts, scores) if sc > thr]
 
     # rule-derived meal labels (deterministic), if meals are logged.
@@ -118,14 +123,21 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
     pos = {s: i for i, s in enumerate(starts)}
     events: list[Event] = []
     for grp in _group_events(flagged, stride):
-        idx = [pos[s] for s in grp]
         start_min = grp[0] + L                       # anomaly lives in the horizon
         end_min = grp[-1] + WIN
+        if end_min - start_min < min_event_min:      # drop short blips → less over-detection
+            continue
+        idx = [pos[s] for s in grp]
         emb = torch.from_numpy(embs[idx].mean(0, keepdims=True)).float().to(device)
         probs, unc = mc_predict(head, emb, mc_passes)
         probs = probs[0].cpu().numpy()
         dist = float(ood_distance(embs[idx].mean(0, keepdims=True), ood_mu, ood_inv_cov)[0])
-        ood_flag = dist > ood_radius        # far from the normal cluster → uncharacterised
+
+        top = CLASSES[int(probs.argmax())]
+        ood_flag = dist > ood_radius
+        # withhold the class when far from normal, when it just looks 'normal', or
+        # when the head is barely above chance — don't force a clinical-looking label
+        characterised = bool((not ood_flag) and (top != "normal") and (probs.max() >= min_confidence))
 
         rule_label = None
         for cls, mins in rule_minutes.items():
@@ -134,11 +146,10 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
 
         events.append(Event(
             start_min=start_min, duration_min=end_min - start_min,
-            anomaly_score=float(scores[idx].max()),
-            soft_label=CLASSES[int(probs.argmax())],
+            anomaly_score=float(scores[idx].max()), soft_label=top,
             class_probs={CLASSES[c]: float(probs[c]) for c in range(len(CLASSES))},
             mc_uncertainty=float(unc[0]), ood_distance=dist, ood_flag=ood_flag,
-            rule_label=rule_label,
+            characterised=characterised, rule_label=rule_label,
         ))
     return events
 
@@ -156,7 +167,9 @@ def _cli():
     ap.add_argument("--detector", type=Path, default=Path("ml/data/checkpoints/xchannel_best.pt"))
     ap.add_argument("--head", type=Path, default=Path("ml/data/checkpoints/characterization_head.pt"))
     ap.add_argument("--features", choices=["raw", "iob_cob"], default="raw")
-    ap.add_argument("--ood_radius", type=float, default=None, help="override OOD distance threshold")
+    ap.add_argument("--ood_radius", type=float, default=None, help="override stored OOD radius")
+    ap.add_argument("--threshold_k", type=float, default=3.0, help="detection sensitivity (higher = fewer)")
+    ap.add_argument("--min_event_min", type=int, default=30, help="drop events shorter than this")
     ap.add_argument("--max_events", type=int, default=20)
     args = ap.parse_args()
 
@@ -167,7 +180,9 @@ def _cli():
     mu, inv_cov = np.asarray(hk["ood_mu"]), np.asarray(hk["ood_inv_cov"])
 
     p = load_ohio_patient(args.patient)
-    radius = args.ood_radius if args.ood_radius is not None else _default_radius(mu, inv_cov)
+    # OOD radius: CLI override → stored (99th-pct) radius → fallback heuristic
+    radius = (args.ood_radius if args.ood_radius is not None
+              else hk.get("ood_radius", _default_radius(mu, inv_cov)))
 
     arr = np.zeros((p.T, 8), dtype=np.float32)
     arr[:, :N_CHANNELS] = p.render()[:, :N_CHANNELS]
@@ -176,7 +191,8 @@ def _cli():
     arr[:, :N_CHANNELS] = (arr[:, :N_CHANNELS] - m) / s
 
     events = build_diary(arr, p.valid, detector=det, head=head, ood_mu=mu, ood_inv_cov=inv_cov,
-                         ood_radius=radius, features=args.features,
+                         ood_radius=radius, threshold_k=args.threshold_k,
+                         min_event_min=args.min_event_min, features=args.features,
                          meals=p.meals, boluses=p.boluses, device=device)
     print(f"Patient {p.pid}: {len(events)} detected anomaly events")
     print("DETECTION generalises; CHARACTERISATION = similarity to synthetic archetypes, not diagnosis.\n")
