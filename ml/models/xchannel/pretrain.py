@@ -86,12 +86,13 @@ def build_loaders(args, device):
     if args.norm == "global":
         scalers = fit_scalers(load_patients(train_ids, args.parquet), parquet=args.parquet)
 
-    def make(ids):
+    def make(ids, augment=False):
         return ForecastWindowDataset(
             ids, scalers=scalers, parquet=args.parquet, stride=args.stride,
             norm=args.norm, train_on=args.train_on, features=args.features,
+            augment=augment, augment_seed=args.seed + 1000,
         )
-    train_ds, val_ds = make(train_ids), make(val_ids)
+    train_ds, val_ds = make(train_ids, augment=args.augment), make(val_ids, augment=False)
     print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}", flush=True)
 
     pin = device.type == "cuda"
@@ -118,6 +119,8 @@ def main():
                    help="transformer layers (use 3 with patching)")
     p.add_argument("--probabilistic", action="store_true",
                    help="predict mean+variance, train with Gaussian NLL (score = surprise)")
+    p.add_argument("--augment", action="store_true",
+                   help="inject sensor artifacts (dropouts/jumps/compression) into TRAIN glucose only")
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
@@ -145,7 +148,8 @@ def main():
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     parts = ((["iobcob"] if args.features == "iob_cob" else [])
              + (["patched"] if args.patch_len else [])
-             + (["nll"] if args.probabilistic else []))
+             + (["nll"] if args.probabilistic else [])
+             + (["aug"] if args.augment else []))
     tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"

@@ -32,6 +32,7 @@ from dataset import (  # noqa: E402
 )
 from models.xchannel.model import CONTEXT_LEN, HORIZON  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
+from augment.sensor_artifacts import apply_artifacts, ArtifactConfig  # noqa: E402
 
 GLU_COL, INS_COL, CARB_COL = 0, 1, 2          # signal columns in the [T, 8] array
 WIN = CONTEXT_LEN + HORIZON                     # full window length we slide
@@ -72,6 +73,9 @@ class ForecastWindowDataset(Dataset):
         norm: str = "per_patient",
         train_on: str = "normal",               # 'normal' (clean only) or 'all'
         features: str = "raw",                  # 'raw' or 'iob_cob'
+        augment: bool = False,                  # inject sensor artifacts (train split only)
+        artifact_cfg: Optional[ArtifactConfig] = None,
+        augment_seed: int = 0,
     ) -> None:
         raw = _preloaded if _preloaded is not None else load_patients(patient_ids, parquet)
         own = _preloaded is None
@@ -80,6 +84,19 @@ class ForecastWindowDataset(Dataset):
             # (to_iob_cob returns copies, so the caller's _preloaded is untouched)
             raw = {pid: to_iob_cob(a) for pid, a in raw.items()}
             own = True
+        if augment:
+            # inject sensor artifacts into RAW glucose before z-scoring, so magnitudes
+            # stay physical. Per-patient stats then fold them in (matches real deployment,
+            # where stats come from artifact-containing streams). Glucose channel only.
+            if not own:
+                raw = {pid: a.copy() for pid, a in raw.items()}
+                own = True
+            cfg = artifact_cfg if artifact_cfg is not None else ArtifactConfig()
+            for k, pid in enumerate(sorted(raw)):
+                a = raw[pid]
+                rng = np.random.default_rng(augment_seed + k)
+                g2, _, _ = apply_artifacts(a[:, GLU_COL], np.ones(len(a), dtype=bool), rng, cfg)
+                a[:, GLU_COL] = g2
         self._data = normalize_patients(raw, norm=norm, scalers=scalers, inplace=own)
         del raw
         self._pids, self._pid_idx, self._starts = _make_index(self._data, stride, train_on)
