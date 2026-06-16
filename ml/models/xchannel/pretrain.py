@@ -40,7 +40,7 @@ from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
 LOG_PATH       = Path("ml/data/checkpoints/xchannel_pretrain_log.json")
-PARQUET        = Path("ml/data/sim_data/results_20000p_14d.parquet")
+PARQUET        = Path("ml/data/sim_data/results_5000p_42d.parquet")
 
 
 def run_epoch(model, loader, device, optimizer=None, log_every=500):

@@ -44,6 +44,7 @@ python ml/models/xchannel/pretrain.py \
     --norm          per_patient \
     --seed          42 \
     --val_patients  800 \
+    --parquet       ml/data/sim_data/results_5000p_42d.parquet \
     --probabilistic \
     || { echo "Pretraining failed — skipping evaluation"; exit 1; }
 
@@ -54,6 +55,7 @@ python ml/models/xchannel/anomaly_score.py \
     --batch_size   512 \
     --num_workers  0 \
     --norm         per_patient \
+    --parquet      ml/data/sim_data/results_5000p_42d.parquet \
     --test_stride  5
 
 echo "-----"

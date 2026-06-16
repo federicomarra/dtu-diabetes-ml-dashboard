@@ -67,7 +67,7 @@ TRAIN_STRIDE: int = 15  # 15-min stride → ~7× window overlap during training
 EVAL_STRIDE: int = 1    # 1-min stride → per-minute anomaly scores at inference
 
 # Default file paths (relative to project root, i.e. run from dtu-diabetes-ml-dashboard/)
-_PARQUET = Path("ml/data/sim_data/results_20000p_14d.parquet")
+_PARQUET = Path("ml/data/sim_data/results_5000p_42d.parquet")
 _SCALER_FILE = Path("ml/data/scalers.json")
 _SPLIT_FILE = Path("ml/data/patient_split.json")
 

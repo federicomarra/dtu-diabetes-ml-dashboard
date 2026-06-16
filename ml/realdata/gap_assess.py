@@ -23,7 +23,7 @@ from dataset import load_patients, make_patient_split  # noqa: E402
 from realdata.common import RealPatient, pool_stats, HEADER, fmt_row  # noqa: E402
 from realdata.loaders import LOADERS  # noqa: E402
 
-SIM_PARQUET = Path("ml/data/sim_data/results_20000p_14d.parquet")
+SIM_PARQUET = Path("ml/data/sim_data/results_5000p_42d.parquet")
 
 
 def load_sim(parquet: Path, n_patients: int) -> list[RealPatient]:

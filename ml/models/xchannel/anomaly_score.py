@@ -43,7 +43,7 @@ from models.patch_tst.anomaly_score import (  # noqa: E402  — reuse, don't dup
 )
 
 CHECKPOINT = Path("ml/data/checkpoints/xchannel_best.pt")
-PARQUET    = Path("ml/data/sim_data/results_20000p_14d.parquet")
+PARQUET    = Path("ml/data/sim_data/results_5000p_42d.parquet")
 N_CAL_DAYS = 5
 MINUTES_PER_DAY = 1440
 
