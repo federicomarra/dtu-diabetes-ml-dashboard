@@ -38,10 +38,26 @@ from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 LABEL_POST_MIN = 60          # flag [meal, meal+POST] — the early post-meal excursion
 
 
-def label_array(p, cfg: RuleConfig) -> np.ndarray:
+def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
+    """Drop snacks (< meal_min_g) and hypo-rescue carbs (glucose <3.9 in the prior
+    `rescue_lookback` min) — both are correct no-bolus behaviour and must NOT count
+    as 'missed'. See ml/docs/DETECTION_RATIONALE.md §6."""
+    out = []
+    for m in p.meals:
+        if m.carb_g < meal_min_g:
+            continue
+        lo = max(0, m.minute - rescue_lookback)
+        win = p.glucose[lo : m.minute + 1]
+        if win.size and np.nanmin(win) < 3.9:            # preceded by a low → rescue
+            continue
+        out.append(m)
+    return out
+
+
+def label_array(p, cfg: RuleConfig, meals) -> np.ndarray:
     """[T,8] flag array: rule-labelled meals marked over their post-meal window."""
     flags = np.zeros((p.T, N_CHANNELS + 5), dtype=np.float32)
-    labels = classify_meals(p.meals, p.boluses, cfg)
+    labels = classify_meals(meals, p.boluses, cfg)
     for cls, minutes in labels.items():
         col = N_CHANNELS + CLASS_IDX[cls]
         for m in minutes:
@@ -53,11 +69,17 @@ def main():
     ap = argparse.ArgumentParser(description="XCHANNEL OhioT1DM eval via rule-derived labels")
     ap.add_argument("--checkpoint", type=Path, default=None)
     ap.add_argument("--features", choices=["raw", "iob_cob"], default="raw")
+    ap.add_argument("--dataset", choices=["ohio", "hupa"], default="ohio")
     ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/real/ohio"))
+    ap.add_argument("--hupa_root", type=Path, default=Path("ml/data/real/hupa/Preprocessed"))
     ap.add_argument("--year", default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)
     ap.add_argument("--batch_size", type=int, default=512)
+    ap.add_argument("--clean", action="store_true",
+                    help="cleaned labels: drop snacks (<meal_min_g) + hypo-rescue meals")
+    ap.add_argument("--meal_min_g", type=float, default=30.0)
+    ap.add_argument("--rescue_lookback", type=int, default=30)
     args = ap.parse_args()
     if args.checkpoint is None:
         name = "xchannel_iobcob_best.pt" if args.features == "iob_cob" else "xchannel_best.pt"
@@ -69,17 +91,26 @@ def main():
     model = forecaster_from_ckpt(ckpt, device); model.eval()
     print(f"Loaded epoch {ckpt['epoch']} (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
-    cohort = load_ohio_cohort(args.ohio_root, year=args.year, split=args.split)
+    if args.dataset == "hupa":
+        from hupa_eval.adapter import load_hupa_cohort
+        cohort = load_hupa_cohort(args.hupa_root)
+        print(f"Dataset: HUPA ({len(cohort)} patients)")
+    else:
+        cohort = load_ohio_cohort(args.ohio_root, year=args.year, split=args.split)
+        print(f"Dataset: OhioT1DM ({len(cohort)} patients, {args.year}/{args.split})")
     cfg = RuleConfig()
     xf = to_iob_cob if args.features == "iob_cob" else (lambda a: a)
+    meals_of = ((lambda p: clean_meals(p, args.meal_min_g, args.rescue_lookback))
+                if args.clean else (lambda p: p.meals))
+    print(f"Labels: {'CLEANED (meal≥%gg, no prior low)' % args.meal_min_g if args.clean else 'raw'}")
 
     # rule-label counts across the cohort
     counts = {"missed": 0, "late": 0, "large": 0}
     for p in cohort:
-        for cls, mins in classify_meals(p.meals, p.boluses, cfg).items():
+        for cls, mins in classify_meals(meals_of(p), p.boluses, cfg).items():
             counts[cls] += len(mins)
-    n_meals = sum(len(p.meals) for p in cohort)
-    print(f"OhioT1DM: {len(cohort)} patients, {n_meals} logged meals → "
+    n_meals = sum(len(meals_of(p)) for p in cohort)
+    print(f"OhioT1DM: {len(cohort)} patients, {n_meals} meals (post-filter) → "
           f"rule labels: missed={counts['missed']} late={counts['late']} large={counts['large']}")
 
     print("\nDetection on REAL anomalies (rule-derived labels, glucose reacts)")
@@ -90,7 +121,7 @@ def main():
         for p in cohort:
             base = xf(p.render())                       # model input (real data)
             arr = base.copy()
-            arr[:, N_CHANNELS:] = label_array(p, cfg)[:, N_CHANNELS:]   # attach rule flags
+            arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p))[:, N_CHANNELS:]   # attach rule flags
             mean, std = _zscore_stats(base)
             s, l = score_patient(model, device, arr, p.valid, mean, std, fcol,
                                  args.stride, args.batch_size)
