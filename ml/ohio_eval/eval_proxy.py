@@ -72,6 +72,7 @@ def main():
     ap.add_argument("--dataset", choices=["ohio", "hupa"], default="ohio")
     ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/real/ohio"))
     ap.add_argument("--hupa_root", type=Path, default=Path("ml/data/real/hupa/Preprocessed"))
+    ap.add_argument("--hupa_split", choices=["all", "train", "val", "test"], default="all")
     ap.add_argument("--year", default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)
@@ -94,7 +95,11 @@ def main():
     if args.dataset == "hupa":
         from hupa_eval.adapter import load_hupa_cohort
         cohort = load_hupa_cohort(args.hupa_root)
-        print(f"Dataset: HUPA ({len(cohort)} patients)")
+        if args.hupa_split != "all":
+            from hupa_eval.split import hupa_split
+            sel = set(hupa_split([p.pid for p in cohort])[args.hupa_split])
+            cohort = [p for p in cohort if p.pid in sel]
+        print(f"Dataset: HUPA ({len(cohort)} patients, split={args.hupa_split})")
     else:
         cohort = load_ohio_cohort(args.ohio_root, year=args.year, split=args.split)
         print(f"Dataset: OhioT1DM ({len(cohort)} patients, {args.year}/{args.split})")

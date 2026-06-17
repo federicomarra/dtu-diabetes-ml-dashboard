@@ -78,6 +78,8 @@ def build_loaders(args, device):
     split = make_patient_split(args.parquet)
     train_ids = split["train"]
     val_ids   = split["val"][: args.val_patients]
+    if args.n_train_patients:
+        train_ids = train_ids[: args.n_train_patients]   # data-matched sim-N
     if args.smoke_test:
         train_ids, val_ids = train_ids[:10], val_ids[:10]
 
@@ -121,6 +123,8 @@ def main():
                    help="predict mean+variance, train with Gaussian NLL (score = surprise)")
     p.add_argument("--augment", action="store_true",
                    help="inject sensor artifacts (dropouts/jumps/compression) into TRAIN glucose only")
+    p.add_argument("--n_train_patients", type=int, default=0,
+                   help="cap train patients (0=all); data-matched sim-N baseline")
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
@@ -149,7 +153,8 @@ def main():
     parts = ((["iobcob"] if args.features == "iob_cob" else [])
              + (["patched"] if args.patch_len else [])
              + (["nll"] if args.probabilistic else [])
-             + (["aug"] if args.augment else []))
+             + (["aug"] if args.augment else [])
+             + ([f"sim{args.n_train_patients}"] if args.n_train_patients else []))
     tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
