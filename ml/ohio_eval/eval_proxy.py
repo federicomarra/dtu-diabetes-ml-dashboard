@@ -77,7 +77,7 @@ def main():
     ap = argparse.ArgumentParser(description="XCHANNEL OhioT1DM eval via rule-derived labels")
     ap.add_argument("--checkpoint", type=Path, default=None)
     ap.add_argument("--features", choices=["raw", "iob_cob"], default="raw")
-    ap.add_argument("--dataset", choices=["ohio", "hupa"], default="ohio")
+    ap.add_argument("--dataset", choices=["ohio", "hupa", "manchester"], default="ohio")
     ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/real/ohio"))
     ap.add_argument("--hupa_root", type=Path, default=Path("ml/data/real/hupa/Preprocessed"))
     ap.add_argument("--hupa_split", choices=["all", "train", "val", "test"], default="all")
@@ -109,9 +109,9 @@ def main():
 
     if args.pooled_test:
         from realdata.pooled import load_pooled, pooled_split
-        pc, hu_pids, oh_pids = load_pooled()
-        sp = pooled_split(hu_pids, oh_pids, seed=args.hupa_seed)
-        test_pids = sp["hupa_test"] if args.dataset == "hupa" else sp["ohio_test"]
+        pc, hu_pids, oh_pids, man_pids = load_pooled()
+        sp = pooled_split(hu_pids, oh_pids, man_pids, seed=args.hupa_seed)
+        test_pids = sp[f"{args.dataset}_test"]
         cohort = [pc[pid] for pid in test_pids]
         print(f"Dataset: POOLED-{args.dataset} test ({len(cohort)} patients, seed={args.hupa_seed})")
     elif args.dataset == "hupa":

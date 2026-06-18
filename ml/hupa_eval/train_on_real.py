@@ -55,8 +55,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if args.pooled:
         from realdata.pooled import load_pooled, pooled_split
-        cohort, hu_pids, oh_pids = load_pooled()
-        sp = pooled_split(hu_pids, oh_pids, seed=args.seed)
+        cohort, hu_pids, oh_pids, man_pids = load_pooled()
+        sp = pooled_split(hu_pids, oh_pids, man_pids, seed=args.seed)
         ckpt_name = "xchannel_nll_pooled_best.pt"
     else:
         cohort = {p.pid: p for p in load_hupa_cohort()}
