@@ -45,6 +45,10 @@ def main():
     ap.add_argument("--num_workers", type=int, default=0)
     ap.add_argument("--pooled", action="store_true",
                     help="train on pooled HUPA+Ohio real cohort (else HUPA only)")
+    ap.add_argument("--init", type=str, default=None,
+                    help="checkpoint to init from (sim-pretrain → fine-tune); else scratch")
+    ap.add_argument("--n_real_patients", type=int, default=0,
+                    help="cap real train patients (0=all); data-efficiency sweep")
     args = ap.parse_args()
     torch.manual_seed(args.seed); np.random.seed(args.seed)
 
@@ -63,9 +67,11 @@ def main():
     def pre(pids):
         return {pid: labelled_render(cohort[pid], cfg, args.meal_min_g,
                                      args.rescue_lookback) for pid in pids}
-    train_pre, val_pre = pre(sp["train"]), pre(sp["val"])
+    train_pids = sp["train"][:args.n_real_patients] if args.n_real_patients else sp["train"]
+    train_pre, val_pre = pre(train_pids), pre(sp["val"])
     print(f"real-train {len(train_pre)} / val {len(val_pre)} patients "
-          f"(test held out: {len(sp['test'])})  device={device}")
+          f"(test held out: {len(sp['test'])})  device={device}"
+          f"{'  | FT init=' + Path(args.init).name if args.init else '  | scratch'}")
 
     def mk(d):
         return ForecastWindowDataset(list(d), _preloaded=d, stride=args.stride,
@@ -79,6 +85,9 @@ def main():
                             num_workers=args.num_workers, pin_memory=pin)
 
     model = XChannelForecaster(n_layers=2, probabilistic=True).to(device)
+    if args.init:                                            # sim-pretrain → fine-tune
+        model.load_state_dict(torch.load(args.init, map_location=device)["model_state"])
+        print(f"  loaded init weights from {Path(args.init).name} (fine-tuning)", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     sched = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=3, min_lr=1e-6)
     ckpt_args = {"patch_len": 0, "n_layers": 2, "probabilistic": True,
