@@ -48,7 +48,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cohort = {p.pid: p for p in load_hupa_cohort()}
-    sp = hupa_split(list(cohort))
+    sp = hupa_split(list(cohort), seed=args.seed)
     cfg = RuleConfig()
 
     def pre(pids):
