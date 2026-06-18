@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from dataset import (  # noqa: E402
     make_patient_split, fit_scalers, load_patients, set_seed, TRAIN_STRIDE,
 )
-from models.xchannel.model import XChannelForecaster, forecast_loss  # noqa: E402
+from models.xchannel.model import XChannelForecaster, forecast_loss, CONTEXT_LEN, HORIZON  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
@@ -79,7 +79,8 @@ def build_loaders(args, device):
     train_ids = split["train"]
     val_ids   = split["val"][: args.val_patients]
     if args.n_train_patients:
-        train_ids = train_ids[: args.n_train_patients]   # data-matched sim-N
+        import random
+        train_ids = random.Random(args.seed).sample(sorted(train_ids), args.n_train_patients)  # data-matched, seed-varied sim-N
     if args.smoke_test:
         train_ids, val_ids = train_ids[:10], val_ids[:10]
 
@@ -154,10 +155,12 @@ def main():
              + (["patched"] if args.patch_len else [])
              + (["nll"] if args.probabilistic else [])
              + (["aug"] if args.augment else [])
-             + ([f"sim{args.n_train_patients}"] if args.n_train_patients else []))
+             + ([f"sim{args.n_train_patients}"] if args.n_train_patients else [])
+             + ([f"h{HORIZON}"] if HORIZON != 40 else []))
     tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
+    ckpt_args = {**vars(args), "context_len": CONTEXT_LEN, "horizon": HORIZON}
     best_val, log = float("inf"), []
 
     for epoch in range(1, args.epochs + 1):
@@ -174,11 +177,11 @@ def main():
         if val_loss < best_val:
             best_val = val_loss
             torch.save({"epoch": epoch, "model_state": model.state_dict(),
-                        "val_loss": val_loss, "args": vars(args)},
+                        "val_loss": val_loss, "args": ckpt_args},
                        CHECKPOINT_DIR / best_name)
             print(f"  ✓ saved best checkpoint (val={val_loss:.4f})", flush=True)
 
-    torch.save({"epoch": args.epochs, "model_state": model.state_dict(), "args": vars(args)},
+    torch.save({"epoch": args.epochs, "model_state": model.state_dict(), "args": ckpt_args},
                CHECKPOINT_DIR / final_name)
     LOG_PATH.write_text(json.dumps(log, indent=2))
     print(f"\nDone. Best val loss: {best_val:.4f}", flush=True)

@@ -24,12 +24,17 @@ Each channel gets its OWN input Linear because the channels have different
 visible lengths (glucose L, exogenous L+H) — weights can't be shared.
 """
 
+import os
+
 import torch
 import torch.nn as nn
 
 # ── shapes (minutes; CGM is 1 sample/min in this cohort) ──────────────────────
-CONTEXT_LEN = 120     # L — glucose history fed in (matches PatchTST window)
-HORIZON = 40          # H — minutes of glucose to forecast across
+# Env-overridable for the longer-horizon sweep (ml/docs/LONGER_HORIZON.md): set
+# XCH_HORIZON / XCH_CONTEXT for BOTH train and eval of a given run. ckpt args also
+# carry horizon/context so forecaster_from_ckpt rebuilds the right output size.
+CONTEXT_LEN = int(os.environ.get("XCH_CONTEXT", "120"))   # L — glucose history fed in
+HORIZON = int(os.environ.get("XCH_HORIZON", "40"))        # H — minutes to forecast across
 N_CHANNELS = 3        # glucose, insulin, carbs
 
 # ── capacity (matched to PatchTST/CARLA for a fair comparison) ────────────────
@@ -138,23 +143,46 @@ def forecast_loss(out, target):
     return nn.functional.mse_loss(out, target)
 
 
-def anomaly_score(out, target):
-    """Per-window score [B]. Squared residual (point) or per-element NLL (prob.).
+def anomaly_score(out, target, mode: str = "sym"):
+    """Per-window score [B]. `mode` selects the residual aggregation:
 
-    The NLL score is 'surprise under predicted uncertainty': a big residual the
-    model EXPECTED (high σ) scores lower than the same residual where the model
-    was confident — this is what curbs false positives on naturally-variable
-    but-normal windows (the over-detection the point-MSE score suffers)."""
+      sym    : symmetric — squared residual (point) / per-element NLL (prob.). default.
+      signed : mean POSITIVE-part residual (glucose ABOVE forecast) — targets the
+               hyperglycemic anomalies (missed/late/large = under-insulinization).
+      peak   : max positive-part residual over the horizon (a missed bolus diverges
+               progressively; the mean dilutes the late, strongest part).
+      end    : mean positive-part residual over the LAST quarter of the horizon.
+
+    For the probabilistic model the positive residual is standardized by σ
+    (directional surprise under uncertainty); for the point model it is the raw
+    positive residual."""
     if isinstance(out, tuple):
         mean, logvar = out
-        return 0.5 * ((target - mean) ** 2 * torch.exp(-logvar) + logvar).mean(dim=1)
-    return ((out - target) ** 2).mean(dim=1)
+        resid = target - mean
+        elem = 0.5 * (resid ** 2 * torch.exp(-logvar) + logvar)      # per-element NLL (symmetric)
+        pos = torch.clamp(resid * torch.exp(-0.5 * logvar), min=0.0)  # directional (refuted, kept)
+    else:
+        resid = target - out
+        elem = resid ** 2                                            # per-element squared (symmetric)
+        pos = torch.clamp(resid, min=0.0)
+    if mode == "sym":
+        return elem.mean(dim=1)
+    if mode == "signed":                                            # directional over-forecast (refuted)
+        return pos.mean(dim=1)
+    if mode == "peak":                                              # max symmetric residual over horizon
+        return elem.max(dim=1).values
+    if mode == "end":                                               # symmetric residual over last quarter
+        k = max(1, elem.shape[1] // 4)
+        return elem[:, -k:].mean(dim=1)
+    raise ValueError(f"unknown score mode: {mode}")
 
 
 def forecaster_from_ckpt(ckpt: dict, device=None) -> "XChannelForecaster":
     """Reconstruct a forecaster matching how it was trained (reads arch args)."""
     a = ckpt.get("args", {})
     model = XChannelForecaster(
+        context_len=int(a.get("context_len", CONTEXT_LEN)),
+        horizon=int(a.get("horizon", HORIZON)),
         patch_len=int(a.get("patch_len", 0)),
         n_layers=int(a.get("n_layers", N_LAYERS)),
         probabilistic=bool(a.get("probabilistic", False)),

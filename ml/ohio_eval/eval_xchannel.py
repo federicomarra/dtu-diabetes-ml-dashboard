@@ -83,7 +83,7 @@ def _zscore_stats(arr):
 
 
 @torch.no_grad()
-def score_patient(model, device, arr, valid, mean, std, fcol, stride, batch_size):
+def score_patient(model, device, arr, valid, mean, std, fcol, stride, batch_size, score_mode="sym"):
     T = arr.shape[0]
     z = (arr[:, :N_CHANNELS] - mean) / std
     starts = [s for s in range(0, T - WIN + 1, stride) if valid[s : s + WIN].all()]
@@ -96,7 +96,7 @@ def score_patient(model, device, arr, valid, mean, std, fcol, stride, batch_size
         ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in chunk]).to(device)
         car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in chunk]).to(device)
         tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in chunk]).to(device)
-        scores.append(compute_score(model(glu, ins, car), tgt).cpu().numpy())
+        scores.append(compute_score(model(glu, ins, car), tgt, score_mode).cpu().numpy())
         labels.append(np.array([arr[s + L : s + WIN, fcol].max() for s in chunk], dtype=np.float32))
     return np.concatenate(scores), np.concatenate(labels)
 

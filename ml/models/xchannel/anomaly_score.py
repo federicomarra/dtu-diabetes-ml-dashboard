@@ -49,7 +49,7 @@ MINUTES_PER_DAY = 1440
 
 
 @torch.no_grad()
-def score_dataset(model, loader, device):
+def score_dataset(model, loader, device, score_mode="sym"):
     """Forecast residual per window + per-class labels (dataset order)."""
     model.eval()
     all_scores: list[np.ndarray] = []
@@ -58,7 +58,7 @@ def score_dataset(model, loader, device):
     for i, (glu, ins, carb, target, label_dict) in enumerate(loader, 1):
         glu, ins, carb = glu.to(device), ins.to(device), carb.to(device)
         target = target.to(device)
-        score = compute_score(model(glu, ins, carb), target)   # MSE or NLL [B]
+        score = compute_score(model(glu, ins, carb), target, score_mode)   # [B]
         all_scores.append(score.cpu().numpy())
         for c in ANOMALY_CLASSES:
             all_labels[c].append(label_dict[c].numpy())
@@ -80,6 +80,8 @@ def main():
     p.add_argument("--parquet", type=Path, default=PARQUET)
     p.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
                    help="MUST match the pretrain run")
+    p.add_argument("--score", choices=["sym", "signed", "peak", "end"], default="sym",
+                   help="anomaly-score aggregation (directional over-forecast variants)")
     p.add_argument("--smoke_test", action="store_true")
     args = p.parse_args()
 
@@ -108,7 +110,7 @@ def main():
                         num_workers=args.num_workers, pin_memory=device.type == "cuda")
 
     print("Scoring — conditional forecast residual…")
-    scores, labels = score_dataset(model, loader, device)
+    scores, labels = score_dataset(model, loader, device, args.score)
     print(f"  range min={scores.min():.4f} max={scores.max():.4f} mean={scores.mean():.4f}")
 
     # per-patient robust threshold (informational)
