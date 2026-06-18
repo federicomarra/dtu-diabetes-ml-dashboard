@@ -82,6 +82,8 @@ def main():
     ap.add_argument("--hupa_root", type=Path, default=Path("ml/data/real/hupa/Preprocessed"))
     ap.add_argument("--hupa_split", choices=["all", "train", "val", "test"], default="all")
     ap.add_argument("--hupa_seed", type=int, default=42)
+    ap.add_argument("--pooled_test", action="store_true",
+                    help="eval only the pooled-split test patients for --dataset (uses --hupa_seed)")
     ap.add_argument("--year", default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)
@@ -105,7 +107,14 @@ def main():
     model = forecaster_from_ckpt(ckpt, device); model.eval()
     print(f"Loaded epoch {ckpt['epoch']} (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
-    if args.dataset == "hupa":
+    if args.pooled_test:
+        from realdata.pooled import load_pooled, pooled_split
+        pc, hu_pids, oh_pids = load_pooled()
+        sp = pooled_split(hu_pids, oh_pids, seed=args.hupa_seed)
+        test_pids = sp["hupa_test"] if args.dataset == "hupa" else sp["ohio_test"]
+        cohort = [pc[pid] for pid in test_pids]
+        print(f"Dataset: POOLED-{args.dataset} test ({len(cohort)} patients, seed={args.hupa_seed})")
+    elif args.dataset == "hupa":
         from hupa_eval.adapter import load_hupa_cohort
         cohort = load_hupa_cohort(args.hupa_root)
         if args.hupa_split != "all":

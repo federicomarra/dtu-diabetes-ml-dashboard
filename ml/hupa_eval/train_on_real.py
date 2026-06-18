@@ -43,12 +43,21 @@ def main():
     ap.add_argument("--meal_min_g", type=float, default=30.0)
     ap.add_argument("--rescue_lookback", type=int, default=30)
     ap.add_argument("--num_workers", type=int, default=0)
+    ap.add_argument("--pooled", action="store_true",
+                    help="train on pooled HUPA+Ohio real cohort (else HUPA only)")
     args = ap.parse_args()
     torch.manual_seed(args.seed); np.random.seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cohort = {p.pid: p for p in load_hupa_cohort()}
-    sp = hupa_split(list(cohort), seed=args.seed)
+    if args.pooled:
+        from realdata.pooled import load_pooled, pooled_split
+        cohort, hu_pids, oh_pids = load_pooled()
+        sp = pooled_split(hu_pids, oh_pids, seed=args.seed)
+        ckpt_name = "xchannel_nll_pooled_best.pt"
+    else:
+        cohort = {p.pid: p for p in load_hupa_cohort()}
+        sp = hupa_split(list(cohort), seed=args.seed)
+        ckpt_name = "xchannel_nll_hupa_best.pt"
     cfg = RuleConfig()
 
     def pre(pids):
@@ -86,7 +95,7 @@ def main():
             best = vl
             torch.save({"epoch": ep, "model_state": model.state_dict(),
                         "args": ckpt_args, "val_loss": vl},
-                       CHECKPOINT_DIR / "xchannel_nll_hupa_best.pt")
+                       CHECKPOINT_DIR / ckpt_name)
             print(f"  ✓ saved (val={vl:.4f})", flush=True)
     print(f"Done. Best val {best:.4f}")
 
