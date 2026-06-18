@@ -15,21 +15,35 @@ from models.xchannel.model import XChannelForecaster            # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset       # noqa: E402
 from models.xchannel.pretrain import run_epoch                  # noqa: E402
 from characterization.rules import classify_meals, RuleConfig   # noqa: E402
-from ohio_eval.eval_proxy import clean_meals, CLASS_IDX, LABEL_POST_MIN  # noqa: E402
+from ohio_eval.eval_proxy import clean_meals, CLASS_IDX, LABEL_POST_MIN, ALIGNED  # noqa: E402
 from hupa_eval.adapter import load_hupa_cohort                  # noqa: E402
 from hupa_eval.split import hupa_split                          # noqa: E402
+from realdata.excursion import excursion_window                 # noqa: E402
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
 
 
-def labelled_render(p, cfg, meal_min_g, rescue_lookback):
-    """[T,8] with CLEANED rule anomaly flags in cols 3-7 (for train_on=normal)."""
+def labelled_render(p, cfg, meal_min_g, rescue_lookback, exclude="flat60"):
+    """[T,8] with CLEANED rule anomaly flags in cols 3-7 (for train_on=normal).
+
+    `exclude` sets the anomaly-tail length removed from the 'normal' training set:
+      flat60    — legacy [m, m+60] (leaks the 60-300min hyper tail into 'normal')
+      aligned   — [m, m+{180,240,300}] per class (removes the full anomaly tail)
+      excursion — glucose-derived window, fixed-aligned fallback when no rise
+    """
     arr = p.render()
     labels = classify_meals(clean_meals(p, meal_min_g, rescue_lookback), p.boluses, cfg)
     for cls, minutes in labels.items():
         col = N_CHANNELS + CLASS_IDX[cls]
         for m in minutes:
-            arr[m: min(p.T, m + LABEL_POST_MIN), col] = 1.0
+            if exclude == "excursion":
+                w = excursion_window(p.glucose, m, cls)
+                s, e = w if w is not None else (m, min(p.T, m + ALIGNED[cls]))
+            elif exclude == "aligned":
+                s, e = m, min(p.T, m + ALIGNED[cls])
+            else:                                    # flat60
+                s, e = m, min(p.T, m + LABEL_POST_MIN)
+            arr[s:e, col] = 1.0
     return arr
 
 
@@ -49,6 +63,10 @@ def main():
                     help="checkpoint to init from (sim-pretrain → fine-tune); else scratch")
     ap.add_argument("--n_real_patients", type=int, default=0,
                     help="cap real train patients (0=all); data-efficiency sweep")
+    ap.add_argument("--exclude", choices=["flat60", "aligned", "excursion"], default="flat60",
+                    help="anomaly-tail length removed from the 'normal' training set")
+    ap.add_argument("--tag", type=str, default="",
+                    help="suffix appended to the checkpoint name (keep arms distinct)")
     args = ap.parse_args()
     torch.manual_seed(args.seed); np.random.seed(args.seed)
 
@@ -62,11 +80,13 @@ def main():
         cohort = {p.pid: p for p in load_hupa_cohort()}
         sp = hupa_split(list(cohort), seed=args.seed)
         ckpt_name = "xchannel_nll_hupa_best.pt"
+    if args.tag:
+        ckpt_name = ckpt_name.replace("_best.pt", f"_{args.tag}_best.pt")
     cfg = RuleConfig()
 
     def pre(pids):
         return {pid: labelled_render(cohort[pid], cfg, args.meal_min_g,
-                                     args.rescue_lookback) for pid in pids}
+                                     args.rescue_lookback, args.exclude) for pid in pids}
     train_pids = sp["train"][:args.n_real_patients] if args.n_real_patients else sp["train"]
     train_pre, val_pre = pre(train_pids), pre(sp["val"])
     print(f"real-train {len(train_pre)} / val {len(val_pre)} patients "
