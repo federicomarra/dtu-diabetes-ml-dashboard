@@ -35,7 +35,13 @@ from ohio_eval.adapter import load_ohio_cohort  # noqa: E402
 from ohio_eval.eval_xchannel import score_patient, _zscore_stats, CLASS_IDX  # noqa: E402
 from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 
-LABEL_POST_MIN = 60          # flag [meal, meal+POST] — the early post-meal excursion
+LABEL_POST_MIN = 60          # flat fallback (legacy)
+# Class-specific post-meal label windows — MATCH the sim generator's
+# LABEL_WINDOW_{MISSED,LATE,LARGE}_END so the real-eval positive region lines up with
+# where the model was trained to fire (and where glucose actually diverges: audit shows
+# Ohio missed peaks 90-120min, flat at 30-60). Flat 60 caught almost none of the signal.
+LABEL_WIN = {"flat":    {"missed": 60,  "late": 60,  "large": 60},
+             "aligned": {"missed": 180, "late": 240, "large": 300}}
 
 
 def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
@@ -54,14 +60,16 @@ def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
     return out
 
 
-def label_array(p, cfg: RuleConfig, meals) -> np.ndarray:
-    """[T,8] flag array: rule-labelled meals marked over their post-meal window."""
+def label_array(p, cfg: RuleConfig, meals, win=None) -> np.ndarray:
+    """[T,8] flag array: rule-labelled meals marked over their post-meal window.
+    `win` is a class→minutes dict (defaults to the flat 60-min window)."""
+    win = win or LABEL_WIN["flat"]
     flags = np.zeros((p.T, N_CHANNELS + 5), dtype=np.float32)
     labels = classify_meals(meals, p.boluses, cfg)
     for cls, minutes in labels.items():
         col = N_CHANNELS + CLASS_IDX[cls]
         for m in minutes:
-            flags[m : min(p.T, m + LABEL_POST_MIN), col] = 1.0
+            flags[m : min(p.T, m + win[cls]), col] = 1.0
     return flags
 
 
@@ -73,10 +81,15 @@ def main():
     ap.add_argument("--ohio_root", type=Path, default=Path("ml/data/real/ohio"))
     ap.add_argument("--hupa_root", type=Path, default=Path("ml/data/real/hupa/Preprocessed"))
     ap.add_argument("--hupa_split", choices=["all", "train", "val", "test"], default="all")
+    ap.add_argument("--hupa_seed", type=int, default=42)
     ap.add_argument("--year", default="both", choices=["2018", "2020", "both"])
     ap.add_argument("--split", default="test", choices=["test", "train"])
     ap.add_argument("--stride", type=int, default=5)
     ap.add_argument("--batch_size", type=int, default=512)
+    ap.add_argument("--score", choices=["sym", "signed", "peak", "end"], default="sym",
+                    help="anomaly-score aggregation (directional over-forecast variants)")
+    ap.add_argument("--label_mode", choices=["flat", "aligned"], default="flat",
+                    help="post-meal label window: flat 60min, or aligned to sim (180/240/300)")
     ap.add_argument("--clean", action="store_true",
                     help="cleaned labels: drop snacks (<meal_min_g) + hypo-rescue meals")
     ap.add_argument("--meal_min_g", type=float, default=30.0)
@@ -97,7 +110,7 @@ def main():
         cohort = load_hupa_cohort(args.hupa_root)
         if args.hupa_split != "all":
             from hupa_eval.split import hupa_split
-            sel = set(hupa_split([p.pid for p in cohort])[args.hupa_split])
+            sel = set(hupa_split([p.pid for p in cohort], seed=args.hupa_seed)[args.hupa_split])
             cohort = [p for p in cohort if p.pid in sel]
         print(f"Dataset: HUPA ({len(cohort)} patients, split={args.hupa_split})")
     else:
@@ -126,10 +139,10 @@ def main():
         for p in cohort:
             base = xf(p.render())                       # model input (real data)
             arr = base.copy()
-            arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p))[:, N_CHANNELS:]   # attach rule flags
+            arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p), LABEL_WIN[args.label_mode])[:, N_CHANNELS:]   # attach rule flags
             mean, std = _zscore_stats(base)
             s, l = score_patient(model, device, arr, p.valid, mean, std, fcol,
-                                 args.stride, args.batch_size)
+                                 args.stride, args.batch_size, args.score)
             all_s.append(s); all_l.append(l)
         scores, labels = np.concatenate(all_s), np.concatenate(all_l)
         if labels.sum() == 0:
