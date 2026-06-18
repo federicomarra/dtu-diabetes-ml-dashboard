@@ -171,7 +171,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/{patient.Id}");
+        var resp = await _client.GetAsync($"/api/glucose?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -180,32 +180,32 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetGlucoseReadings_WithTimeRangeAndLimit_FiltersCorrectly()
+    public async Task GetGlucoseReadings_WithTimeRangeAndLast_FiltersCorrectly()
     {
         var patient = await SeedPatientAsync("P_GLUCOSE_FILTER", "GF Patient");
         var now = DateTime.UtcNow;
 
         await using var db = CreateDb();
         db.Glucoses.AddRange(
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-3), GlucoseMmoll = 5.0 },
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-2), GlucoseMmoll = 6.0 },
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-1), GlucoseMmoll = 7.0 }
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), GlucoseMmoll = 5.0 }, // ~2.2h before latest (Excluded)
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), GlucoseMmoll = 6.0 }, // ~1.0h before latest (Included)
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  GlucoseMmoll = 7.0 }  // latest (Included)
         );
         await db.SaveChangesAsync();
 
-        // 1. Test limit
-        var respLimit = await _client.GetAsync($"/api/glucose/{patient.Id}?limit=2");
-        Assert.Equal(HttpStatusCode.OK, respLimit.StatusCode);
-        var bodyLimit = await respLimit.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyLimit.GetProperty("count").GetInt32());
-        var readingsLimit = bodyLimit.GetProperty("readings");
-        Assert.Equal(7.0, readingsLimit[0].GetProperty("glucose_mmoll").GetDouble());
-        Assert.Equal(6.0, readingsLimit[1].GetProperty("glucose_mmoll").GetDouble());
+        // 1. Test last
+        var respLast = await _client.GetAsync($"/api/glucose?id={patient.Id}&last=2h");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
+        var readingsLast = bodyLast.GetProperty("readings");
+        Assert.Equal(7.0, readingsLast[0].GetProperty("glucose_mmoll").GetDouble());
+        Assert.Equal(6.0, readingsLast[1].GetProperty("glucose_mmoll").GetDouble());
 
         // 2. Test start and end filter
         var startStr = now.AddHours(-2.5).ToString("O");
         var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/glucose/{patient.Id}?start={startStr}&end={endStr}");
+        var respFilter = await _client.GetAsync($"/api/glucose?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32()); // 6.0 and 7.0
@@ -224,7 +224,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/{patient.Id}/latest");
+        var resp = await _client.GetAsync($"/api/glucose/latest?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -234,7 +234,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetLatestReading_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/99999/latest");
+        var resp = await _client.GetAsync("/api/glucose/latest?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -251,7 +251,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/{patient.Id}/tir");
+        var resp = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -274,12 +274,96 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         // Query with start filter that excludes the high reading at -3 hours
         var startStr = now.AddHours(-2.5).ToString("O");
-        var resp = await _client.GetAsync($"/api/glucose/{patient.Id}/tir?start={startStr}");
+        var resp = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}&start={startStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         // The only readings after -2.5 hours are 6.0 and 6.5, which are both in-range -> 100%
         Assert.Equal(100.0, body.GetProperty("in_range_pct").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetTir_WithLastFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_TIR_LAST", "TIR Last Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 }, // Out of default 2w range, and out of 5d range
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-3),  GlucoseMmoll = 6.0 },  // In range
+            new Glucose { PatientId = patient.Id, Timestamp = now,             GlucoseMmoll = 6.5 }   // In range
+        );
+        await db.SaveChangesAsync();
+
+        // 1. Default (uses default '2w' filtering relative to latest available reading) -> The 12.0 reading at -20d is excluded.
+        // Remaining are 6.0 and 6.5, which are both in-range -> 100%
+        var respDefault = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var bodyDefault = await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(100.0, bodyDefault.GetProperty("in_range_pct").GetDouble());
+
+        // 2. Querying with last=3w -> Includes the 12.0 reading.
+        // Readings: 12.0, 6.0, 6.5 -> 2 out of 3 in-range -> 66.7%
+        var respLast = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(66.7, bodyLast.GetProperty("in_range_pct").GetDouble());
+    }
+
+    // ── Average Glucose ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAverageReading_ReturnsCorrectAverage()
+    {
+        var patient = await SeedPatientAsync("P_AVG_TEST", "Average Patient");
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-10), GlucoseMmoll = 5.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-5),  GlucoseMmoll = 7.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var val = await resp.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(6.0, val);
+    }
+
+    [Fact]
+    public async Task GetAverageReading_WithFilters_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_AVG_FILTER", "Average Filter Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 10.0 }, // Old reading (excluded by default 2w last)
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-2),  GlucoseMmoll = 5.0 },  // Within last 2w (included)
+            new Glucose { PatientId = patient.Id, Timestamp = now,             GlucoseMmoll = 7.0 }   // Latest within last 2w (included)
+        );
+        await db.SaveChangesAsync();
+
+        // 1. Default (uses default '2w' filtering relative to latest available reading at now) -> Average of 5.0 and 7.0 = 6.0
+        var respDefault = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var valDefault = await respDefault.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(6.0, valDefault);
+
+        // 2. Querying with last=3w -> Average of all three (10.0 + 5.0 + 7.0) / 3 = 7.333333333333333
+        var respLast = await _client.GetAsync($"/api/glucose/average?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var valLast = await respLast.Content.ReadFromJsonAsync<double>(JsonOpts);
+        Assert.Equal(7.33, Math.Round(valLast, 2));
+    }
+
+    [Fact]
+    public async Task GetAverageReading_NotFound_Returns404()
+    {
+        var resp = await _client.GetAsync("/api/glucose/average?id=99999");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     // ── Anomalies ─────────────────────────────────────────────────────────────

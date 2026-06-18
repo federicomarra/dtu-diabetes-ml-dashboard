@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { GlucoseUnitProvider } from "@/controllers/GlucoseUnitContext";
+import { TimeRangeProvider } from "@/controllers/TimeRangeContext";
+import { GlucoseRangesProvider } from "@/controllers/GlucoseRangesContext";
 import NavBar from "@/views/NavBar/NavBar";
 import "./globals.css";
 
@@ -24,10 +26,14 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body style={{ fontFamily: "var(--font-inter), sans-serif" }}>
         <GlucoseUnitProvider>
-          <NavBar />
-          <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
-            {children}
-          </main>
+          <TimeRangeProvider>
+            <GlucoseRangesProvider>
+              <NavBar/>
+              <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
+                {children}
+              </main>
+            </GlucoseRangesProvider>
+          </TimeRangeProvider>
         </GlucoseUnitProvider>
       </body>
     </html>

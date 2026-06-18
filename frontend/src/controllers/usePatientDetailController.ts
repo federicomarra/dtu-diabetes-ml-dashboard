@@ -6,10 +6,10 @@
  * then loads glucose readings, TIR, and anomalies from the backend.
  *
  * API calls (see models/api.ts):
- *   GET api/patient/list               → resolve external_id → patient.id
- *   GET api/glucose/{id}               → glucose readings
- *   GET api/glucose/{id}/tir           → time-in-range stats
- *   GET api/anomaly/{id}               → anomaly list
+ *   GET api/patient/by-external/{externalId} → resolve external_id → patient
+ *   GET api/glucose/{id}                     → glucose readings
+ *   GET api/glucose/{id}/tir                 → time-in-range stats
+ *   GET api/anomaly/{id}                     → anomaly list
  *   POST api/anomaly/{anomalyId}/acknowledge → acknowledge anomaly
  */
 "use client";
@@ -17,12 +17,15 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection } from "@/models/types";
 import {
-  getPatients,
+  getPatientByExternalId,
   getGlucoseReadings,
   getTimeInRange,
   getAnomalies,
   acknowledgeAnomaly,
+  getAverageReading,
 } from "@/models/api";
+import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 
 type State =
   | { status: "loading" }
@@ -32,12 +35,16 @@ type State =
       status: "ready";
       patient: Patient;
       readings: GlucoseReading[];
+      multiWeekReadings: GlucoseReading[];
       tir: TimeInRange | null;
       anomalies: AnomalyDetection[];
+      averageGlucose: number | null;
     };
 
 export function usePatientDetailController(externalId: string) {
   const [state, setState] = useState<State>({ status: "loading" });
+  const { timeRange } = useTimeRange();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
 
   useEffect(() => {
     let cancelled = false;
@@ -46,44 +53,59 @@ export function usePatientDetailController(externalId: string) {
       try {
         setState({ status: "loading" });
 
-        // 1. Resolve external_id → patient object
-        // The backend does not expose a /patient/by-external-id endpoint,
-        // so we fetch page 1 with a large perPage to find the patient.
-        const paginatedPatients = await getPatients(1, 100);
-        const patient = paginatedPatients.patients.find(
-          (p) => p.external_id === externalId
-        );
-
-        if (cancelled) return;
-
-        if (!patient) {
-          setState({ status: "not_found" });
+        // 1. Resolve external_id → patient object via dedicated endpoint
+        let patient;
+        try {
+          patient = await getPatientByExternalId(externalId);
+        } catch (err: unknown) {
+          if (cancelled) return;
+          // axios 404 → not_found; anything else → error
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
+            setState({ status: "not_found" });
+          } else {
+            setState({ status: "error", message: err instanceof Error ? err.message : "Failed to load patient" });
+          }
           return;
         }
 
+        if (cancelled) return;
+
         // 2. Fetch all data for this patient in parallel
-        const [readingsResult, tirResult, anomaliesResult] =
+        const [readingsResult, tirResult, anomaliesResult, averageResult] =
           await Promise.allSettled([
-            getGlucoseReadings(patient.id, { limit: 288 }), // last 24 h (5-min intervals)
-            getTimeInRange(patient.id),
+            getGlucoseReadings(patient.id, timeRange),
+            getTimeInRange(patient.id, {
+              ...timeRange,
+              VeryLow: glucoseRanges.veryLow,
+              Low: glucoseRanges.low,
+              High: glucoseRanges.high,
+              VeryHigh: glucoseRanges.veryHigh,
+            }),
             getAnomalies(patient.id, { limit: 50 }),
+            getAverageReading(patient.id, timeRange),
           ]);
 
         if (cancelled) return;
 
+        const fetchedReadings =
+          readingsResult.status === "fulfilled"
+            ? readingsResult.value.readings
+            : [];
+
         setState({
           status: "ready",
           patient,
-          readings:
-            readingsResult.status === "fulfilled"
-              ? readingsResult.value.readings
-              : [],
+          readings: fetchedReadings,
+          multiWeekReadings: fetchedReadings,
           tir:
             tirResult.status === "fulfilled" ? tirResult.value : null,
           anomalies:
             anomaliesResult.status === "fulfilled"
               ? anomaliesResult.value.anomalies
               : [],
+          averageGlucose:
+            averageResult.status === "fulfilled" ? averageResult.value : null,
         });
       } catch (err) {
         if (!cancelled) {
@@ -98,7 +120,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [externalId]);
+  }, [externalId, timeRange, glucoseRanges]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {
@@ -130,8 +152,10 @@ export function usePatientDetailController(externalId: string) {
       error: null,
       patient: null,
       readings: [],
+      multiWeekReadings: [] as GlucoseReading[],
       tir: null,
       anomalies: [],
+      averageGlucose: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
@@ -139,7 +163,7 @@ export function usePatientDetailController(externalId: string) {
   }
 
   if (state.status === "not_found") {
-    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], tir: null, anomalies: [], latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
+    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
   }
 
   if (state.status === "error") {
@@ -149,15 +173,17 @@ export function usePatientDetailController(externalId: string) {
       error: state.message,
       patient: null,
       readings: [],
+      multiWeekReadings: [] as GlucoseReading[],
       tir: null,
       anomalies: [],
+      averageGlucose: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
     };
   }
 
-  const { patient, readings, tir, anomalies } = state;
+  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose } = state;
 
   return {
     notFound: false as const,
@@ -166,7 +192,9 @@ export function usePatientDetailController(externalId: string) {
     patient,
     tir,
     readings,
+    multiWeekReadings,
     anomalies,
+    averageGlucose,
     latestReading: readings.length > 0 ? readings[0] : undefined, // ordered descending by backend
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,

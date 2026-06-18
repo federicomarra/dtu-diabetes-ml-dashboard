@@ -6,9 +6,10 @@
  *   GET  api/patient/list              → getPatients()
  *   GET  api/patient/{id}              → getPatient()
  *   POST api/patient/create            → createPatient()
- *   GET  api/glucose/{id}              → getGlucoseReadings()
- *   GET  api/glucose/{id}/latest       → getLatestReading()
- *   GET  api/glucose/{id}/tir          → getTimeInRange()
+ *   GET  api/glucose?id={id}           → getGlucoseReadings()
+ *   GET  api/glucose/latest?id={id}    → getLatestReading()
+ *   GET  api/glucose/tir?id={id}       → getTimeInRange()
+ *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/anomaly/{id}              → getAnomalies()
  *   POST api/anomaly/{id}/acknowledge  → acknowledgeAnomaly()
  *   GET  api/insulin/{id}              → getInsulins()
@@ -41,13 +42,18 @@ export async function getPatients(
   perPage = 20
 ): Promise<PaginatedResponse<Patient>> {
   const { data } = await api.get("/patient/list", {
-    params: { page, per_page: perPage },
+    params: { page, perPage },
   });
   return data;
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
   const { data } = await api.get(`/patient/${patientId}`);
+  return data;
+}
+
+export async function getPatientByExternalId(externalId: string): Promise<Patient> {
+  const { data } = await api.get(`/patient/by-external/${encodeURIComponent(externalId)}`);
   return data;
 }
 
@@ -62,24 +68,32 @@ export async function createPatient(
 
 export async function getGlucoseReadings(
   patientId: number,
-  params?: { start?: string; end?: string; limit?: number }
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; readings: GlucoseReading[]; count: number }> {
-  const { data } = await api.get(`/glucose/${patientId}`, { params });
+  const { data } = await api.get("/glucose", { params: { id: patientId, ...params } });
   return data;
 }
 
 export async function getLatestReading(
   patientId: number
 ): Promise<GlucoseReading> {
-  const { data } = await api.get(`/glucose/${patientId}/latest`);
+  const { data } = await api.get("/glucose/latest", { params: { id: patientId } });
   return data;
 }
 
 export async function getTimeInRange(
   patientId: number,
-  params?: { start?: string; end?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
+  params?: { start?: string; end?: string; last?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
 ): Promise<TimeInRange> {
-  const { data } = await api.get(`/glucose/${patientId}/tir`, { params });
+  const { data } = await api.get("/glucose/tir", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getAverageReading(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<number> {
+  const { data } = await api.get("/glucose/average", { params: { id: patientId, ...params } });
   return data;
 }
 

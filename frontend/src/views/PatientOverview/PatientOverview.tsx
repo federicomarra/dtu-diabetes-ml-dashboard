@@ -4,6 +4,7 @@ import { Activity, Droplets, AlertTriangle } from "lucide-react";
 import type { GlucoseReading, TimeInRange } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
+import { useGlucoseRanges, type GlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -13,6 +14,16 @@ interface PatientOverviewProps {
   latestReading?: GlucoseReading;
   tir?: TimeInRange;
   anomalyCount?: number;
+  averageGlucose?: number | null;
+  timeRangeLast?: string;
+}
+
+function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
+  if (value < ranges.veryLow) return "very_low";
+  if (value < ranges.low) return "low";
+  if (value <= ranges.high) return "in_range";
+  if (value <= ranges.veryHigh) return "high";
+  return "very_high";
 }
 
 function getStatusColor(status?: string): string {
@@ -48,8 +59,19 @@ export default function PatientOverview({
   latestReading,
   tir,
   anomalyCount = 0,
+  averageGlucose,
+  timeRangeLast = "2w",
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
+
+  const latestStatus = latestReading
+    ? getGlucoseStatus(latestReading.glucose_mmoll, glucoseRanges)
+    : undefined;
+
+  const averageStatus = averageGlucose != null
+    ? getGlucoseStatus(averageGlucose, glucoseRanges)
+    : undefined;
 
   return (
     <div className={styles.card}>
@@ -68,10 +90,10 @@ export default function PatientOverview({
             <Droplets size={18} />
           </div>
           <div>
-            <div className={styles.metricLabel}>Current Glucose</div>
+            <div className={styles.metricLabel}>Latest Glucose</div>
             <div
               className={styles.metricValue}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
               {latestReading
                 ? formatGlucose(latestReading.glucose_mmoll, unit)
@@ -79,9 +101,9 @@ export default function PatientOverview({
             </div>
             <div
               className={styles.metricStatus}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
-              {getStatusLabel(latestReading?.status)}
+              {getStatusLabel(latestStatus)}
             </div>
           </div>
         </div>
@@ -98,6 +120,31 @@ export default function PatientOverview({
             </div>
           </div>
         </div>
+
+        {/* Average Glucose */}
+        {averageGlucose != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <Droplets size={18} />
+            </div>
+            <div>
+            <div className={styles.metricLabel}>Avg Glucose ({timeRangeLast})</div>
+            <div
+              className={styles.metricValue}
+              style={{ color: getStatusColor(averageStatus) }}
+            >
+              {averageGlucose != null
+                ? formatGlucose(averageGlucose, unit)
+                : "—"}
+            </div>
+            <div
+              className={styles.metricStatus}
+              style={{ color: getStatusColor(averageStatus) }}
+            >
+              {getStatusLabel(averageStatus)}
+            </div>
+          </div>
+        </div>)}
 
         {/* Anomalies */}
         <div className={styles.metric}>

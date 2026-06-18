@@ -8,20 +8,22 @@
 
 ```text
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│     Frontend     │     │     Backend      │     │    Database      │
-│    (Next.js)     │────▶│  (ASP.NET Core)  │────▶│   (PostgreSQL)   │
+│     Frontend     │     │     Backend      │     │     Database     │
+│   TypeScript     │     │       C#         │     │       SQL        │
+│    (Next.js)     │────▶│    (.NET 10)     │────▶│   (PostgreSQL)   │
 │  localhost:3000  │     │  localhost:8000  │     │  localhost:5432  │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
                                   │
                          ┌──────────────────┐
-                         │    ML Module     │
+                         │        ML        │
+                         │     (Python)     │
                          │    (PyTorch)     │
                          │  local / DTU HPC │
                          └──────────────────┘
 ```
 
 | Component    | Technology                               | Environment       |
-|------------- | ---------------------------------------- | ----------------- |
+|--------------|------------------------------------------|-------------------|
 | Frontend     | Next.js + TypeScript + Recharts          | localhost:3000    |
 | Backend API  | ASP.NET Core 10 + EF Core + Swashbuckle  | localhost:8000    |
 | Database     | PostgreSQL 16                            | localhost:5432    |
@@ -32,74 +34,90 @@
 ```text
 ├── backend/                       # ASP.NET Core 10 API
 │   ├── DiabetesApi/               # Main API project
-│   │   ├── Controllers/           # API controllers
-│   │   │   ├── HealthController.cs
-│   │   │   ├── PatientsController.cs
-│   │   │   ├── GlucoseController.cs
-│   │   │   └── AnomaliesController.cs
+│   │   ├── Routes/                # Minimal-API route handlers
+│   │   │   ├── Health.cs
+│   │   │   ├── Patient.cs
+│   │   │   ├── Glucose.cs
+│   │   │   ├── Anomaly.cs
+│   │   │   ├── Insulin.cs
+│   │   │   ├── Meal.cs
+│   │   │   └── History.cs
 │   │   ├── Models/                # EF Core entity models
 │   │   │   ├── Patient.cs
-│   │   │   ├── GlucoseReading.cs
-│   │   │   ├── AnomalyDetection.cs
-│   │   │   ├── InsulinEvent.cs
-│   │   │   └── MealEvent.cs
+│   │   │   ├── Glucose.cs
+│   │   │   ├── Anomaly.cs
+│   │   │   ├── Insulin.cs
+│   │   │   ├── Meal.cs
+│   │   │   ├── Exercise.cs
+│   │   │   └── History.cs
 │   │   ├── Data/
-│   │   │   └── AppDbContext.cs    # EF Core DbContext
-│   │   ├── DTOs/
-│   │   │   └── Dtos.cs            # Request/response records
+│   │   │   ├── AppDbContext.cs    # EF Core DbContext
+│   │   │   └── DTOs.cs            # Request/response records
 │   │   ├── Services/
-│   │   │   └── GlucoseService.cs  # TIR business logic
+│   │   │   ├── GlucoseService.cs  # TIR & reading business logic
+│   │   │   └── PatientService.cs  # Age calculation
 │   │   ├── Program.cs             # DI, Swagger, CORS, routing
 │   │   └── DiabetesApi.csproj
 │   ├── DiabetesApi.Tests/         # xUnit integration tests
-│   │   └── ApiTests.cs
-│   ├── DiabetesApi.sln
+│   │   ├── ApiTests.cs
+│   │   └── CustomWebApplicationFactory.cs
+│   ├── DiabetesApi.slnx
 │   └── Dockerfile
 │
-├── frontend/                 # Next.js dashboard
+├── frontend/                      # Next.js dashboard
 │   └── src/
-│       ├── app/                  # Next.js pages (thin shells)
-│       │   ├── page.tsx          # Home / landing
-│       │   ├── layout.tsx        # Root layout & nav
-│       │   ├── patient/page.tsx  # Single-patient dashboard
+│       ├── app/                   # Next.js pages (thin shells)
+│       │   ├── page.tsx           # Home / landing
+│       │   ├── layout.tsx         # Root layout & nav
+│       │   ├── patient/page.tsx   # Single-patient dashboard
 │       │   └── doctor/
-│       │       ├── page.tsx      # Multi-patient clinician view
-│       │       └── [patient_id]/page.tsx  # Doctor patient detail
-│       ├── controllers/          # React hooks — data & state
+│       │       ├── page.tsx       # Multi-patient clinician view (paginated)
+│       │       └── [patient_id]/page.tsx  # Patient detail
+│       ├── controllers/           # React hooks & contexts — data & state
+│       │   ├── GlucoseUnitContext.tsx
+│       │   ├── TimeRangeContext.tsx
+│       │   ├── GlucoseRangesContext.tsx
 │       │   ├── usePatientController.ts
 │       │   ├── usePatientDetailController.ts
 │       │   └── useDoctorController.ts
-│       ├── models/               # Types, API client, demo data
+│       ├── models/                # Types, API client, config
 │       │   ├── types.ts
 │       │   ├── api.ts
+│       │   ├── glucoseConfig.ts
+│       │   ├── glucoseUnits.ts
 │       │   └── demoData.ts
-│       └── views/                # Presentational components
-│           ├── GlucoseChart/     # 24-hour CGM line chart (Recharts)
-│           ├── TIRChart/         # Time-in-range stacked bar
-│           ├── PatientOverview/  # Summary card with key metrics
-│           └── AnomalyAlert/     # Alert list with acknowledge action
+│       └── views/                 # Presentational components
+│           ├── GlucoseChart/      # 24-hour CGM line chart (Recharts)
+│           ├── TIRChart/          # Time-in-range chart with custom ranges
+│           ├── PatientOverview/   # Summary card with key metrics
+│           ├── AnomalyAlert/      # Alert list with acknowledge action
+│           ├── MultiWeeklyChart/  # Multi-week comparison glucose chart (Recharts)
+│           └── NavBar/            # Navigation bar component
 │
 ├── ml/                            # Machine learning module (Python)
 │   ├── dataset.py                 # Data loading, normalisation, sliding-window Dataset
 │   ├── data/                      # Parquet cohort, OhioT1DM, checkpoints, scalers
 │   ├── models/                    # One subfolder per model architecture
-│   │   └── patch_tst/             # Arc 1 primary: PatchTST masked-patch pretraining
-│   │       ├── model.py           # Architecture (600k params, channel-independent)
-│   │       ├── pretrain.py        # Masked-patch pretraining loop
-│   │       ├── anomaly_score.py   # Reconstruction MSE scorer + AUPRC/AUROC eval
-│   │       └── hpc_patchtst.sh    # DTU HPC LSF job script (pretrain + eval)
-│   ├── inference/                 # DB→model adapter (deferred — see INSTRUCTIONS.md §15)
+│   │   ├── patch_tst/             # Arc 1 baseline: PatchTST masked-patch pretraining
+│   │   ├── carla/                 # Arc 1 baseline: CARLA contrastive
+│   │   └── xchannel/              # Arc 1 primary: iTransformer cross-channel forecaster
+│   ├── inference/                 # DB→model adapter (diary.py; loader.py = histories→array)
+│   ├── ohio_eval/ hupa_eval/ realdata/  # Real-dataset adapters + proxy-label eval
 │   ├── scripts/                   # One-off analysis and plotting scripts
-│   │   ├── explore_patients.py    # Plot 3 random patients
-│   │   ├── plot_training.py       # Train/val loss curves from pretrain_log.json
-│   │   └── plot_eval.py           # PR curves + score distribution from checkpoint
 │   ├── figures/                   # Output figures (thesis-ready, 300 dpi)
 │   ├── tests/                     # Unit tests (pytest)
-│   └── docs/                      # INSTRUCTIONS.md (gitignored), PATCHTST.md
+│   └── docs/                      # Design specs (gitignored)
 ├── database/                      # Schema & seeding scripts
+|   ├── schema.sql                 # Database schema
+|   ├── upload_parquet.py          # Upload parquet files to database
+|   ├── inspect_parquet.py         # Inspect parquet files
+|   ├── inspect_database.py        # Inspect database
+|
 ├── docker-compose.yml             # Local dev environment
-├── Jenkinsfile                    # CI/CD pipeline
-└── hpc_job.sh                     # DTU HPC LSF job script
+|
+├── Jenkinsfile                    # CI/CD pipeline (DTU HPC)
+|
+└── hpc_job.sh                     # DTU HPC LSF job script (DTU HPC)
 ```
 
 ## Quick Start
@@ -121,7 +139,7 @@ cp .env.example .env
 ### 2. Start with Docker (recommended)
 
 ```bash
-# Start all services (postgres, backend, frontend)
+# Start all services (database, backend, frontend)
 docker compose up
 
 # Include pgAdmin for DB inspection
@@ -197,11 +215,12 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 ### Glucose (`/api/glucose`)
 
-| Method | Endpoint                          | Description                                      |
-|--------|-----------------------------------|--------------------------------------------------|
-| GET    | `/api/glucose/{patient_id}`       | Get readings (`?start=`, `?end=`, `?limit=500`)  |
-| GET    | `/api/glucose/{patient_id}/latest`| Most recent glucose reading                      |
-| GET    | `/api/glucose/{patient_id}/tir`   | Time-in-range statistics (`?start=`, `?end=`)    |
+| Method | Endpoint                          | Description                                       |
+|--------|-----------------------------------|---------------------------------------------------|
+| GET    | `/api/glucose?id={patient_id}`       | Get readings (`?start=`, `?end=`, `?last=2w`)    |
+| GET    | `/api/glucose/latest?id={patient_id}`| Most recent glucose reading                      |
+| GET    | `/api/glucose/tir?id={patient_id}`   | Time-in-range statistics (`?start=`, `?end=`, `?last=2w`)|
+| GET    | `/api/glucose/average?id={patient_id}`| Average glucose reading (`?start=`, `?end=`, `?last=2w`)|
 
 ### Anomalies (`/api/anomalies`)
 
@@ -231,22 +250,23 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuck
 
 ### Pages
 
-| Route      | Component               | Description                      |
-|------------|-------------------------|----------------------------------|
-| `/`        | `app/page.tsx`          | Home / landing page              |
-| `/patient` | `app/patient/page.tsx`  | Single-patient CGM dashboard     |
-| `/doctor`  | `app/doctor/page.tsx`   | Multi-patient clinician overview |
+| Route                    | Component                              | Description                                          |
+|--------------------------|----------------------------------------|------------------------------------------------------|
+| `/`                      | `app/page.tsx`                         | Home / landing page                                  |
+| `/patient`               | `app/patient/page.tsx`                 | Single-patient CGM dashboard                         |
+| `/doctor`                | `app/doctor/page.tsx`                  | Multi-patient clinician overview with pagination     |
+| `/doctor/[patient_id]`   | `app/doctor/[patient_id]/page.tsx`     | Individual patient detail (glucose chart, TIR, anomalies) |
 
 ### Components
 
-| Component         | Description                                                                    |
-|-------------------|--------------------------------------------------------------------------------|
-| `GlucoseChart`    | 24-hour CGM line chart with colour-coded glucose zones (Recharts)              |
-| `TIRChart`        | Stacked time-in-range bar chart (very low / low / in-range / high / very high) |
-| `PatientOverview` | Summary card — current glucose, TIR%, and anomaly alert count                  |
-| `AnomalyAlert`    | Alert list displaying missed/late bolus detections with acknowledge button     |
-
-> The frontend currently ships with realistic **demo data** for layout/testing. Replace the `DEMO_*` constants with live API calls from `@/lib/api` when the backend is running.
+| Component | Description |
+|-----------|-------------|
+| `GlucoseChart` | 24-hour CGM line chart with colour-coded threshold lines and shaded target zone; respects custom ranges |
+| `TIRChart` | Time-in-range chart (stacked or bar view) with customisable glucose thresholds and unit-aware range editor |
+| `PatientOverview` | Summary card — latest glucose reading, TIR %, and unacknowledged anomaly count |
+| `AnomalyAlert` | Alert list displaying missed/late bolus detections with inline acknowledge button |
+| `MultiWeeklyChart` | Overlay comparison chart comparing multiple weeks of CGM readings to observe patterns |
+| `NavBar` | Top navigation bar providing navigation between Patient and Doctor dashboards |
 
 ## Deployment
 

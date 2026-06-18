@@ -70,25 +70,60 @@ public class GlucoseService(AppDbContext db)
     /// </summary>
     public async Task<TirResponse> CalculateTimeInRangeAsync(
         int patientId,
-        ranges? ranges = null,
+        GlucoseRanges? glucoseRanges = null,
         DateTime? start = null,
-        DateTime? end = null)
+        DateTime? end = null,
+        string? last = null)
     {
         var (defaultVl, defaultL, defaultH, defaultVh) = GetThresholds();
         var thresholds = (
-            VeryLow: ranges?.VeryLow ?? defaultVl,
-            Low: ranges?.Low ?? defaultL,
-            High: ranges?.High ?? defaultH,
-            VeryHigh: ranges?.VeryHigh ?? defaultVh
+            VeryLow: glucoseRanges?.VeryLow ?? defaultVl,
+            Low: glucoseRanges?.Low ?? defaultL,
+            High: glucoseRanges?.High ?? defaultH,
+            VeryHigh: glucoseRanges?.VeryHigh ?? defaultVh
         );
 
         var query = db.Glucoses
             .Where(r => r.PatientId == patientId);
 
-        if (start.HasValue)
+        if (start.HasValue) {
             query = query.Where(r => r.Timestamp >= start.Value);
-        if (end.HasValue)
+        }
+        if (end.HasValue) {
             query = query.Where(r => r.Timestamp <= end.Value);
+        }
+
+        if (!start.HasValue && !end.HasValue && last is null) {
+            last = "2w";
+        }
+
+        if (last is not null) {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == patientId)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+            
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            }
+            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            }
+            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            }
+            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
+            {
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            }
+        }
 
         // Project both the glucose value and the timestamp so we can compute
         // the actual time span covered by this set of readings.

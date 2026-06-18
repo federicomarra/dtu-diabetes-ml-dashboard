@@ -14,6 +14,7 @@ export function GlucoseUnitProvider({ children }: { children: ReactNode }) {
   const [unit, setUnit] = useState<GlucoseUnit>("mmol/L");
 
   const toggleUnit = useCallback(() => {
+    
     setUnit((prev) => (prev === "mmol/L" ? "mg/dL" : "mmol/L"));
   }, []);
 

@@ -118,6 +118,44 @@ docker exec diabetes-db psql -U postgres -d diabetes_db -c "SELECT * FROM meals 
 
 ---
 
+## Inspect the Database  (`inspect_database.py`)
+
+A Python script that connects directly to PostgreSQL and prints a structured
+report covering the most interesting aspects of the data.
+
+**Requires:** `psycopg2-binary`
+
+```bash
+pip install psycopg2-binary
+```
+
+**Run from the `database/` directory:**
+
+```bash
+# Uses DATABASE_URL from .env (default: postgresql://postgres:postgres@localhost:5432/diabetes_db)
+python inspect_database.py
+
+# Or pass a custom connection URL
+python inspect_database.py --url postgresql://user:pass@host:port/db
+```
+
+**Sections reported:**
+
+| # | Section | What it shows |
+|---|---|---|
+| 1 | Row counts | Total rows in every table |
+| 2 | Patient overview | Top 10 patients — age, reading counts, date range |
+| 3 | Glucose distribution | Status breakdown (very low → very high): count, avg/min/max mmol/L, % |
+| 4 | Time-in-Range per patient | Top 10 patients by TIR%, all 5 zone percentages |
+| 5 | Insulin events | Bolus vs basal: count, avg/min/max/total units |
+| 6 | Meals by type | Breakfast/lunch/dinner/snack: count, avg/min/max carbs |
+| 7 | Temporal coverage | Earliest/latest date, total span, patients with data |
+| 8 | Readings per patient/day | Avg/min/max daily reading rate |
+| 9 | Anomaly summary | By type: total, acknowledged, pending, avg confidence |
+| 10 | Worst TIR patients | Bottom 10 by TIR%: mean glucose, hypo%, hyper%, TIR% |
+
+---
+
 ## Files
 
 | File | Description |
@@ -125,4 +163,5 @@ docker exec diabetes-db psql -U postgres -d diabetes_db -c "SELECT * FROM meals 
 | `schema.sql` | PostgreSQL DDL — all table and index definitions |
 | `upload_parquet.py` | Loads a `.parquet` simulation file into the database |
 | `inspect_parquet.py` | Prints column names and sample rows from a parquet file |
+| `inspect_database.py` | Connects to PostgreSQL and prints a 10-section data report |
 | `simulated-data/` | Directory containing `.parquet` simulation output files |

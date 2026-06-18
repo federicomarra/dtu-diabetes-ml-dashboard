@@ -51,7 +51,7 @@ public record TirResponse(
     float VeryHighPct
 );
 
-public record ranges(
+public record GlucoseRanges(
     double? VeryLow = null,
     double? Low = null,
     double? High = null,

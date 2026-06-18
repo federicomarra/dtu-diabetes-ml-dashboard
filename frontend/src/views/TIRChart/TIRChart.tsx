@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -9,11 +9,12 @@ import {
   Tooltip,
   CartesianGrid,
   ResponsiveContainer,
-  Cell,
+  Rectangle,
 } from "recharts";
 import type { TimeInRange } from "@/models/types";
-import { getTimeInRange } from "@/models/api";
+
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
 import type { GlucoseUnit } from "@/models/glucoseUnits";
 import {
@@ -22,18 +23,19 @@ import {
   HIGH_THRESHOLD,
   VERY_HIGH_THRESHOLD,
 } from "@/models/glucoseConfig";
+import { returnTextFromSpanDays } from "@/controllers/TimeRangeContext";
 import styles from "./TIRChart.module.css";
 
 // ─── Threshold types ────────────────────────────────────────
 
-interface CustomThresholds {
+export interface CustomThresholds {
   veryHigh: number; // mmol/L
   high: number;     // mmol/L
   low: number;      // mmol/L
   veryLow: number;  // mmol/L
 }
 
-const DEFAULT_THRESHOLDS: CustomThresholds = {
+export const DEFAULT_THRESHOLDS: CustomThresholds = {
   veryHigh: VERY_HIGH_THRESHOLD,
   high: HIGH_THRESHOLD,
   low: LOW_THRESHOLD,
@@ -68,35 +70,19 @@ const RANGE_COLORS = {
 
 type ViewMode = "stacked" | "barchart";
 
-/** Format a Date as DD/MM — locale-independent to avoid SSR hydration mismatches. */
-function formatDayMonth(d: Date): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
 
-function returnTextFromSpanDays(days: number): ReactNode {
-  let span: string;
-  if (days < 1) {
-    span = "day";
-  } else if (days === 7) {
-    span = "week";
-  } else if (days < 14) {
-    span = `${days} days`;
-  } else if (days === 30 || days === 31) {
-    span = "month";
-  } else if (days < 30) {
-    span = `${Math.round(days / 7)} weeks`;
-  } else if (days < 365) {
-    span = `${Math.round(days / 30)} months`;
-  } else {
-    span = `${Math.round(days / 365)} year${Math.round(days / 365) !== 1 ? "s" : ""}`;
-  }
-  const start_day: string = formatDayMonth(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
-  const end_day: string = formatDayMonth(new Date());
+
+function returnNodeFromSpanDays(days: number): ReactNode {
+  const [span, start_day, end_day] = returnTextFromSpanDays(days);
   return (
     <div className={styles.temporalSpan}>
       <strong>latest {span}</strong>
-      <br />
-      ({start_day} - {end_day})
+      {span === 'day' ? null : (
+        <>
+          <br />
+          ({start_day} - {end_day})
+        </>
+      )}
     </div>
   );
 }
@@ -287,6 +273,14 @@ interface BarChartViewProps {
 function BarChartView({ tir, thresholds }: BarChartViewProps) {
   const { unit } = useGlucoseUnit();
 
+  // Defer rendering until after the first browser paint so Recharts'
+  // ResizeObserver always sees a fully-laid-out container (never -1).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   const data = [
     {
       name: "Very High",
@@ -320,8 +314,10 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
     },
   ];
 
+  if (!mounted) return null;
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minHeight={280} minWidth={0} debounce={50} initialDimension={{ width: 400, height: 280 }}>
       <BarChart data={data} layout="vertical" margin={{ left: 0 }}>
         <CartesianGrid
           vertical={true}
@@ -354,28 +350,32 @@ function BarChartView({ tir, thresholds }: BarChartViewProps) {
             color: "var(--text-secondary)",
           }}
         />
-        <Bar dataKey="pct" radius={[0, 4, 4, 0]}>
-          {data.map((entry) => (
-            <Cell key={entry.key} fill={RANGE_COLORS[entry.key]} />
-          ))}
-        </Bar>
+        <Bar
+          dataKey="pct"
+          shape={(props: { x?: number; y?: number; width?: number; height?: number; payload?: { key: string } }) => {
+            const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+            const color = RANGE_COLORS[(payload?.key ?? "") as keyof typeof RANGE_COLORS];
+            return <Rectangle x={x} y={y} width={width} height={height} fill={color} radius={[0, 4, 4, 0]} />;
+          }}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
+
 // ─── Main component ────────────────────────────────────────
 
 // ─── Range Customization Modal ─────────────────────────────
 
-interface RangesModalProps {
+export interface RangesModalProps {
   unit: GlucoseUnit;
   thresholds: CustomThresholds;
   onApply: (t: CustomThresholds) => void;
   onClose: () => void;
 }
 
-function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
+export function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   const [draft, setDraft] = useState({
     veryHigh: toDisplay(thresholds.veryHigh, unit),
     high: toDisplay(thresholds.high, unit),
@@ -384,6 +384,22 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const overlayRef = useRef<HTMLDivElement>(null);
+  const prevUnitRef = useRef(unit);
+
+  // Re-convert draft values when the user switches unit while the modal is open
+  useEffect(() => {
+    const prevUnit = prevUnitRef.current;
+    if (prevUnit === unit) return;
+    prevUnitRef.current = unit;
+    setDraft((d) => ({
+      veryHigh: toDisplay(fromDisplay(d.veryHigh, prevUnit), unit),
+      high:     toDisplay(fromDisplay(d.high,     prevUnit), unit),
+      low:      toDisplay(fromDisplay(d.low,      prevUnit), unit),
+      veryLow:  toDisplay(fromDisplay(d.veryLow,  prevUnit), unit),
+    }));
+    setErrors({});
+  }, [unit]);
+
 
   // Close on backdrop click
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -418,13 +434,8 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   };
 
   const handleReset = () => {
-    setDraft({
-      veryLow: toDisplay(DEFAULT_THRESHOLDS.veryLow, unit),
-      low: toDisplay(DEFAULT_THRESHOLDS.low, unit),
-      high: toDisplay(DEFAULT_THRESHOLDS.high, unit),
-      veryHigh: toDisplay(DEFAULT_THRESHOLDS.veryHigh, unit),
-    });
-    setErrors({});
+    onApply(DEFAULT_THRESHOLDS);
+    onClose();
   };
 
   const fields: { key: keyof typeof draft; label: string; color: string }[] = [
@@ -483,44 +494,15 @@ function RangesModal({ unit, thresholds, onApply, onClose }: RangesModalProps) {
   );
 }
 
+// ─── Range Customization Modal ─────────────────────────────
+// (Keep modal props the same as it is a helper component)
+// ...
+
 // ─── Main component ────────────────────────────────────────
 
-export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) {
+export default function TIRChart({ tir }: TIRChartProps) {
+  const { ranges: thresholds } = useGlucoseRanges();
   const [mode, setMode] = useState<ViewMode>("stacked");
-  const [thresholds, setThresholds] = useState<CustomThresholds>(DEFAULT_THRESHOLDS);
-  const [showRangesModal, setShowRangesModal] = useState(false);
-  const [liveTir, setLiveTir] = useState<TimeInRange>(initialTir);
-  const [loading, setLoading] = useState(false);
-  const { unit } = useGlucoseUnit();
-
-  // Keep liveTir in sync when the parent provides new initial data
-  useEffect(() => { setLiveTir(initialTir); }, [initialTir]);
-
-  const handleApplyThresholds = useCallback(async (t: CustomThresholds) => {
-    setThresholds(t);
-
-    // Only call backend when thresholds differ from defaults
-    const isDefault =
-      t.veryLow === DEFAULT_THRESHOLDS.veryLow &&
-      t.low === DEFAULT_THRESHOLDS.low &&
-      t.high === DEFAULT_THRESHOLDS.high &&
-      t.veryHigh === DEFAULT_THRESHOLDS.veryHigh;
-
-    setLoading(true);
-    try {
-      const params = isDefault
-        ? undefined
-        : { VeryLow: t.veryLow, Low: t.low, High: t.high, VeryHigh: t.veryHigh };
-      const result = await getTimeInRange(patientId, params);
-      setLiveTir(result);
-    } catch (err) {
-      console.error("Failed to re-compute TIR with custom ranges:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [patientId]);
-
-  const tir = liveTir;
 
   return (
     <div className={styles.container}>
@@ -529,7 +511,7 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
         <div>
           <h3 className={styles.title}>Time in Range</h3>
           <div className={styles.temporalSpan}>
-            {returnTextFromSpanDays(tir.temporal_span_days)}
+            {returnNodeFromSpanDays(tir.temporal_span_days)}
           </div>
         </div>
 
@@ -549,24 +531,11 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
               BarChart
             </button>
           </div>
-
-          {/* Ranges customization button */}
-          <button
-            id="tir-customize-ranges-btn"
-            className={`${styles.rangesBtn} ${showRangesModal ? styles.rangesBtnActive : ""}`}
-            onClick={() => setShowRangesModal((v) => !v)}
-            title="Customize glucose ranges"
-          >
-            <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" clipRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" />
-            </svg>
-            Custom Ranges
-          </button>
         </div>
       </div>
 
       {/* Chart — fixed-height wrapper keeps the card size stable on toggle */}
-      <div className={`${styles.chartArea} ${loading ? styles.chartLoading : ""}`}>
+      <div className={styles.chartArea}>
         {mode === "stacked" ? (
           <StackedView tir={tir} thresholds={thresholds} />
         ) : (
@@ -588,16 +557,6 @@ export default function TIRChart({ tir: initialTir, patientId }: TIRChartProps) 
           }}
         />
       </div>
-
-      {/* Ranges customization modal */}
-      {showRangesModal && (
-        <RangesModal
-          unit={unit}
-          thresholds={thresholds}
-          onApply={handleApplyThresholds}
-          onClose={() => setShowRangesModal(false)}
-        />
-      )}
     </div>
   );
 }
