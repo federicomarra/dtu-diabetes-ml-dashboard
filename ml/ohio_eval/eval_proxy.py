@@ -34,6 +34,7 @@ from characterization.rules import classify_meals, RuleConfig  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort  # noqa: E402
 from ohio_eval.eval_xchannel import score_patient, _zscore_stats, CLASS_IDX  # noqa: E402
 from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
+from realdata.excursion import excursion_window  # noqa: E402
 
 LABEL_POST_MIN = 60          # flat fallback (legacy)
 # Class-specific post-meal label windows — MATCH the sim generator's
@@ -42,6 +43,7 @@ LABEL_POST_MIN = 60          # flat fallback (legacy)
 # Ohio missed peaks 90-120min, flat at 30-60). Flat 60 caught almost none of the signal.
 LABEL_WIN = {"flat":    {"missed": 60,  "late": 60,  "large": 60},
              "aligned": {"missed": 180, "late": 240, "large": 300}}
+ALIGNED = LABEL_WIN["aligned"]   # fallback window for excursion mode (no rise found)
 
 
 def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
@@ -60,16 +62,31 @@ def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
     return out
 
 
-def label_array(p, cfg: RuleConfig, meals, win=None) -> np.ndarray:
+def label_array(p, cfg: RuleConfig, meals, win=None, mode="flat",
+                drop_no_excursion=False, stats=None) -> np.ndarray:
     """[T,8] flag array: rule-labelled meals marked over their post-meal window.
-    `win` is a class→minutes dict (defaults to the flat 60-min window)."""
+
+    mode 'flat'/'aligned' → fixed `win[cls]` minutes from the meal minute.
+    mode 'excursion'       → glucose-derived window (ml/realdata/excursion.py); falls
+    back to the aligned fixed window when no rise is found (unless drop_no_excursion).
+    `stats` (optional dict) accumulates excursion-found / fallback counts for reporting."""
     win = win or LABEL_WIN["flat"]
     flags = np.zeros((p.T, N_CHANNELS + 5), dtype=np.float32)
     labels = classify_meals(meals, p.boluses, cfg)
     for cls, minutes in labels.items():
         col = N_CHANNELS + CLASS_IDX[cls]
         for m in minutes:
-            flags[m : min(p.T, m + win[cls]), col] = 1.0
+            if mode == "excursion":
+                w = excursion_window(p.glucose, m, cls)
+                if stats is not None:
+                    stats["found" if w else "none"] += 1
+                if w is not None:
+                    s, e = w
+                    flags[s:e, col] = 1.0
+                elif not drop_no_excursion:
+                    flags[m : min(p.T, m + ALIGNED[cls]), col] = 1.0
+            else:
+                flags[m : min(p.T, m + win[cls]), col] = 1.0
     return flags
 
 
@@ -90,8 +107,11 @@ def main():
     ap.add_argument("--batch_size", type=int, default=512)
     ap.add_argument("--score", choices=["sym", "signed", "peak", "end"], default="sym",
                     help="anomaly-score aggregation (directional over-forecast variants)")
-    ap.add_argument("--label_mode", choices=["flat", "aligned"], default="flat",
-                    help="post-meal label window: flat 60min, or aligned to sim (180/240/300)")
+    ap.add_argument("--label_mode", choices=["flat", "aligned", "excursion"], default="flat",
+                    help="post-meal label window: flat 60min, aligned to sim (180/240/300), "
+                         "or excursion (glucose-derived, ml/docs/EXCURSION_LABELS.md)")
+    ap.add_argument("--drop_no_excursion", action="store_true",
+                    help="excursion mode: drop meals with no detectable rise (sensitivity arm)")
     ap.add_argument("--clean", action="store_true",
                     help="cleaned labels: drop snacks (<meal_min_g) + hypo-rescue meals")
     ap.add_argument("--meal_min_g", type=float, default=30.0)
@@ -140,15 +160,19 @@ def main():
     print(f"OhioT1DM: {len(cohort)} patients, {n_meals} meals (post-filter) → "
           f"rule labels: missed={counts['missed']} late={counts['late']} large={counts['large']}")
 
-    print("\nDetection on REAL anomalies (rule-derived labels, glucose reacts)")
+    print(f"\nDetection on REAL anomalies (label_mode={args.label_mode}"
+          f"{', drop_no_excursion' if args.drop_no_excursion else ''})")
     print(f"  {'class':<8} {'prev':>7} {'pos':>7} {'AUPRC':>9} {'AUROC':>9}")
+    exc_stats = {"found": 0, "none": 0}
+    win = LABEL_WIN["aligned"] if args.label_mode == "excursion" else LABEL_WIN[args.label_mode]
     for cls in ("missed", "late", "large"):
         fcol = N_CHANNELS + CLASS_IDX[cls]
         all_s, all_l = [], []
         for p in cohort:
             base = xf(p.render())                       # model input (real data)
             arr = base.copy()
-            arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p), LABEL_WIN[args.label_mode])[:, N_CHANNELS:]   # attach rule flags
+            arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p), win, args.label_mode,
+                                              args.drop_no_excursion, exc_stats)[:, N_CHANNELS:]   # attach rule flags
             mean, std = _zscore_stats(base)
             s, l = score_patient(model, device, arr, p.valid, mean, std, fcol,
                                  args.stride, args.batch_size, args.score)
@@ -158,6 +182,12 @@ def main():
             print(f"  {cls:<8}    n/a (no rule labels)"); continue
         print(f"  {cls:<8} {labels.mean():>7.2%} {int(labels.sum()):>7} "
               f"{average_precision_score(labels, scores):>9.4f} {roc_auc_score(labels, scores):>9.4f}")
+    if args.label_mode == "excursion":
+        tot = exc_stats["found"] + exc_stats["none"]      # counted 3× (once per class loop)
+        f, n = exc_stats["found"] // 3, exc_stats["none"] // 3
+        if tot:
+            print(f"  excursion placement: {f} found / {n} no-rise "
+                  f"({f / (f + n):.1%} of labelled meals showed a glucose excursion)")
 
 
 if __name__ == "__main__":
