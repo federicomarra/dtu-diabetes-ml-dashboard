@@ -179,12 +179,12 @@ export default function PatientDashboard() {
         )}
       </div>
 
-      <MultiWeeklyChart readings={multiWeekReadings} />
-
       <div className={styles.chartsGrid}>
         <InsulinDailyChart patientId={patient!.id} />
         <CarboDailyChart patientId={patient!.id} />
       </div>
+
+      <MultiWeeklyChart readings={multiWeekReadings} />
 
       {showRangesModal && (
         <RangesModal
