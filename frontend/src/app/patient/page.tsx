@@ -6,6 +6,8 @@ import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
+import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
+import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import { usePatientController } from "@/controllers/usePatientController";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -178,6 +180,11 @@ export default function PatientDashboard() {
       </div>
 
       <MultiWeeklyChart readings={multiWeekReadings} />
+
+      <div className={styles.chartsGrid}>
+        <InsulinDailyChart patientId={patient!.id} />
+        <CarboDailyChart patientId={patient!.id} />
+      </div>
 
       {showRangesModal && (
         <RangesModal

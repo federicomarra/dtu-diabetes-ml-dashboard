@@ -118,11 +118,9 @@ export async function acknowledgeAnomaly(
 
 export async function getInsulins(
   patientId: number,
-  limit = 100
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; insulins: InsulinEvent[]; count: number }> {
-  const { data } = await api.get(`/insulin/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/insulin/${patientId}`, { params });
   return data;
 }
 
@@ -130,11 +128,9 @@ export async function getInsulins(
 
 export async function getMeals(
   patientId: number,
-  limit = 100
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; meals: MealEvent[]; count: number }> {
-  const { data } = await api.get(`/meal/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/meal/${patientId}`, { params });
   return data;
 }
 
