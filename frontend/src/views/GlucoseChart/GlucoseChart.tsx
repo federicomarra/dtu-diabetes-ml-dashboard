@@ -24,6 +24,7 @@ import {
   VERY_HIGH_THRESHOLD,
   CHART_DOMAIN_MIN,
   CHART_DOMAIN_MAX,
+  VERY_LOW_THRESHOLD,
 } from "@/models/glucoseConfig";
 import styles from "./GlucoseChart.module.css";
 
@@ -158,6 +159,7 @@ export default function GlucoseChart({
     })
     .sort((a, b) => a.hour - b.hour);
 
+  const veryLow  = convertGlucose(thresholds?.veryLow  ?? VERY_LOW_THRESHOLD,  unit);
   const low      = convertGlucose(thresholds?.low      ?? LOW_THRESHOLD,       unit);
   const high     = convertGlucose(thresholds?.high     ?? HIGH_THRESHOLD,      unit);
   const veryHigh = convertGlucose(thresholds?.veryHigh ?? VERY_HIGH_THRESHOLD, unit);
@@ -241,10 +243,23 @@ export default function GlucoseChart({
 
             {/* Clinical threshold lines */}
             <ReferenceLine
+              y={veryLow}
+              stroke="var(--danger)"
+              strokeDasharray="4 4"
+              label={{ value: String(veryLow), position: "left", fontSize: 11 }}
+            />
+            <ReferenceLine
               y={low}
               stroke="var(--warning)"
               strokeDasharray="4 4"
               label={{ value: String(low), position: "left", fontSize: 11 }}
+            />
+            
+            <ReferenceLine
+              y={high}
+              stroke="var(--warning)"
+              strokeDasharray="4 4"
+              label={{ value: String(high), position: "left", fontSize: 11 }}
             />
             <ReferenceLine
               y={veryHigh}
