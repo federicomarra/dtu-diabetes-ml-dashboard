@@ -20,13 +20,20 @@ interface CarboDailyChartProps {
   patientId?: number;
   /** Fallback (demo) data when patientId is not provided. */
   events?: MealEvent[];
+  /**
+   * Controlled mode: when provided, the chart skips its own nav UI and
+   * uses this offset (days before the glucose anchor).
+   */
+  syncOffset?: number;
+  /** Controlled mode: the glucose chart's anchor day. */
+  syncLatestDay?: Date | null;
 }
 
 // ─── Random demo data generator ──────────────────────────────────────────────
 
 function generateDemoData(): ChartPoint[] {
   const mealSlots: { hour: number; label: string }[] = [
-    { hour: 7, label: "Breakfast" },
+    { hour: 7,  label: "Breakfast" },
     { hour: 12, label: "Lunch" },
     { hour: 16, label: "Snack" },
     { hour: 19, label: "Dinner" },
@@ -67,10 +74,20 @@ function toChartPoints(events: MealEvent[]): ChartPoint[] {
 export default function CarboDailyChart({
   patientId,
   events: fallbackEvents,
+  syncOffset,
+  syncLatestDay,
 }: CarboDailyChartProps) {
-  const [latestDay, setLatestDay] = useState<Date | null>(null);
-  const [offset, setOffset] = useState(0);
+  const isControlled = syncOffset !== undefined && syncLatestDay !== undefined;
+
+  // Own state — only used in uncontrolled mode
+  const [ownLatestDay, setOwnLatestDay] = useState<Date | null>(null);
+  const [ownOffset, setOwnOffset] = useState(0);
+
+  const latestDay = isControlled ? syncLatestDay : ownLatestDay;
+  const offset    = isControlled ? syncOffset    : ownOffset;
+
   const [fetchedEvents, setFetchedEvents] = useState<MealEvent[] | null>(null);
+  const [initialised, setInitialised] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchByAnchor = useCallback(
@@ -81,7 +98,7 @@ export default function CarboDailyChart({
         const base = subDays(anchor, offsetDays);
         const resp = await getMeals(patientId, {
           start: startOfDay(base).toISOString(),
-          end: endOfDay(base).toISOString(),
+          end:   endOfDay(base).toISOString(),
         });
         setFetchedEvents(resp.meals);
       } catch {
@@ -93,6 +110,7 @@ export default function CarboDailyChart({
     [patientId]
   );
 
+  // ── Initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!patientId) return;
     let cancelled = false;
@@ -101,15 +119,16 @@ export default function CarboDailyChart({
       .then((resp) => {
         if (cancelled) return;
         setFetchedEvents(resp.meals);
+        setInitialised(true);
         if (resp.meals.length > 0) {
           const latest = resp.meals.reduce((a, b) =>
             new Date(a.timestamp) > new Date(b.timestamp) ? a : b
           );
-          setLatestDay(startOfDay(new Date(latest.timestamp)));
+          setOwnLatestDay(startOfDay(new Date(latest.timestamp)));
         }
       })
       .catch(() => {
-        if (!cancelled) setFetchedEvents([]);
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -117,31 +136,44 @@ export default function CarboDailyChart({
     return () => { cancelled = true; };
   }, [patientId]);
 
+  // ── In controlled mode: re-fetch when parent's offset/anchor changes ─────────
+  useEffect(() => {
+    if (!isControlled || !syncLatestDay || !patientId || !initialised) return;
+    fetchByAnchor(syncLatestDay, syncOffset!);
+  }, [syncOffset, syncLatestDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Uncontrolled navigation ──────────────────────────────────────────────────
   const handlePrev = () => {
-    if (!latestDay) return;
-    const next = offset + 1;
-    setOffset(next);
-    fetchByAnchor(latestDay, next);
+    if (!ownLatestDay) return;
+    const next = ownOffset + 1;
+    setOwnOffset(next);
+    fetchByAnchor(ownLatestDay, next);
   };
 
   const handleNext = () => {
-    if (!latestDay || offset === 0) return;
-    const next = offset - 1;
-    setOffset(next);
-    fetchByAnchor(latestDay, next);
+    if (!ownLatestDay || ownOffset === 0) return;
+    const next = ownOffset - 1;
+    setOwnOffset(next);
+    fetchByAnchor(ownLatestDay, next);
   };
 
   const handleGoLatest = () => {
-    if (!latestDay || offset === 0) return;
-    setOffset(0);
-    fetchByAnchor(latestDay, 0);
+    if (!ownLatestDay || ownOffset === 0) return;
+    setOwnOffset(0);
+    fetchByAnchor(ownLatestDay, 0);
   };
 
+  // ── Data ────────────────────────────────────────────────────────────────────
   const activeEvents = patientId ? (fetchedEvents ?? []) : (fallbackEvents ?? []);
   const chartData: ChartPoint[] =
     patientId
       ? (activeEvents.length > 0 ? toChartPoints(activeEvents) : [])
       : (fallbackEvents ? toChartPoints(fallbackEvents) : generateDemoData());
+
+  // Hide the whole card if we've finished loading but have no data
+  if (patientId && initialised && !loading && chartData.length === 0) {
+    return null;
+  }
 
   const displayDate = (() => {
     if (activeEvents.length > 0) return format(new Date(activeEvents[0].timestamp), "EEE, MMM d yyyy");
@@ -156,7 +188,8 @@ export default function CarboDailyChart({
       <div className={styles.header}>
         <h3 className={styles.title}>Carbohydrates daily intake</h3>
 
-        {patientId && (
+        {/* Navigation only shown in uncontrolled mode */}
+        {patientId && !isControlled && (
           <div className={styles.dayNav}>
             {!isLatest && (
               <button
@@ -172,7 +205,7 @@ export default function CarboDailyChart({
               id="carbo-chart-prev-day"
               className={styles.navBtn}
               onClick={handlePrev}
-              disabled={!latestDay}
+              disabled={!ownLatestDay}
               title="Previous day"
               aria-label="Previous day"
             >
@@ -190,6 +223,11 @@ export default function CarboDailyChart({
               ›
             </button>
           </div>
+        )}
+
+        {/* In controlled mode, show the date label (driven by glucose chart) */}
+        {patientId && isControlled && (
+          <span className={styles.dayLabel}>{displayDate}</span>
         )}
       </div>
 

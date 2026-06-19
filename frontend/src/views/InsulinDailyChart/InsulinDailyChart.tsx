@@ -22,19 +22,30 @@ interface InsulinDailyChartProps {
   patientId?: number;
   /** Fallback (demo) data when patientId is not provided. */
   events?: InsulinEvent[];
+  /**
+   * Controlled mode: when provided, the chart skips its own nav UI and
+   * uses this offset (days before the glucose anchor).
+   */
+  syncOffset?: number;
+  /** Controlled mode: the glucose chart's anchor day. */
+  syncLatestDay?: Date | null;
+  /**
+   * Called once the component has resolved its own latestDay anchor
+   * (only relevant in uncontrolled mode).
+   */
+  onLatestDayResolved?: (day: Date) => void;
 }
 
 // ─── Random demo data generator ──────────────────────────────────────────────
 
 function generateDemoData(): ChartPoint[] {
   const points: ChartPoint[] = [];
-  // Simulate a basal rate throughout the day + bolus at meal times
   for (let h = 0; h < 24; h++) {
     const basalRate = 0.8 + Math.sin((h / 24) * Math.PI) * 0.3 + (Math.random() - 0.5) * 0.1;
     const isMealTime = h === 7 || h === 12 || h === 19;
     points.push({
       hour: h,
-      time: `${String(h).padStart(2, "0")}:00`,
+      time: `${String(h).padStart(2, "00")}:00`,
       basal: parseFloat(basalRate.toFixed(2)),
       bolus: isMealTime ? parseFloat((2 + Math.random() * 4).toFixed(2)) : null,
     });
@@ -52,7 +63,6 @@ interface ChartPoint {
 }
 
 function toChartPoints(events: InsulinEvent[]): ChartPoint[] {
-  // Build a map of hours with basal/bolus values
   const map = new Map<number, ChartPoint>();
   for (const e of events) {
     const d = new Date(e.timestamp);
@@ -79,10 +89,22 @@ function toChartPoints(events: InsulinEvent[]): ChartPoint[] {
 export default function InsulinDailyChart({
   patientId,
   events: fallbackEvents,
+  syncOffset,
+  syncLatestDay,
+  onLatestDayResolved,
 }: InsulinDailyChartProps) {
-  const [latestDay, setLatestDay] = useState<Date | null>(null);
-  const [offset, setOffset] = useState(0);
+  const isControlled = syncOffset !== undefined && syncLatestDay !== undefined;
+
+  // Own state — only used in uncontrolled mode
+  const [ownLatestDay, setOwnLatestDay] = useState<Date | null>(null);
+  const [ownOffset, setOwnOffset] = useState(0);
+
+  const latestDay = isControlled ? syncLatestDay : ownLatestDay;
+  const offset    = isControlled ? syncOffset    : ownOffset;
+
   const [fetchedEvents, setFetchedEvents] = useState<InsulinEvent[] | null>(null);
+  // null = not yet fetched; [] = fetched, no data
+  const [initialised, setInitialised] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchByAnchor = useCallback(
@@ -93,7 +115,7 @@ export default function InsulinDailyChart({
         const base = subDays(anchor, offsetDays);
         const resp = await getInsulins(patientId, {
           start: startOfDay(base).toISOString(),
-          end: endOfDay(base).toISOString(),
+          end:   endOfDay(base).toISOString(),
         });
         setFetchedEvents(resp.insulins);
       } catch {
@@ -105,6 +127,7 @@ export default function InsulinDailyChart({
     [patientId]
   );
 
+  // ── Initial load (resolve anchor from last 1d of insulin data) ──────────────
   useEffect(() => {
     if (!patientId) return;
     let cancelled = false;
@@ -113,48 +136,63 @@ export default function InsulinDailyChart({
       .then((resp) => {
         if (cancelled) return;
         setFetchedEvents(resp.insulins);
+        setInitialised(true);
         if (resp.insulins.length > 0) {
           const latest = resp.insulins.reduce((a, b) =>
             new Date(a.timestamp) > new Date(b.timestamp) ? a : b
           );
-          setLatestDay(startOfDay(new Date(latest.timestamp)));
+          const day = startOfDay(new Date(latest.timestamp));
+          setOwnLatestDay(day);
+          onLatestDayResolved?.(day);
         }
       })
       .catch(() => {
-        if (!cancelled) setFetchedEvents([]);
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [patientId]);
+  }, [patientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── In controlled mode: re-fetch whenever the parent's offset/anchor changes ─
+  useEffect(() => {
+    if (!isControlled || !syncLatestDay || !patientId || !initialised) return;
+    fetchByAnchor(syncLatestDay, syncOffset!);
+  }, [syncOffset, syncLatestDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Uncontrolled navigation ──────────────────────────────────────────────────
   const handlePrev = () => {
-    if (!latestDay) return;
-    const next = offset + 1;
-    setOffset(next);
-    fetchByAnchor(latestDay, next);
+    if (!ownLatestDay) return;
+    const next = ownOffset + 1;
+    setOwnOffset(next);
+    fetchByAnchor(ownLatestDay, next);
   };
 
   const handleNext = () => {
-    if (!latestDay || offset === 0) return;
-    const next = offset - 1;
-    setOffset(next);
-    fetchByAnchor(latestDay, next);
+    if (!ownLatestDay || ownOffset === 0) return;
+    const next = ownOffset - 1;
+    setOwnOffset(next);
+    fetchByAnchor(ownLatestDay, next);
   };
 
   const handleGoLatest = () => {
-    if (!latestDay || offset === 0) return;
-    setOffset(0);
-    fetchByAnchor(latestDay, 0);
+    if (!ownLatestDay || ownOffset === 0) return;
+    setOwnOffset(0);
+    fetchByAnchor(ownLatestDay, 0);
   };
 
-  // Which data source to use
+  // ── Data ────────────────────────────────────────────────────────────────────
   const activeEvents = patientId ? (fetchedEvents ?? []) : (fallbackEvents ?? []);
   const chartData: ChartPoint[] =
     patientId
       ? (activeEvents.length > 0 ? toChartPoints(activeEvents) : [])
       : (fallbackEvents ? toChartPoints(fallbackEvents) : generateDemoData());
+
+  // Hide the whole card if we've finished loading but have no data
+  if (patientId && initialised && !loading && chartData.length === 0) {
+    return null;
+  }
 
   const displayDate = (() => {
     if (activeEvents.length > 0) return format(new Date(activeEvents[0].timestamp), "EEE, MMM d yyyy");
@@ -169,7 +207,8 @@ export default function InsulinDailyChart({
       <div className={styles.header}>
         <h3 className={styles.title}>Insulin daily trace</h3>
 
-        {patientId && (
+        {/* Navigation only shown in uncontrolled mode */}
+        {patientId && !isControlled && (
           <div className={styles.dayNav}>
             {!isLatest && (
               <button
@@ -185,7 +224,7 @@ export default function InsulinDailyChart({
               id="insulin-chart-prev-day"
               className={styles.navBtn}
               onClick={handlePrev}
-              disabled={!latestDay}
+              disabled={!ownLatestDay}
               title="Previous day"
               aria-label="Previous day"
             >
@@ -203,6 +242,11 @@ export default function InsulinDailyChart({
               ›
             </button>
           </div>
+        )}
+
+        {/* In controlled mode, show the date label (driven by glucose chart) */}
+        {patientId && isControlled && (
+          <span className={styles.dayLabel}>{displayDate}</span>
         )}
       </div>
 

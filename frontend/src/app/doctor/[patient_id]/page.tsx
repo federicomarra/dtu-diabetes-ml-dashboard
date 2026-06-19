@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -49,6 +49,19 @@ export default function DoctorPatientDetail() {
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
+
+  // Shared daily-view state — GlucoseChart is the source of truth
+  const [dailyOffset, setDailyOffset] = useState(0);
+  const [glucoseLatestDay, setGlucoseLatestDay] = useState<Date | null>(null);
+
+  const handleGlucoseOffsetChange = useCallback((offset: number, latestDay: Date | null) => {
+    setDailyOffset(offset);
+    setGlucoseLatestDay(latestDay);
+  }, []);
+
+  const handleGlucoseLatestDayResolved = useCallback((day: Date) => {
+    setGlucoseLatestDay(day);
+  }, []);
 
   const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
   const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
@@ -188,7 +201,12 @@ export default function DoctorPatientDetail() {
       )}
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} patientId={patient!.id} />
+        <GlucoseChart
+          readings={readings}
+          patientId={patient!.id}
+          onOffsetChange={handleGlucoseOffsetChange}
+          onLatestDayResolved={handleGlucoseLatestDayResolved}
+        />
         {tir && (
           <TIRChart
             tir={tir}
@@ -197,9 +215,17 @@ export default function DoctorPatientDetail() {
         )}
       </div>
 
-      <div className={styles.chartsGrid}>
-        <InsulinDailyChart patientId={patient!.id} />
-        <CarboDailyChart patientId={patient!.id} />
+      <div className={styles.chartsGridHalf}>
+        <InsulinDailyChart
+          patientId={patient!.id}
+          syncOffset={dailyOffset}
+          syncLatestDay={glucoseLatestDay}
+        />
+        <CarboDailyChart
+          patientId={patient!.id}
+          syncOffset={dailyOffset}
+          syncLatestDay={glucoseLatestDay}
+        />
       </div>
 
       <MultiWeeklyChart readings={multiWeekReadings} />

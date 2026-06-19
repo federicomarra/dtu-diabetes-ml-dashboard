@@ -34,12 +34,18 @@ interface GlucoseChartProps {
   /** Fallback readings when patientId is not provided (e.g. demo/patient page). */
   readings?: GlucoseReading[];
   title?: string;
+  /** Called whenever the day offset changes (0 = latest, 1 = 1 day ago, …). */
+  onOffsetChange?: (offset: number, latestDay: Date | null) => void;
+  /** Called once the latest anchor day is resolved from the API. */
+  onLatestDayResolved?: (day: Date) => void;
 }
 
 export default function GlucoseChart({
   patientId,
   readings: fallbackReadings,
   title,
+  onOffsetChange,
+  onLatestDayResolved,
 }: GlucoseChartProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: thresholds } = useGlucoseRanges();
@@ -98,7 +104,10 @@ export default function GlucoseChart({
           const latest = resp.readings.reduce((a, b) =>
             new Date(a.timestamp) > new Date(b.timestamp) ? a : b
           );
-          setLatestDay(startOfDay(new Date(latest.timestamp)));
+          const day = startOfDay(new Date(latest.timestamp));
+          setLatestDay(day);
+          onLatestDayResolved?.(day);
+          onOffsetChange?.(0, day);
         }
       })
       .catch(() => {
@@ -108,7 +117,7 @@ export default function GlucoseChart({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [patientId]);
+  }, [patientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const triggerAnimation = (dir: 'left' | 'right') => {
     setSlideDirection(dir);
@@ -124,6 +133,7 @@ export default function GlucoseChart({
     triggerAnimation('left');
     setOffset(next);
     fetchByAnchor(latestDay, next);
+    onOffsetChange?.(next, latestDay);
   };
 
   const handleNext = () => {
@@ -132,6 +142,7 @@ export default function GlucoseChart({
     triggerAnimation('right');
     setOffset(next);
     fetchByAnchor(latestDay, next);
+    onOffsetChange?.(next, latestDay);
   };
 
   const handleGoLatest = () => {
@@ -139,6 +150,7 @@ export default function GlucoseChart({
     triggerAnimation('right');
     setOffset(0);
     fetchByAnchor(latestDay, 0);
+    onOffsetChange?.(0, latestDay);
   };
 
   // Decide which readings to display
