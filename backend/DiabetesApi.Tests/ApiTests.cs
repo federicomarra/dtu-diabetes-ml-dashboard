@@ -482,26 +482,35 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetHistory_WithLimit_FiltersCorrectly()
+    public async Task GetHistory_WithTimeRangeAndLast_FiltersCorrectly()
     {
-        var patient = await SeedPatientAsync("P_HISTORY_LIMIT", "History Limit Patient");
+        var patient = await SeedPatientAsync("P_HISTORY_FILTER", "History Filter Patient");
+        var now = DateTime.UtcNow;
 
         await using var db = CreateDb();
         db.Histories.AddRange(
-            new History { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-10), Glucose = 5.0f },
-            new History { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-5),  Glucose = 6.0f },
-            new History { PatientId = patient.Id, Timestamp = DateTime.UtcNow,               Glucose = 7.0f }
+            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Glucose = 5.0f }, // ~2.2h before latest (Excluded by last=2h)
+            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Glucose = 6.0f }, // ~1.0h before latest (Included)
+            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Glucose = 7.0f }  // latest (Included)
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/history/{patient.Id}?limit=2");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        // 1. Test last
+        var respLast = await _client.GetAsync($"/api/history/{patient.Id}?last=2h");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
+        var listLast = bodyLast.GetProperty("histories");
+        Assert.Equal(7.0f, listLast[0].GetProperty("glucose").GetSingle());
+        Assert.Equal(6.0f, listLast[1].GetProperty("glucose").GetSingle());
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, body.GetProperty("count").GetInt32());
-        var list = body.GetProperty("histories");
-        Assert.Equal(7.0f, list[0].GetProperty("glucose").GetSingle());
-        Assert.Equal(6.0f, list[1].GetProperty("glucose").GetSingle());
+        // 2. Test start and end filter
+        var startStr = now.AddHours(-2.5).ToString("O");
+        var endStr = now.AddHours(-0.5).ToString("O");
+        var respFilter = await _client.GetAsync($"/api/history/{patient.Id}?start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
+        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
     }
 
     // ── Insulin ───────────────────────────────────────────────────────────────
@@ -532,26 +541,35 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetInsulins_WithLimit_FiltersCorrectly()
+    public async Task GetInsulins_WithTimeRangeAndLast_FiltersCorrectly()
     {
-        var patient = await SeedPatientAsync("P_INSULIN_LIMIT", "Insulin Limit Patient");
+        var patient = await SeedPatientAsync("P_INSULIN_FILTER", "Insulin Filter Patient");
+        var now = DateTime.UtcNow;
 
         await using var db = CreateDb();
         db.Insulins.AddRange(
-            new Insulin { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-10), Units = 1.0f, EventType = "basal" },
-            new Insulin { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-5),  Units = 2.0f, EventType = "bolus" },
-            new Insulin { PatientId = patient.Id, Timestamp = DateTime.UtcNow,               Units = 3.0f, EventType = "bolus" }
+            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Units = 1.0f, EventType = "basal" }, // ~2.2h before latest (Excluded by last=2h)
+            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Units = 2.0f, EventType = "bolus" }, // ~1.0h before latest (Included)
+            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Units = 3.0f, EventType = "bolus" }  // latest (Included)
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/insulin/{patient.Id}?limit=2");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        // 1. Test last
+        var respLast = await _client.GetAsync($"/api/insulin/{patient.Id}?last=2h");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
+        var listLast = bodyLast.GetProperty("insulins");
+        Assert.Equal(3.0f, listLast[0].GetProperty("units").GetSingle());
+        Assert.Equal(2.0f, listLast[1].GetProperty("units").GetSingle());
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, body.GetProperty("count").GetInt32());
-        var list = body.GetProperty("insulins");
-        Assert.Equal(3.0f, list[0].GetProperty("units").GetSingle());
-        Assert.Equal(2.0f, list[1].GetProperty("units").GetSingle());
+        // 2. Test start and end filter
+        var startStr = now.AddHours(-2.5).ToString("O");
+        var endStr = now.AddHours(-0.5).ToString("O");
+        var respFilter = await _client.GetAsync($"/api/insulin/{patient.Id}?start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
+        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
     }
 
     // ── Meal ──────────────────────────────────────────────────────────────────
@@ -582,25 +600,34 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetMeals_WithLimit_FiltersCorrectly()
+    public async Task GetMeals_WithTimeRangeAndLast_FiltersCorrectly()
     {
-        var patient = await SeedPatientAsync("P_MEAL_LIMIT", "Meal Limit Patient");
+        var patient = await SeedPatientAsync("P_MEAL_FILTER", "Meal Filter Patient");
+        var now = DateTime.UtcNow;
 
         await using var db = CreateDb();
         db.Meals.AddRange(
-            new Meal { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-10), Carbs = 10.0f, MealType = "snack" },
-            new Meal { PatientId = patient.Id, Timestamp = DateTime.UtcNow.AddMinutes(-5),  Carbs = 20.0f, MealType = "lunch" },
-            new Meal { PatientId = patient.Id, Timestamp = DateTime.UtcNow,               Carbs = 30.0f, MealType = "dinner" }
+            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Carbs = 10.0f, MealType = "snack" }, // ~2.2h before latest (Excluded by last=2h)
+            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Carbs = 20.0f, MealType = "lunch" }, // ~1.0h before latest (Included)
+            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Carbs = 30.0f, MealType = "dinner" } // latest (Included)
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/meal/{patient.Id}?limit=2");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        // 1. Test last
+        var respLast = await _client.GetAsync($"/api/meal/{patient.Id}?last=2h");
+        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
+        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
+        var listLast = bodyLast.GetProperty("meals");
+        Assert.Equal(30.0f, listLast[0].GetProperty("carbs").GetSingle());
+        Assert.Equal(20.0f, listLast[1].GetProperty("carbs").GetSingle());
 
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, body.GetProperty("count").GetInt32());
-        var list = body.GetProperty("meals");
-        Assert.Equal(30.0f, list[0].GetProperty("carbs").GetSingle());
-        Assert.Equal(20.0f, list[1].GetProperty("carbs").GetSingle());
+        // 2. Test start and end filter
+        var startStr = now.AddHours(-2.5).ToString("O");
+        var endStr = now.AddHours(-0.5).ToString("O");
+        var respFilter = await _client.GetAsync($"/api/meal/{patient.Id}?start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
+        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
     }
 }
