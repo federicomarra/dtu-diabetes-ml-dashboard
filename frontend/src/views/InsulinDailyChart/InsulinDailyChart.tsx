@@ -103,7 +103,8 @@ export default function InsulinDailyChart({
   const offset    = isControlled ? syncOffset    : ownOffset;
 
   const [fetchedEvents, setFetchedEvents] = useState<InsulinEvent[] | null>(null);
-  // null = not yet fetched; [] = fetched, no data
+  // true once initial (latest-day) fetch is done and had data
+  const [hasDataOnLatestDay, setHasDataOnLatestDay] = useState<boolean | null>(null);
   const [initialised, setInitialised] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -143,11 +144,14 @@ export default function InsulinDailyChart({
           );
           const day = startOfDay(new Date(latest.timestamp));
           setOwnLatestDay(day);
+          setHasDataOnLatestDay(true);
           onLatestDayResolved?.(day);
+        } else {
+          setHasDataOnLatestDay(false);
         }
       })
       .catch(() => {
-        if (!cancelled) { setFetchedEvents([]); setInitialised(true); }
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -189,8 +193,8 @@ export default function InsulinDailyChart({
       ? (activeEvents.length > 0 ? toChartPoints(activeEvents) : [])
       : (fallbackEvents ? toChartPoints(fallbackEvents) : generateDemoData());
 
-  // Hide the whole card if we've finished loading but have no data
-  if (patientId && initialised && !loading && chartData.length === 0) {
+  // Hide the whole card only if the latest day itself has no data
+  if (patientId && hasDataOnLatestDay === false) {
     return null;
   }
 

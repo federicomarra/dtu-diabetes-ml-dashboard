@@ -87,6 +87,8 @@ export default function CarboDailyChart({
   const offset    = isControlled ? syncOffset    : ownOffset;
 
   const [fetchedEvents, setFetchedEvents] = useState<MealEvent[] | null>(null);
+  // true once initial (latest-day) fetch is done and had data
+  const [hasDataOnLatestDay, setHasDataOnLatestDay] = useState<boolean | null>(null);
   const [initialised, setInitialised] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -125,10 +127,13 @@ export default function CarboDailyChart({
             new Date(a.timestamp) > new Date(b.timestamp) ? a : b
           );
           setOwnLatestDay(startOfDay(new Date(latest.timestamp)));
+          setHasDataOnLatestDay(true);
+        } else {
+          setHasDataOnLatestDay(false);
         }
       })
       .catch(() => {
-        if (!cancelled) { setFetchedEvents([]); setInitialised(true); }
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -170,8 +175,8 @@ export default function CarboDailyChart({
       ? (activeEvents.length > 0 ? toChartPoints(activeEvents) : [])
       : (fallbackEvents ? toChartPoints(fallbackEvents) : generateDemoData());
 
-  // Hide the whole card if we've finished loading but have no data
-  if (patientId && initialised && !loading && chartData.length === 0) {
+  // Hide the whole card only if the latest day itself has no data
+  if (patientId && hasDataOnLatestDay === false) {
     return null;
   }
 
