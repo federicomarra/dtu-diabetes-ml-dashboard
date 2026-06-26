@@ -54,6 +54,12 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function getA1cAndGMIColor(value: number): string {
+  if (value < 7.0) return "var(--success)";
+  if (value < 8.0) return "var(--warning)";
+  return "var(--danger)";
+}
+
 export default function PatientOverview({
   patientName,
   patientId,
@@ -158,7 +164,10 @@ export default function PatientOverview({
             </div>
             <div>
               <div className={styles.metricLabel}>HbA1c ({timeRangeLast})</div>
-              <div className={styles.metricValue}>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(hba1c.percent) }}
+              >
                 {hba1c.percent.toFixed(1)}%
               </div>
               <div className={styles.metricStatus} style={{ color: "var(--text-secondary)" }}>
@@ -176,7 +185,10 @@ export default function PatientOverview({
             </div>
             <div>
               <div className={styles.metricLabel}>GMI ({timeRangeLast})</div>
-              <div className={styles.metricValue}>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(gmi.gmi) }}
+              >
                 {gmi.gmi.toFixed(1)}%
               </div>
             </div>
