@@ -58,6 +58,17 @@ public record GlucoseRanges(
     double? VeryHigh = null
 );
 
+public record HbA1cResponse(
+    int PatientId,
+    double Percent,      // e.g. 6.5 (%)
+    double MmolPerMol    // e.g. 48  (IFCC mmol/mol)
+);
+
+public record GmiResponse(
+    int PatientId,
+    double Gmi           // e.g. 6.8 (%)
+);
+
 // ── Anomalies ─────────────────────────────────────────────────────────────────
 
 public record AnomalyDetectionDto(

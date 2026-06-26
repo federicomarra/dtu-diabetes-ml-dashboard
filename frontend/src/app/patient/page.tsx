@@ -52,6 +52,8 @@ export default function PatientDashboard() {
     unacknowledgedCount,
     handleAcknowledge,
     averageGlucose,
+    hba1c,
+    gmi,
   } = usePatientController();
 
   const { timeRange, setLast } = useTimeRange();
@@ -176,6 +178,8 @@ export default function PatientDashboard() {
         anomalyCount={unacknowledgedCount}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
+        hba1c={hba1c ?? undefined}
+        gmi={gmi ?? undefined}
       />
 
       {anomalies.length > 0 && (

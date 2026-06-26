@@ -78,3 +78,16 @@ export interface PaginatedResponse<T> {
   page: number;
   pages: number;
 }
+
+/** Maps to HbA1cResponse from DiabetesApi/Data/DTOs.cs */
+export interface HbA1c {
+  patient_id: number;
+  percent: number;      // e.g. 6.5 (%)
+  mmol_per_mol: number; // e.g. 48  (IFCC mmol/mol)
+}
+
+/** Maps to GmiResponse from DiabetesApi/Data/DTOs.cs */
+export interface Gmi {
+  patient_id: number;
+  gmi: number; // e.g. 6.8 (%)
+}

@@ -122,7 +122,7 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, handleAcknowledge } =
+  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, hba1c, gmi, handleAcknowledge } =
     ctrl;
 
   return (
@@ -194,6 +194,8 @@ export default function DoctorPatientDetail() {
         anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
+        hba1c={hba1c ?? undefined}
+        gmi={gmi ?? undefined}
       />
 
       {anomalies.length > 0 && (
