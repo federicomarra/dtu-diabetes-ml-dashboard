@@ -630,4 +630,277 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
     }
+    // ── HbA1c ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetHbA1c_Returns200WithCorrectFields()
+    {
+        var patient = await SeedPatientAsync("P_HBA1C_BASIC", "HbA1c Patient");
+
+        await using var db = CreateDb();
+        db.Glucoses.Add(new Glucose
+        {
+            PatientId    = patient.Id,
+            Timestamp    = DateTime.UtcNow,
+            GlucoseMmoll = 8.0   // avg = 8.0 mmol/L → 144.1 mg/dL → eA1c% ≈ 6.97
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(patient.Id, body.GetProperty("patient_id").GetInt32());
+        // Both unit fields must be present and positive
+        Assert.True(body.GetProperty("percent").GetDouble() > 0);
+        Assert.True(body.GetProperty("mmol_per_mol").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task GetHbA1c_ReturnsCorrectFormula()
+    {
+        var patient = await SeedPatientAsync("P_HBA1C_MATH", "HbA1c Math Patient");
+
+        // Use a single known value so we can verify the formula exactly.
+        // avg = 7.0 mmol/L → avg_mg = 7.0 × 18.018 = 126.126 mg/dL
+        // eA1c% = (46.7 + 126.126) / 28.7 ≈ 6.0
+        // mmol/mol = (6.0 - 2.152) / 0.09148 ≈ 42
+        await using var db = CreateDb();
+        db.Glucoses.Add(new Glucose
+        {
+            PatientId    = patient.Id,
+            Timestamp    = DateTime.UtcNow,
+            GlucoseMmoll = 7.0
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body   = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        double pct = body.GetProperty("percent").GetDouble();
+        double mpm = body.GetProperty("mmol_per_mol").GetDouble();
+
+        // Allow ±0.2% rounding tolerance
+        Assert.InRange(pct, 5.8, 6.2);
+        Assert.InRange(mpm, 40, 44);
+    }
+
+    [Fact]
+    public async Task GetHbA1c_NotFound_Returns404()
+    {
+        var resp = await _client.GetAsync("/api/glucose/hba1c?id=99999");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetHbA1c_InvalidLastParam_Returns400()
+    {
+        var patient = await SeedPatientAsync("P_HBA1C_BAD", "HbA1c Bad Patient");
+        // "5x" ends in 'x', which is not a recognised suffix → route guard returns 400
+        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=5x");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetHbA1c_WithLastFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_HBA1C_LAST", "HbA1c Last Patient");
+        var now     = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        // Old reading (beyond 2w) → a high value (12.0 mmol/L)
+        // Recent reading (within 2w default) → a low value (5.0 mmol/L)
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = now,              GlucoseMmoll = 5.0  }
+        );
+        await db.SaveChangesAsync();
+
+        // Default (last=2w from latest → excludes the 20-day-old reading)
+        // avg = 5.0 mmol/L → lower HbA1c
+        var respDefault = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var pctDefault = (await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                            .GetProperty("percent").GetDouble();
+
+        // last=3w → includes the 12.0 reading → higher average → higher HbA1c
+        var respWide = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respWide.StatusCode);
+        var pctWide = (await respWide.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                         .GetProperty("percent").GetDouble();
+
+        Assert.True(pctWide > pctDefault, $"Expected wider window HbA1c ({pctWide}) > default ({pctDefault})");
+    }
+
+    [Fact]
+    public async Task GetHbA1c_WithStartEndFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_HBA1C_SE", "HbA1c StartEnd Patient");
+        var now     = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-5), GlucoseMmoll = 12.0 }, // excluded
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-2), GlucoseMmoll = 5.0  }, // included
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-1), GlucoseMmoll = 5.0  }  // included
+        );
+        await db.SaveChangesAsync();
+
+        var startStr = now.AddHours(-3).ToString("O");
+        var endStr   = now.ToString("O");
+        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // avg = 5.0 → eA1c% = (46.7 + 5.0×18.018) / 28.7 ≈ 4.77 — much lower than if 12.0 were included
+        double pct = body.GetProperty("percent").GetDouble();
+        Assert.True(pct < 6.0, $"Expected HbA1c < 6.0 when high reading excluded, got {pct}");
+    }
+
+    // ── GMI ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetGmi_Returns200WithCorrectFields()
+    {
+        var patient = await SeedPatientAsync("P_GMI_BASIC", "GMI Patient");
+
+        await using var db = CreateDb();
+        db.Glucoses.Add(new Glucose
+        {
+            PatientId    = patient.Id,
+            Timestamp    = DateTime.UtcNow,
+            GlucoseMmoll = 8.0
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(patient.Id, body.GetProperty("patient_id").GetInt32());
+        Assert.True(body.GetProperty("gmi").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task GetGmi_ReturnsCorrectFormula()
+    {
+        var patient = await SeedPatientAsync("P_GMI_MATH", "GMI Math Patient");
+
+        // avg = 7.0 mmol/L → avg_mg = 7.0 × 18.018 = 126.126 mg/dL
+        // GMI% = 3.31 + (0.02392 × 126.126) ≈ 6.33
+        await using var db = CreateDb();
+        db.Glucoses.Add(new Glucose
+        {
+            PatientId    = patient.Id,
+            Timestamp    = DateTime.UtcNow,
+            GlucoseMmoll = 7.0
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var gmi = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                      .GetProperty("gmi").GetDouble();
+
+        // Allow ±0.2 rounding tolerance
+        Assert.InRange(gmi, 6.1, 6.5);
+    }
+
+    [Fact]
+    public async Task GetGmi_NotFound_Returns404()
+    {
+        var resp = await _client.GetAsync("/api/glucose/gmi?id=99999");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetGmi_InvalidLastParam_Returns400()
+    {
+        var patient = await SeedPatientAsync("P_GMI_BAD", "GMI Bad Patient");
+        // "5x" ends in 'x', which is not a recognised suffix → route guard returns 400
+        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=5x");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetGmi_WithLastFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_GMI_LAST", "GMI Last Patient");
+        var now     = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 }, // beyond 2w window
+            new Glucose { PatientId = patient.Id, Timestamp = now,              GlucoseMmoll = 5.0  }  // within 2w window
+        );
+        await db.SaveChangesAsync();
+
+        // Default last=2w → only 5.0 → lower GMI
+        var respDefault = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
+        var gmiDefault = (await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                             .GetProperty("gmi").GetDouble();
+
+        // last=3w → includes 12.0 → higher average → higher GMI
+        var respWide = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=3w");
+        Assert.Equal(HttpStatusCode.OK, respWide.StatusCode);
+        var gmiWide = (await respWide.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                          .GetProperty("gmi").GetDouble();
+
+        Assert.True(gmiWide > gmiDefault, $"Expected wider window GMI ({gmiWide}) > default ({gmiDefault})");
+    }
+
+    [Fact]
+    public async Task GetGmi_WithStartEndFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_GMI_SE", "GMI StartEnd Patient");
+        var now     = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-5), GlucoseMmoll = 12.0 }, // excluded
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-2), GlucoseMmoll = 5.0  }, // included
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-1), GlucoseMmoll = 5.0  }  // included
+        );
+        await db.SaveChangesAsync();
+
+        var startStr = now.AddHours(-3).ToString("O");
+        var endStr   = now.ToString("O");
+        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var gmi = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+                      .GetProperty("gmi").GetDouble();
+
+        // avg = 5.0 mmol/L → GMI = 3.31 + (0.02392 × 90.09) ≈ 5.46
+        // Without the 12.0 reading: GMI should be well below 6.0
+        Assert.True(gmi < 6.0, $"Expected GMI < 6.0 when high reading excluded, got {gmi}");
+    }
+
+    [Fact]
+    public async Task GetGmi_HigherGlucose_YieldsHigherGmi()
+    {
+        // Verifies monotonicity: higher average glucose → higher GMI
+        var pLow  = await SeedPatientAsync("P_GMI_LOW_G",  "GMI Low Glucose");
+        var pHigh = await SeedPatientAsync("P_GMI_HIGH_G", "GMI High Glucose");
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = pLow.Id,  Timestamp = DateTime.UtcNow, GlucoseMmoll = 5.5 },
+            new Glucose { PatientId = pHigh.Id, Timestamp = DateTime.UtcNow, GlucoseMmoll = 11.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var rLow  = await _client.GetAsync($"/api/glucose/gmi?id={pLow.Id}");
+        var rHigh = await _client.GetAsync($"/api/glucose/gmi?id={pHigh.Id}");
+        Assert.Equal(HttpStatusCode.OK, rLow.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rHigh.StatusCode);
+
+        var gmiLow  = (await rLow.Content.ReadFromJsonAsync<JsonElement>(JsonOpts)).GetProperty("gmi").GetDouble();
+        var gmiHigh = (await rHigh.Content.ReadFromJsonAsync<JsonElement>(JsonOpts)).GetProperty("gmi").GetDouble();
+
+        Assert.True(gmiHigh > gmiLow, $"Expected gmiHigh ({gmiHigh}) > gmiLow ({gmiLow})");
+    }
 }
