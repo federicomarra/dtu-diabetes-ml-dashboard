@@ -11,6 +11,7 @@ import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
+import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -122,7 +123,7 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, hba1c, gmi, handleAcknowledge } =
+  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, hba1c, gmi, scatterplotData, handleAcknowledge } =
     ctrl;
 
   return (
@@ -231,6 +232,13 @@ export default function DoctorPatientDetail() {
       </div>
 
       <MultiWeeklyChart readings={multiWeekReadings} />
+
+      {scatterplotData && (
+        <GlucoseScatterplot
+          points={scatterplotData.points}
+          patientId={patient!.id}
+        />
+      )}
 
       {showRangesModal && (
         <RangesModal

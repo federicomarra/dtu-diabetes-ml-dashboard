@@ -8,6 +8,7 @@ import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
+import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import { usePatientController } from "@/controllers/usePatientController";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -54,6 +55,7 @@ export default function PatientDashboard() {
     averageGlucose,
     hba1c,
     gmi,
+    scatterplotData,
   } = usePatientController();
 
   const { timeRange, setLast } = useTimeRange();
@@ -215,6 +217,13 @@ export default function PatientDashboard() {
       </div>
 
       <MultiWeeklyChart readings={multiWeekReadings} />
+
+      {scatterplotData && (
+        <GlucoseScatterplot
+          points={scatterplotData.points}
+          patientId={patient!.id}
+        />
+      )}
 
       {showRangesModal && (
         <RangesModal

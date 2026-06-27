@@ -27,6 +27,7 @@ import type {
   TimeInRange,
   HbA1c,
   Gmi,
+  ScatterplotData,
   InsulinEvent,
   MealEvent,
   HistoryEntry,
@@ -114,6 +115,14 @@ export async function getGmi(
   params?: { start?: string; end?: string; last?: string }
 ): Promise<Gmi> {
   const { data } = await api.get("/glucose/gmi", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getScatterplot(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<ScatterplotData> {
+  const { data } = await api.get("/glucose/scatterplot", { params: { id: patientId, ...params } });
   return data;
 }
 

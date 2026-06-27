@@ -91,3 +91,18 @@ export interface Gmi {
   patient_id: number;
   gmi: number; // e.g. 6.8 (%)
 }
+
+/** Maps to DailyGlucosePoint from DiabetesApi/Data/DTOs.cs */
+export interface DailyGlucosePoint {
+  date: string;    // "yyyy-MM-dd"
+  average: number; // mmol/L daily average
+  min: number;     // mmol/L daily minimum
+  max: number;     // mmol/L daily maximum
+}
+
+/** Maps to ScatterplotResponse from DiabetesApi/Data/DTOs.cs */
+export interface ScatterplotData {
+  patient_id: number;
+  points: DailyGlucosePoint[];
+  count: number;
+}

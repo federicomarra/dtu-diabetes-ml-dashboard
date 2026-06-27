@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi } from "@/models/types";
+import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi, ScatterplotData } from "@/models/types";
 import {
   getPatientByExternalId,
   getGlucoseReadings,
@@ -18,6 +18,7 @@ import {
   getAverageReading,
   getHbA1c,
   getGmi,
+  getScatterplot,
 } from "@/models/api";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -35,6 +36,7 @@ type State =
       averageGlucose: number | null;
       hba1c: HbA1c | null;
       gmi: Gmi | null;
+      scatterplotData: ScatterplotData | null;
     };
 
 export function usePatientController() {
@@ -65,7 +67,7 @@ export function usePatientController() {
         if (cancelled) return;
 
         // Fetch data in parallel
-        const [readingsResult, tirResult, anomaliesResult, averageResult, hba1cResult, gmiResult] =
+        const [readingsResult, tirResult, anomaliesResult, averageResult, hba1cResult, gmiResult, scatterplotResult] =
           await Promise.allSettled([
             getGlucoseReadings(patient.id, timeRange),
             getTimeInRange(patient.id, {
@@ -79,6 +81,7 @@ export function usePatientController() {
             getAverageReading(patient.id, timeRange),
             getHbA1c(patient.id, timeRange),
             getGmi(patient.id, timeRange),
+            getScatterplot(patient.id, timeRange),
           ]);
 
         if (cancelled) return;
@@ -102,6 +105,7 @@ export function usePatientController() {
             averageResult.status === "fulfilled" ? averageResult.value : null,
           hba1c: hba1cResult.status === "fulfilled" ? hba1cResult.value : null,
           gmi: gmiResult.status === "fulfilled" ? gmiResult.value : null,
+          scatterplotData: scatterplotResult.status === "fulfilled" ? scatterplotResult.value : null,
         });
       } catch (err) {
         if (!cancelled) {
@@ -148,6 +152,7 @@ export function usePatientController() {
       averageGlucose: null,
       hba1c: null,
       gmi: null,
+      scatterplotData: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
@@ -166,13 +171,14 @@ export function usePatientController() {
       averageGlucose: null,
       hba1c: null,
       gmi: null,
+      scatterplotData: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
     };
   }
 
-  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose, hba1c, gmi } = state;
+  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose, hba1c, gmi, scatterplotData } = state;
 
   return {
     loading: false as const,
@@ -185,6 +191,7 @@ export function usePatientController() {
     averageGlucose,
     hba1c,
     gmi,
+    scatterplotData,
     latestReading: readings.length > 0 ? readings[0] : undefined,
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,

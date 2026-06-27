@@ -202,6 +202,71 @@ public class GlucoseService(AppDbContext db)
         return new GmiResponse(patientId, gmi);
     }
 
+    /// <summary>
+    /// Calculate per-day average, min and max glucose for a patient over a time window.
+    /// Readings are grouped by UTC calendar date.
+    /// Returns null if no readings are found.
+    /// </summary>
+    public async Task<ScatterplotResponse?> CalculateScatterplotAsync(
+        int patientId,
+        DateTime? start = null,
+        DateTime? end = null,
+        string? last = null)
+    {
+        var query = db.Glucoses.Where(r => r.PatientId == patientId);
+
+        if (start.HasValue)
+            query = query.Where(r => r.Timestamp >= start.Value);
+        if (end.HasValue)
+            query = query.Where(r => r.Timestamp <= end.Value);
+
+        if (!start.HasValue && !end.HasValue && last is null)
+            last = "2w";
+
+        if (last is not null)
+        {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == patientId)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last[..^1], out int hours))
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            else if (last.EndsWith("d") && int.TryParse(last[..^1], out int days))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            else if (last.EndsWith("w") && int.TryParse(last[..^1], out int weeks))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            else if (last.EndsWith("m") && int.TryParse(last[..^1], out int months))
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            else
+                return null; // invalid format → treated as no data (caller returns 400)
+        }
+
+        // Materialise so we can group in-memory by UTC date
+        var rows = await query
+            .Select(r => new { r.GlucoseMmoll, r.Timestamp })
+            .ToListAsync();
+
+        if (rows.Count == 0) return null;
+
+        var points = rows
+            .GroupBy(r => DateTime.SpecifyKind(r.Timestamp, DateTimeKind.Utc).Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new DailyGlucosePoint(
+                g.Key.ToString("yyyy-MM-dd"),
+                Math.Round(g.Average(r => r.GlucoseMmoll), 2),
+                Math.Round(g.Min(r => r.GlucoseMmoll), 2),
+                Math.Round(g.Max(r => r.GlucoseMmoll), 2)
+            ))
+            .ToList();
+
+        return new ScatterplotResponse(patientId, points, points.Count);
+    }
+
     // ── Shared helpers ────────────────────────────────────────────────────────
 
     /// <summary>

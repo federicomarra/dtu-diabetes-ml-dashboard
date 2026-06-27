@@ -903,4 +903,190 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.True(gmiHigh > gmiLow, $"Expected gmiHigh ({gmiHigh}) > gmiLow ({gmiLow})");
     }
+
+    // ── Scatterplot ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetScatterplot_Returns200WithCorrectShape()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_BASIC", "Scatter Basic Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.Date.AddHours(8),  GlucoseMmoll = 5.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = now.Date.AddHours(12), GlucoseMmoll = 7.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = now.Date.AddHours(20), GlucoseMmoll = 9.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(patient.Id, body.GetProperty("patient_id").GetInt32());
+        Assert.True(body.GetProperty("count").GetInt32() >= 1);
+
+        var point = body.GetProperty("points")[0];
+        // All three fields must be present
+        Assert.True(point.TryGetProperty("date", out _));
+        Assert.True(point.TryGetProperty("average", out _));
+        Assert.True(point.TryGetProperty("min", out _));
+        Assert.True(point.TryGetProperty("max", out _));
+    }
+
+    [Fact]
+    public async Task GetScatterplot_ReturnsCorrectDailyStats()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_STATS", "Scatter Stats Patient");
+        var today = DateTime.UtcNow.Date;
+
+        await using var db = CreateDb();
+        // Three readings on the same day: avg=7.0, min=5.0, max=9.0
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddHours(6),  GlucoseMmoll = 5.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddHours(12), GlucoseMmoll = 7.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddHours(20), GlucoseMmoll = 9.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // Should be exactly 1 point (all same day)
+        Assert.Equal(1, body.GetProperty("count").GetInt32());
+
+        var point = body.GetProperty("points")[0];
+        Assert.Equal(7.0, point.GetProperty("average").GetDouble(), precision: 1);
+        Assert.Equal(5.0, point.GetProperty("min").GetDouble(), precision: 1);
+        Assert.Equal(9.0, point.GetProperty("max").GetDouble(), precision: 1);
+        Assert.Equal(today.ToString("yyyy-MM-dd"), point.GetProperty("date").GetString());
+    }
+
+    [Fact]
+    public async Task GetScatterplot_GroupsByDay_MultiplePoints()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_MULTI", "Scatter Multi Day Patient");
+        var today = DateTime.UtcNow.Date;
+
+        await using var db = CreateDb();
+        // Day 1: two readings; Day 2 (yesterday): one reading
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddHours(8),       GlucoseMmoll = 6.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddHours(18),      GlucoseMmoll = 8.0 },
+            new Glucose { PatientId = patient.Id, Timestamp = today.AddDays(-1).AddHours(12), GlucoseMmoll = 5.0 }
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // 2 distinct calendar days → 2 points
+        Assert.Equal(2, body.GetProperty("count").GetInt32());
+
+        // Points should be in ascending date order
+        var pts = body.GetProperty("points");
+        var date0 = pts[0].GetProperty("date").GetString();
+        var date1 = pts[1].GetProperty("date").GetString();
+        Assert.True(string.Compare(date0, date1, StringComparison.Ordinal) < 0, "Points should be ordered ascending by date");
+
+        // Yesterday's point: single reading 5.0 → avg=min=max=5.0
+        Assert.Equal(5.0, pts[0].GetProperty("average").GetDouble(), precision: 1);
+        Assert.Equal(5.0, pts[0].GetProperty("min").GetDouble(), precision: 1);
+        Assert.Equal(5.0, pts[0].GetProperty("max").GetDouble(), precision: 1);
+
+        // Today's point: avg of 6.0 and 8.0 = 7.0
+        Assert.Equal(7.0, pts[1].GetProperty("average").GetDouble(), precision: 1);
+        Assert.Equal(6.0, pts[1].GetProperty("min").GetDouble(), precision: 1);
+        Assert.Equal(8.0, pts[1].GetProperty("max").GetDouble(), precision: 1);
+    }
+
+    [Fact]
+    public async Task GetScatterplot_DefaultFilterIsLast2Weeks()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_DEFAULT", "Scatter Default Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        // Old reading (beyond 2w) and a recent one (within 2w from latest)
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 }, // excluded
+            new Glucose { PatientId = patient.Id, Timestamp = now,              GlucoseMmoll = 6.0  }  // included
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // Only the recent reading should appear
+        Assert.Equal(1, body.GetProperty("count").GetInt32());
+        Assert.Equal(6.0, body.GetProperty("points")[0].GetProperty("average").GetDouble(), precision: 1);
+    }
+
+    [Fact]
+    public async Task GetScatterplot_WithLastFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_LAST", "Scatter Last Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-20), GlucoseMmoll = 12.0 }, // outside 3d
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddDays(-2),  GlucoseMmoll = 5.0  }, // inside 3d
+            new Glucose { PatientId = patient.Id, Timestamp = now,              GlucoseMmoll = 7.0  }  // inside 3d (latest)
+        );
+        await db.SaveChangesAsync();
+
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=3d");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // 2 days within last 3d window
+        Assert.Equal(2, body.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetScatterplot_WithStartEndFilter_FiltersCorrectly()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_SE", "Scatter StartEnd Patient");
+        var now = DateTime.UtcNow;
+
+        await using var db = CreateDb();
+        db.Glucoses.AddRange(
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-5), GlucoseMmoll = 12.0 }, // excluded
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-2), GlucoseMmoll = 5.0  }, // included
+            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-1), GlucoseMmoll = 7.0  }  // included
+        );
+        await db.SaveChangesAsync();
+
+        var startStr = now.AddHours(-3).ToString("O");
+        var endStr   = now.ToString("O");
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&start={startStr}&end={endStr}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        // Both within the window fall on the same day → 1 point, avg = 6.0
+        Assert.Equal(1, body.GetProperty("count").GetInt32());
+        Assert.Equal(6.0, body.GetProperty("points")[0].GetProperty("average").GetDouble(), precision: 1);
+        Assert.Equal(5.0, body.GetProperty("points")[0].GetProperty("min").GetDouble(), precision: 1);
+        Assert.Equal(7.0, body.GetProperty("points")[0].GetProperty("max").GetDouble(), precision: 1);
+    }
+
+    [Fact]
+    public async Task GetScatterplot_NotFound_Returns404()
+    {
+        var resp = await _client.GetAsync("/api/glucose/scatterplot?id=99999");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetScatterplot_InvalidLastParam_Returns400()
+    {
+        var patient = await SeedPatientAsync("P_SCATTER_BAD", "Scatter Bad Param Patient");
+        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=5x");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }

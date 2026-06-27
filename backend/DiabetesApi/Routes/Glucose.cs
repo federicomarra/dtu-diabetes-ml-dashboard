@@ -270,4 +270,34 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// Get per-day glucose averages with min/max for a scatterplot, for a patient within an optional time range or duration.
+    /// </summary>
+    /// <param name="id">Patient ID</param>
+    /// <param name="start">ISO datetime string (optional)</param>
+    /// <param name="end">ISO datetime string (optional)</param>
+    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") (optional, default '2w' if no start/end specified)</param>
+    [HttpGet("scatterplot")]
+    [ProducesResponseType(typeof(ScatterplotResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetScatterplot(
+        [FromQuery] int id,
+        [FromQuery] string? start = null,
+        [FromQuery] string? end   = null,
+        [FromQuery] string? last = null)
+    {
+        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m"))
+            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
+        DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
+
+        var result = await glucoseService.CalculateScatterplotAsync(id, startDt, endDt, last);
+        if (result is null)
+            return NotFound(new { error = "No readings found for the specified patient and time window." });
+
+        return Ok(result);
+    }
 }
