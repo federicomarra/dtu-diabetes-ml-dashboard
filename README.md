@@ -22,10 +22,10 @@
                          └──────────────────┘
 ```
 
-| Component    | Technology                               | Environment       |
-|--------------|------------------------------------------|-------------------|
-| Frontend     | Next.js + TypeScript + Recharts          | localhost:3000    |
-| Backend API  | ASP.NET Core 10 + EF Core + Swashbuckle  | localhost:8000    |
+| Component    | Technology                               | Environment             |
+|--------------|------------------------------------------|-------------------------|
+| Frontend     | Next.js + TypeScript + Recharts          | localhost:3000 or :3001 |
+| Backend API  | ASP.NET Core 10 + EF Core + Swashbuckle  | localhost:8000          |
 | Database     | PostgreSQL 16                            | localhost:5432    |
 | ML Module    | PyTorch + scikit-learn                   | Local / DTU HPC   |
 
@@ -138,7 +138,7 @@ Services available after startup:
 
 | Service     | URL                                      |
 |-------------|------------------------------------------|
-| Frontend    | http://localhost:3000                    |
+| Frontend    | http://localhost:3000 (or :3001 if 3000 is occupied) |
 | Backend API | http://localhost:8000/api/health         |
 | Swagger UI  | http://localhost:8000/swagger            |
 | OpenAPI JSON| http://localhost:8000/swagger/v1/swagger.json |
@@ -167,6 +167,8 @@ npm install
 npm run dev
 ```
 
+The frontend starts on `http://localhost:3000` (or `http://localhost:3001` if `3000` is occupied).
+
 ### 4. Seed synthetic data
 ```bash
 python database/seed.py
@@ -188,13 +190,14 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 |--------|--------------|-----------------------------------------|
 | GET    | `/api/health` | Health check — returns `{"status":"healthy"}` |
 
-### Patients (`/api/patients`)
+### Patients (`/api/patient`)
 
-| Method | Endpoint                 | Description                                        |
-|--------|--------------------------|----------------------------------------------------|
-| GET    | `/api/patients/list`     | List all patients (paginated: `?page=1&per_page=20`) |
-| POST   | `/api/patients/create`   | Create a new patient (`external_id` + `name` required) |
-| GET    | `/api/patients/{id}`     | Get a single patient by ID                        |
+| Method | Endpoint                     | Description                                        |
+|--------|------------------------------|----------------------------------------------------|
+| GET    | `/api/patient/list`          | List all patients (paginated: `?page=1&per_page=20`) |
+| GET    | `/api/patient/{id}`          | Get a single patient by database ID                |
+| GET    | `/api/patient/by-external/{externalId}` | Get a single patient by external ID string |
+| POST   | `/api/patient/create`        | Create a new patient (`external_id` + `name` required) |
 
 ### Glucose (`/api/glucose`)
 
@@ -204,13 +207,34 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 | GET    | `/api/glucose/latest?id={patient_id}`| Most recent glucose reading                      |
 | GET    | `/api/glucose/tir?id={patient_id}`   | Time-in-range statistics (`?start=`, `?end=`, `?last=2w`)|
 | GET    | `/api/glucose/average?id={patient_id}`| Average glucose reading (`?start=`, `?end=`, `?last=2w`)|
+| GET    | `/api/glucose/hba1c?id={patient_id}`  | Estimated HbA1c calculation (`?start=`, `?end=`, `?last=2w`)|
+| GET    | `/api/glucose/gmi?id={patient_id}`    | Glucose Management Indicator (`?start=`, `?end=`, `?last=2w`)|
+| GET    | `/api/glucose/scatterplot?id={patient_id}` | Daily average, min, and max glucose for scatterplot (`?start=`, `?end=`, `?last=2w`)|
 
-### Anomalies (`/api/anomalies`)
+### Anomalies (`/api/anomaly`)
 
 | Method | Endpoint                                  | Description                                      |
 |--------|-------------------------------------------|--------------------------------------------------|
-| GET    | `/api/anomalies/{patient_id}`             | List anomalies (`?acknowledged=true/false`, `?limit=50`) |
-| POST   | `/api/anomalies/{anomaly_id}/acknowledge` | Mark anomaly as acknowledged                    |
+| GET    | `/api/anomaly/{patient_id}`               | List anomalies (`?acknowledged=true/false`, `?limit=50`) |
+| POST   | `/api/anomaly/{anomaly_id}/acknowledge`   | Mark anomaly as acknowledged                    |
+
+### Insulin (`/api/insulin`)
+
+| Method | Endpoint                          | Description                                       |
+|--------|-----------------------------------|---------------------------------------------------|
+| GET    | `/api/insulin/{patient_id}`       | Get insulin delivery events (`?start=`, `?end=`, `?last=2w`) |
+
+### Meals (`/api/meal`)
+
+| Method | Endpoint                          | Description                                       |
+|--------|-----------------------------------|---------------------------------------------------|
+| GET    | `/api/meal/{patient_id}`          | Get carbohydrate intakes and meals (`?start=`, `?end=`, `?last=2w`) |
+
+### History (`/api/history`)
+
+| Method | Endpoint                          | Description                                       |
+|--------|-----------------------------------|---------------------------------------------------|
+| GET    | `/api/history/{patient_id}`       | Get historical telemetry entries (`?start=`, `?end=`, `?last=2w`) |
 
 > 📖 Full interactive API reference via **Swagger UI** at `http://localhost:8000/swagger`
 
@@ -249,6 +273,9 @@ The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuck
 | `PatientOverview` | Summary card — latest glucose reading, TIR %, and unacknowledged anomaly count |
 | `AnomalyAlert` | Alert list displaying missed/late bolus detections with inline acknowledge button |
 | `MultiWeeklyChart` | Overlay comparison chart comparing multiple weeks of CGM readings to observe patterns |
+| `GlucoseScatterplot` | Daily glucose averages (average, min, max) with error bar/whisker or capsule range overlays |
+| `CarboDailyChart` | Daily carbohydrate intake bar chart representing patient meal/carb data over time |
+| `InsulinDailyChart` | Daily insulin delivery chart showing basal and bolus doses delivered to the patient |
 | `NavBar` | Top navigation bar providing navigation between Patient and Doctor dashboards |
 
 ## Deployment

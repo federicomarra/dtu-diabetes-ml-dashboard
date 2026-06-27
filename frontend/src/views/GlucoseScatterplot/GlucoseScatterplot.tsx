@@ -179,7 +179,7 @@ export default function GlucoseScatterplot({ points }: Props) {
       <div className={styles.header}>
         <div>
           <h3 className={styles.title}>Daily Glucose Averages</h3>
-          <p className={styles.subtitle}>Average, min and max per day ({unit})</p>
+          <p className={styles.subtitle}>Average, min and max with errors per day</p>
         </div>
 
         <div className={styles.switcher}>
@@ -317,7 +317,7 @@ export default function GlucoseScatterplot({ points }: Props) {
               <line x1="2" y1="0" x2="8" y2="0" stroke="var(--text-secondary)" strokeWidth="1.5" />
               <line x1="2" y1="16" x2="8" y2="16" stroke="var(--text-secondary)" strokeWidth="1.5" />
             </svg>
-            <span className={styles.legendText}>Min - Max range</span>
+            <span className={styles.legendText}>Min - Max range (whisker error bars)</span>
           </>
         ) : (
           <>
@@ -328,7 +328,7 @@ export default function GlucoseScatterplot({ points }: Props) {
             <svg width="12" height="16">
               <rect x="0" y="0" width="12" height="16" rx="6" fill="var(--text-secondary)" fillOpacity={0.22} />
             </svg>
-            <span className={styles.legendText}>Min - Max range</span>
+            <span className={styles.legendText}>Min - Max range (capsule)</span>
           </>
         )}
       </div>
