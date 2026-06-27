@@ -194,7 +194,7 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 | Method | Endpoint                     | Description                                        |
 |--------|------------------------------|----------------------------------------------------|
-| GET    | `/api/patient/list`          | List all patients (paginated: `?page=1&per_page=20`) |
+| GET    | `/api/patient/list`          | List all patients (paginated: `?page=1&perPage=20`) |
 | GET    | `/api/patient/{id}`          | Get a single patient by database ID                |
 | GET    | `/api/patient/by-external/{externalId}` | Get a single patient by external ID string |
 | POST   | `/api/patient/create`        | Create a new patient (`external_id` + `name` required) |
