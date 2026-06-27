@@ -10,12 +10,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
   ErrorBar,
 } from "recharts";
 import type { DailyGlucosePoint } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
-import { convertGlucose, formatGlucose } from "@/models/glucoseUnits";
+import { convertGlucose } from "@/models/glucoseUnits";
 import type { GlucoseUnit } from "@/models/glucoseUnits";
 import styles from "./GlucoseScatterplot.module.css";
 
@@ -51,7 +52,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds: any): ChartPoint[] {
+function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds: { veryLow: number; low: number; high: number; veryHigh: number }): ChartPoint[] {
   const vl = convertGlucose(thresholds.veryLow, unit);
   const l = convertGlucose(thresholds.low, unit);
   const h = convertGlucose(thresholds.high, unit);
@@ -147,7 +148,7 @@ function ScatterTooltip({ active, payload, unit }: ScatterTooltipProps) {
 export default function GlucoseScatterplot({ points }: Props) {
   const { unit } = useGlucoseUnit();
   const { ranges: thresholds } = useGlucoseRanges();
-  const [mode, setMode] = useState<ViewMode>("modern");
+  const [mode, setMode] = useState<ViewMode>("scientific");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -171,13 +172,6 @@ export default function GlucoseScatterplot({ points }: Props) {
     Math.ceil((yMax + pad) * 10) / 10,
   ];
 
-  const thresholdLines = [
-    { value: vl, color: "#c0392b", label: "VL " + formatGlucose(thresholds.veryLow, unit) },
-    { value: l, color: "#e67e22", label: "L  " + formatGlucose(thresholds.low, unit) },
-    { value: h, color: "#f39c12", label: "H  " + formatGlucose(thresholds.high, unit) },
-    { value: vh, color: "#e74c3c", label: "VH " + formatGlucose(thresholds.veryHigh, unit) },
-  ];
-
   const isEmpty = chartData.length === 0;
 
   return (
@@ -189,17 +183,18 @@ export default function GlucoseScatterplot({ points }: Props) {
         </div>
 
         <div className={styles.switcher}>
-          <button
-            className={styles.switchBtn + (mode === "modern" ? " " + styles.switchBtnActive : "")}
-            onClick={() => setMode("modern")}
-          >
-            Modern
-          </button>
+
           <button
             className={styles.switchBtn + (mode === "scientific" ? " " + styles.switchBtnActive : "")}
             onClick={() => setMode("scientific")}
           >
             Scientific
+          </button>
+          <button
+            className={styles.switchBtn + (mode === "modern" ? " " + styles.switchBtnActive : "")}
+            onClick={() => setMode("modern")}
+          >
+            Modern
           </button>
         </div>
       </div>
@@ -209,7 +204,7 @@ export default function GlucoseScatterplot({ points }: Props) {
           <div className={styles.empty}>No glucose data for this period.</div>
         ) : !mounted ? null : (
           <ResponsiveContainer width="100%" height="100%" minHeight={280} minWidth={0} debounce={50}>
-            <ComposedChart data={chartData} margin={{ top: 8, right: 24, bottom: 8, left: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 8, right: 42, bottom: 8, left: 12 }}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" strokeOpacity={0.4} />
               <XAxis
                 dataKey="displayDate"
@@ -225,18 +220,48 @@ export default function GlucoseScatterplot({ points }: Props) {
                 tickLine={false}
                 axisLine={false}
                 width={42}
+                label={{
+                  value: unit,
+                  angle: -90,
+                  position: "insideLeft",
+                  fontSize: 12,
+                  fill: "var(--text-secondary)",
+                  dx: -8
+                }}
               />
 
-              {thresholdLines.map((t) => (
-                <ReferenceLine
-                  key={t.value}
-                  y={t.value}
-                  stroke={t.color}
-                  strokeDasharray="6 3"
-                  strokeOpacity={0.7}
-                  label={{ value: t.label, position: "insideTopRight", fontSize: 9, fill: t.color, dy: -4 }}
-                />
-              ))}
+              <ReferenceArea
+                y1={l}
+                y2={h}
+                fill="var(--success)"
+                fillOpacity={0.08}
+                stroke="none"
+              />
+
+              <ReferenceLine
+                y={vl}
+                stroke="var(--danger)"
+                strokeDasharray="4 4"
+                label={{ value: String(vl), position: "right", fontSize: 11, fill: "var(--danger)", dx: 6 }}
+              />
+              <ReferenceLine
+                y={l}
+                stroke="var(--warning)"
+                strokeDasharray="4 4"
+                label={{ value: String(l), position: "right", fontSize: 11, fill: "var(--warning)", dx: 6 }}
+              />
+              <ReferenceLine
+                y={h}
+                stroke="var(--warning)"
+                strokeDasharray="4 4"
+                label={{ value: String(h), position: "right", fontSize: 11, fill: "var(--warning)", dx: 6 }}
+              />
+              <ReferenceLine
+                y={vh}
+                stroke="var(--danger)"
+                strokeDasharray="4 4"
+                label={{ value: String(vh), position: "right", fontSize: 11, fill: "var(--danger)", dx: 6 }}
+              />
 
               <Tooltip
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -246,30 +271,30 @@ export default function GlucoseScatterplot({ points }: Props) {
 
               {mode === "scientific" ? (
                 <>
-                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props: any) => <ScientificDot {...props} color="var(--success)" />}>
+                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props) => <ScientificDot {...props} color="var(--success)" />}>
                     <ErrorBar dataKey="errorUpSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
                     <ErrorBar dataKey="errorDownSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
                   </Scatter>
-                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props: any) => <ScientificDot {...props} color="var(--warning)" />}>
+                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props) => <ScientificDot {...props} color="var(--warning)" />}>
                     <ErrorBar dataKey="errorUpWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
                     <ErrorBar dataKey="errorDownWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
                   </Scatter>
-                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props: any) => <ScientificDot {...props} color="var(--danger)" />}>
+                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props) => <ScientificDot {...props} color="var(--danger)" />}>
                     <ErrorBar dataKey="errorUpDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
                     <ErrorBar dataKey="errorDownDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
                   </Scatter>
                 </>
               ) : (
                 <>
-                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props: any) => <ModernDot {...props} color="var(--success)" />}>
+                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props) => <ModernDot {...props} color="var(--success)" />}>
                     <ErrorBar dataKey="errorUpSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
                     <ErrorBar dataKey="errorDownSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
-                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props: any) => <ModernDot {...props} color="var(--warning)" />}>
+                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props) => <ModernDot {...props} color="var(--warning)" />}>
                     <ErrorBar dataKey="errorUpWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
                     <ErrorBar dataKey="errorDownWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
-                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props: any) => <ModernDot {...props} color="var(--danger)" />}>
+                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props) => <ModernDot {...props} color="var(--danger)" />}>
                     <ErrorBar dataKey="errorUpDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
                     <ErrorBar dataKey="errorDownDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
