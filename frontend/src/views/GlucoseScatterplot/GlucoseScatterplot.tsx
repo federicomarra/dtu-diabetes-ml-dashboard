@@ -22,6 +22,7 @@ import styles from "./GlucoseScatterplot.module.css";
 // --- Types ---
 
 type ViewMode = "scientific" | "modern";
+type ColorType = "Success" | "Warning" | "Danger";
 
 interface ChartPoint {
   date: string;
@@ -31,6 +32,7 @@ interface ChartPoint {
   max: number;
   errorUp: number;
   errorDown: number;
+  colorType: ColorType;
 }
 
 interface Props {
@@ -49,19 +51,42 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit): ChartPoint[] {
+function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds: any): ChartPoint[] {
+  const vl = convertGlucose(thresholds.veryLow, unit);
+  const l = convertGlucose(thresholds.low, unit);
+  const h = convertGlucose(thresholds.high, unit);
+  const vh = convertGlucose(thresholds.veryHigh, unit);
+
   return points.map((p) => {
     const avg = convertGlucose(p.average, unit);
     const min = convertGlucose(p.min, unit);
     const max = convertGlucose(p.max, unit);
+    
+    let colorType: ColorType = "Success";
+    if (avg < vl || avg > vh) colorType = "Danger";
+    else if (avg < l || avg > h) colorType = "Warning";
+
+    const errorUp = Math.max(0, max - avg);
+    const errorDown = Math.max(0, avg - min);
+
     return {
       date: p.date,
       displayDate: formatDate(p.date),
       avg,
       min,
       max,
-      errorUp: Math.max(0, max - avg),
-      errorDown: Math.max(0, avg - min),
+      errorUp,
+      errorDown,
+      colorType,
+      avgSuccess: colorType === "Success" ? avg : NaN,
+      errorUpSuccess: colorType === "Success" ? errorUp : NaN,
+      errorDownSuccess: colorType === "Success" ? errorDown : NaN,
+      avgWarning: colorType === "Warning" ? avg : NaN,
+      errorUpWarning: colorType === "Warning" ? errorUp : NaN,
+      errorDownWarning: colorType === "Warning" ? errorDown : NaN,
+      avgDanger: colorType === "Danger" ? avg : NaN,
+      errorUpDanger: colorType === "Danger" ? errorUp : NaN,
+      errorDownDanger: colorType === "Danger" ? errorDown : NaN,
     };
   });
 }
@@ -70,17 +95,19 @@ function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit): ChartPoin
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ScientificDot(props: any) {
-  const { cx, cy } = props;
+  const { cx, cy, color } = props;
+  if (cx == null || cy == null || Number.isNaN(Number(cx)) || Number.isNaN(Number(cy))) return null;
   return (
-    <circle cx={cx} cy={cy} r={4} fill="#27ae60" stroke="var(--card-bg)" strokeWidth={1.5} />
+    <circle cx={cx} cy={cy} r={4} fill={color || "#27ae60"} stroke="var(--card-bg)" strokeWidth={1.5} />
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ModernDot(props: any) {
-  const { cx, cy } = props;
+  const { cx, cy, color } = props;
+  if (cx == null || cy == null || Number.isNaN(Number(cx)) || Number.isNaN(Number(cy))) return null;
   return (
-    <circle cx={cx} cy={cy} r={6} fill="#27ae60" stroke="var(--card-bg)" strokeWidth={2} />
+    <circle cx={cx} cy={cy} r={6} fill={color || "#27ae60"} stroke="var(--card-bg)" strokeWidth={2} />
   );
 }
 
@@ -128,7 +155,7 @@ export default function GlucoseScatterplot({ points }: Props) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const chartData = toDisplayPts(points, unit);
+  const chartData = toDisplayPts(points, unit, thresholds);
 
   const vl = convertGlucose(thresholds.veryLow, unit);
   const l = convertGlucose(thresholds.low, unit);
@@ -190,6 +217,7 @@ export default function GlucoseScatterplot({ points }: Props) {
                 tickLine={false}
                 axisLine={{ stroke: "var(--border)" }}
                 interval="preserveStartEnd"
+                allowDuplicatedCategory={false}
               />
               <YAxis
                 domain={domain}
@@ -217,15 +245,35 @@ export default function GlucoseScatterplot({ points }: Props) {
               />
 
               {mode === "scientific" ? (
-                <Scatter dataKey="avg" fill="#27ae60" shape={<ScientificDot />}>
-                  <ErrorBar dataKey="errorUp" width={5} strokeWidth={1.5} stroke="#27ae60" direction="y" />
-                  <ErrorBar dataKey="errorDown" width={5} strokeWidth={1.5} stroke="#27ae60" direction="y" />
-                </Scatter>
+                <>
+                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props: any) => <ScientificDot {...props} color="var(--success)" />}>
+                    <ErrorBar dataKey="errorUpSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
+                    <ErrorBar dataKey="errorDownSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
+                  </Scatter>
+                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props: any) => <ScientificDot {...props} color="var(--warning)" />}>
+                    <ErrorBar dataKey="errorUpWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
+                    <ErrorBar dataKey="errorDownWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
+                  </Scatter>
+                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props: any) => <ScientificDot {...props} color="var(--danger)" />}>
+                    <ErrorBar dataKey="errorUpDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
+                    <ErrorBar dataKey="errorDownDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
+                  </Scatter>
+                </>
               ) : (
-                <Scatter dataKey="avg" fill="#27ae60" shape={<ModernDot />}>
-                  <ErrorBar dataKey="errorUp" width={12} strokeWidth={10} stroke="#27ae60" strokeOpacity={0.22} direction="y" />
-                  <ErrorBar dataKey="errorDown" width={12} strokeWidth={10} stroke="#27ae60" strokeOpacity={0.22} direction="y" />
-                </Scatter>
+                <>
+                  <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props: any) => <ModernDot {...props} color="var(--success)" />}>
+                    <ErrorBar dataKey="errorUpSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorDownSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
+                  </Scatter>
+                  <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props: any) => <ModernDot {...props} color="var(--warning)" />}>
+                    <ErrorBar dataKey="errorUpWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorDownWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
+                  </Scatter>
+                  <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props: any) => <ModernDot {...props} color="var(--danger)" />}>
+                    <ErrorBar dataKey="errorUpDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorDownDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
+                  </Scatter>
+                </>
               )}
             </ComposedChart>
           </ResponsiveContainer>
@@ -233,15 +281,33 @@ export default function GlucoseScatterplot({ points }: Props) {
       </div>
 
       <div className={styles.legend}>
-        <svg width="10" height="10">
-          <circle cx="5" cy="5" r="5" fill="#27ae60" />
-        </svg>
-        <span className={styles.legendText}>Daily average</span>
-        <svg width="10" height="16">
-          <rect x="1" y="0" width="8" height="16" rx="4" fill="#27ae60" fillOpacity={0.25} />
-        </svg>
-        <span className={styles.legendText}>Min - Max range</span>
+        {mode === "scientific" ? (
+          <>
+            <svg width="10" height="10">
+              <circle cx="5" cy="5" r="4" fill="var(--text-secondary)" />
+            </svg>
+            <span className={styles.legendText}>Daily average</span>
+            <svg width="10" height="16">
+              <line x1="5" y1="0" x2="5" y2="16" stroke="var(--text-secondary)" strokeWidth="1.5" />
+              <line x1="2" y1="0" x2="8" y2="0" stroke="var(--text-secondary)" strokeWidth="1.5" />
+              <line x1="2" y1="16" x2="8" y2="16" stroke="var(--text-secondary)" strokeWidth="1.5" />
+            </svg>
+            <span className={styles.legendText}>Min - Max range</span>
+          </>
+        ) : (
+          <>
+            <svg width="12" height="12">
+              <circle cx="6" cy="6" r="6" fill="var(--text-secondary)" />
+            </svg>
+            <span className={styles.legendText}>Daily average</span>
+            <svg width="12" height="16">
+              <rect x="0" y="0" width="12" height="16" rx="6" fill="var(--text-secondary)" fillOpacity={0.22} />
+            </svg>
+            <span className={styles.legendText}>Min - Max range</span>
+          </>
+        )}
       </div>
     </div>
   );
 }
+
