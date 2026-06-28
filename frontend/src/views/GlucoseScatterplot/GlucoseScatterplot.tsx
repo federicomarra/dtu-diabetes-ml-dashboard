@@ -34,6 +34,16 @@ interface ChartPoint {
   errorUp: number;
   errorDown: number;
   colorType: ColorType;
+  // Split series so we can render different colors via multiple <Scatter> elements
+   avgSuccess: number;
+   errorUpSuccess: number;
+   errorDownSuccess: number;
+   avgWarning: number;
+   errorUpWarning: number;
+   errorDownWarning: number;
+   avgDanger: number;
+   errorUpDanger: number;
+   errorDownDanger: number;
 }
 
 interface Props {
