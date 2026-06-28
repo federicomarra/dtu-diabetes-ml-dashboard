@@ -22,6 +22,67 @@ import {
 
 // ─── Glucose reading generator ────────────────────────────
 
+/**
+ * Generates 5-minute CGM readings for the past `weeks` full ISO weeks
+ * (Mon–Sun), plus the current partial week up to now.
+ * Uses the same simulation model as generateDemoReadings().
+ */
+export function generateMultiWeekReadings(weeks = 4): GlucoseReading[] {
+  const readings: GlucoseReading[] = [];
+  const now = new Date();
+
+  // Total minutes to go back: `weeks` full weeks + partial current week
+  const totalMinutes = weeks * 7 * 24 * 60;
+  // Number of 5-min intervals
+  const intervals = Math.ceil(totalMinutes / 5);
+
+  let glucose = 6.1; // mmol/L — starting value
+
+  for (let i = intervals; i >= 0; i--) {
+    const timestamp = new Date(now.getTime() - i * 5 * 60 * 1000);
+    const hour = timestamp.getHours();
+
+    // Simulate meal spikes at breakfast, lunch and dinner windows
+    const mealEffect =
+      (hour >= 7 && hour <= 9) ||
+      (hour >= 12 && hour <= 14) ||
+      (hour >= 18 && hour <= 20)
+        ? Math.random() * 0.18
+        : 0;
+
+    // Occasional random stress/exercise events (roughly 1 in 200 ticks)
+    const eventEffect = Math.random() < 0.005 ? (Math.random() - 0.3) * 2.0 : 0;
+
+    glucose +=
+      (6.0 - glucose) * 0.018 +
+      (Math.random() - 0.5) * 0.32 +
+      mealEffect +
+      eventEffect;
+    glucose = Math.max(GLUCOSE_CLAMP_MIN, Math.min(GLUCOSE_CLAMP_MAX, glucose));
+
+    const status: GlucoseReading["status"] =
+      glucose < VERY_LOW_THRESHOLD
+        ? "very_low"
+        : glucose < LOW_THRESHOLD
+          ? "low"
+          : glucose <= HIGH_THRESHOLD
+            ? "in_range"
+            : glucose <= VERY_HIGH_THRESHOLD
+              ? "high"
+              : "very_high";
+
+    readings.push({
+      id: intervals - i,
+      patient_id: 1,
+      timestamp: timestamp.toISOString(),
+      glucose_mmoll: Math.round(glucose * 10) / 10,
+      source: "simulated",
+      status,
+    });
+  }
+  return readings;
+}
+
 export function generateDemoReadings(): GlucoseReading[] {
   const readings: GlucoseReading[] = [];
   const now = new Date();

@@ -1,9 +1,10 @@
 "use client";
 
-import { Activity, Droplets, AlertTriangle } from "lucide-react";
-import type { GlucoseReading, TimeInRange } from "@/models/types";
+import { Activity, Droplets, AlertTriangle, FlaskConical } from "lucide-react";
+import type { GlucoseReading, TimeInRange, HbA1c, Gmi } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
+import { useGlucoseRanges, type GlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -13,6 +14,18 @@ interface PatientOverviewProps {
   latestReading?: GlucoseReading;
   tir?: TimeInRange;
   anomalyCount?: number;
+  averageGlucose?: number | null;
+  timeRangeLast?: string;
+  hba1c?: HbA1c;
+  gmi?: Gmi;
+}
+
+function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
+  if (value < ranges.veryLow) return "very_low";
+  if (value < ranges.low) return "low";
+  if (value <= ranges.high) return "in_range";
+  if (value <= ranges.veryHigh) return "high";
+  return "very_high";
 }
 
 function getStatusColor(status?: string): string {
@@ -41,6 +54,12 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function getA1cAndGMIColor(value: number): string {
+  if (value < 7.0) return "var(--success)";
+  if (value < 8.0) return "var(--warning)";
+  return "var(--danger)";
+}
+
 export default function PatientOverview({
   patientName,
   patientId,
@@ -48,8 +67,21 @@ export default function PatientOverview({
   latestReading,
   tir,
   anomalyCount = 0,
+  averageGlucose,
+  timeRangeLast = "2w",
+  hba1c,
+  gmi,
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
+
+  const latestStatus = latestReading
+    ? getGlucoseStatus(latestReading.glucose_mmoll, glucoseRanges)
+    : undefined;
+
+  const averageStatus = averageGlucose != null
+    ? getGlucoseStatus(averageGlucose, glucoseRanges)
+    : undefined;
 
   return (
     <div className={styles.card}>
@@ -68,10 +100,10 @@ export default function PatientOverview({
             <Droplets size={18} />
           </div>
           <div>
-            <div className={styles.metricLabel}>Current Glucose</div>
+            <div className={styles.metricLabel}>Latest Glucose</div>
             <div
               className={styles.metricValue}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
               {latestReading
                 ? formatGlucose(latestReading.glucose_mmoll, unit)
@@ -79,9 +111,9 @@ export default function PatientOverview({
             </div>
             <div
               className={styles.metricStatus}
-              style={{ color: getStatusColor(latestReading?.status) }}
+              style={{ color: getStatusColor(latestStatus) }}
             >
-              {getStatusLabel(latestReading?.status)}
+              {getStatusLabel(latestStatus)}
             </div>
           </div>
         </div>
@@ -98,6 +130,70 @@ export default function PatientOverview({
             </div>
           </div>
         </div>
+
+        {/* Average Glucose */}
+        {averageGlucose != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <Droplets size={18} />
+            </div>
+            <div>
+            <div className={styles.metricLabel}>Avg Glucose ({timeRangeLast})</div>
+            <div
+              className={styles.metricValue}
+              style={{ color: getStatusColor(averageStatus) }}
+            >
+              {averageGlucose != null
+                ? formatGlucose(averageGlucose, unit)
+                : "—"}
+            </div>
+            <div
+              className={styles.metricStatus}
+              style={{ color: getStatusColor(averageStatus) }}
+            >
+              {getStatusLabel(averageStatus)}
+            </div>
+          </div>
+        </div>)}
+
+        {/* HbA1c */}
+        {hba1c != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <FlaskConical size={18} />
+            </div>
+            <div>
+              <div className={styles.metricLabel}>HbA1c ({timeRangeLast})</div>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(hba1c.percent) }}
+              >
+                {hba1c.percent.toFixed(1)}%
+              </div>
+              <div className={styles.metricStatus} style={{ color: "var(--text-secondary)" }}>
+                {Math.round(hba1c.mmol_per_mol)} mmol/mol
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GMI */}
+        {gmi != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <FlaskConical size={18} />
+            </div>
+            <div>
+              <div className={styles.metricLabel}>GMI ({timeRangeLast})</div>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(gmi.gmi) }}
+              >
+                {gmi.gmi.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Anomalies */}
         <div className={styles.metric}>

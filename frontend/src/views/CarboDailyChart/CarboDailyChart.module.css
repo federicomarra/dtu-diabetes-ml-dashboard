@@ -4,10 +4,8 @@
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  overflow: hidden; /* clip the slide-in animation */
+  overflow: hidden;
 }
-
-/* ─── Header (title + day nav) ───────────────────────────── */
 
 .header {
   display: flex;
@@ -24,8 +22,6 @@
   color: var(--text-primary);
   margin: 0;
 }
-
-/* ─── Day navigation ─────────────────────────────────────── */
 
 .dayNav {
   display: flex;
@@ -91,8 +87,6 @@
   white-space: nowrap;
 }
 
-/* ─── Loading / no data ──────────────────────────────────── */
-
 .chartLoading {
   opacity: 0.5;
   pointer-events: none;
@@ -105,43 +99,4 @@
   color: var(--text-secondary);
   padding: 1rem 0;
   margin: 0;
-}
-
-/* ─── Directional wipe overlay ──────────────────────────── */
-
-/*
-  The wipe overlay sits on top of the chart plot area and slides away,
-  revealing the newly drawn Recharts line underneath.
-  Axes, grid, and reference lines are NOT affected (they are never re-mounted).
-
-  Going RIGHT (› / Latest): overlay slides out to the right → line appears to draw left→right
-  Going LEFT (‹):            overlay slides out to the left  → line appears to draw right→left
-*/
-
-.wipeLeft,
-.wipeRight {
-  position: absolute;
-  inset: 0;
-  background: var(--card-bg);
-  pointer-events: none;
-  z-index: 2;
-  /* start fully opaque, slide away */
-}
-
-.wipeRight {
-  animation: wipeOutRight 0.32s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-.wipeLeft {
-  animation: wipeOutLeft 0.32s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@keyframes wipeOutRight {
-  from { transform: translateX(0); }
-  to   { transform: translateX(100%); }
-}
-
-@keyframes wipeOutLeft {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-100%); }
 }

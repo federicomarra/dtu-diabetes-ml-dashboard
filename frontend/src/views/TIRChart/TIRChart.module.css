@@ -67,8 +67,11 @@
 /* ─── Shared chart area (keeps height stable on mode switch) ─ */
 .chartArea {
   height: 280px;
+  min-height: 0;
   position: relative;
   transition: opacity 0.25s ease;
+  /* Ensure Recharts ResponsiveContainer always gets a positive dimension */
+  overflow: hidden;
 }
 
 .chartLoading {
@@ -277,14 +280,14 @@
 
 /* ─── Modal overlay ──────────────────────────────────────── */
 .modalOverlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1000;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  background: transparent;
-  border-radius: 12px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
   overflow: hidden;
 }
 

@@ -6,9 +6,12 @@
  *   GET  api/patient/list              → getPatients()
  *   GET  api/patient/{id}              → getPatient()
  *   POST api/patient/create            → createPatient()
- *   GET  api/glucose/{id}              → getGlucoseReadings()
- *   GET  api/glucose/{id}/latest       → getLatestReading()
- *   GET  api/glucose/{id}/tir          → getTimeInRange()
+ *   GET  api/glucose?id={id}           → getGlucoseReadings()
+ *   GET  api/glucose/latest?id={id}    → getLatestReading()
+ *   GET  api/glucose/tir?id={id}       → getTimeInRange()
+ *   GET  api/glucose/average?id={id}   → getAverageReading()
+ *   GET  api/glucose/hba1c?id={id}     → getHbA1c()
+ *   GET  api/glucose/gmi?id={id}       → getGmi()
  *   GET  api/anomaly/{id}              → getAnomalies()
  *   POST api/anomaly/{id}/acknowledge  → acknowledgeAnomaly()
  *   GET  api/insulin/{id}              → getInsulins()
@@ -22,6 +25,9 @@ import type {
   GlucoseReading,
   AnomalyDetection,
   TimeInRange,
+  HbA1c,
+  Gmi,
+  ScatterplotData,
   InsulinEvent,
   MealEvent,
   HistoryEntry,
@@ -41,13 +47,18 @@ export async function getPatients(
   perPage = 20
 ): Promise<PaginatedResponse<Patient>> {
   const { data } = await api.get("/patient/list", {
-    params: { page, per_page: perPage },
+    params: { page, perPage },
   });
   return data;
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
   const { data } = await api.get(`/patient/${patientId}`);
+  return data;
+}
+
+export async function getPatientByExternalId(externalId: string): Promise<Patient> {
+  const { data } = await api.get(`/patient/by-external/${encodeURIComponent(externalId)}`);
   return data;
 }
 
@@ -62,24 +73,56 @@ export async function createPatient(
 
 export async function getGlucoseReadings(
   patientId: number,
-  params?: { start?: string; end?: string; limit?: number }
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; readings: GlucoseReading[]; count: number }> {
-  const { data } = await api.get(`/glucose/${patientId}`, { params });
+  const { data } = await api.get("/glucose", { params: { id: patientId, ...params } });
   return data;
 }
 
 export async function getLatestReading(
   patientId: number
 ): Promise<GlucoseReading> {
-  const { data } = await api.get(`/glucose/${patientId}/latest`);
+  const { data } = await api.get("/glucose/latest", { params: { id: patientId } });
   return data;
 }
 
 export async function getTimeInRange(
   patientId: number,
-  params?: { start?: string; end?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
+  params?: { start?: string; end?: string; last?: string; VeryLow?: number; Low?: number; High?: number; VeryHigh?: number }
 ): Promise<TimeInRange> {
-  const { data } = await api.get(`/glucose/${patientId}/tir`, { params });
+  const { data } = await api.get("/glucose/tir", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getAverageReading(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<number> {
+  const { data } = await api.get("/glucose/average", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getHbA1c(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<HbA1c> {
+  const { data } = await api.get("/glucose/hba1c", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getGmi(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<Gmi> {
+  const { data } = await api.get("/glucose/gmi", { params: { id: patientId, ...params } });
+  return data;
+}
+
+export async function getScatterplot(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<ScatterplotData> {
+  const { data } = await api.get("/glucose/scatterplot", { params: { id: patientId, ...params } });
   return data;
 }
 
@@ -104,11 +147,9 @@ export async function acknowledgeAnomaly(
 
 export async function getInsulins(
   patientId: number,
-  limit = 100
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; insulins: InsulinEvent[]; count: number }> {
-  const { data } = await api.get(`/insulin/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/insulin/${patientId}`, { params });
   return data;
 }
 
@@ -116,11 +157,9 @@ export async function getInsulins(
 
 export async function getMeals(
   patientId: number,
-  limit = 100
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; meals: MealEvent[]; count: number }> {
-  const { data } = await api.get(`/meal/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/meal/${patientId}`, { params });
   return data;
 }
 

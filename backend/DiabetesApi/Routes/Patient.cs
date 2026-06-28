@@ -38,6 +38,17 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
         ));
     }
 
+    /// <summary>Get a single patient by external_id string.</summary>
+    [HttpGet("by-external/{externalId}")]
+    [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPatientByExternalId(string externalId)
+    {
+        var patient = await db.Patients.FirstOrDefaultAsync(p => p.ExternalId == externalId);
+        if (patient is null) return NotFound();
+        return Ok(ToDto(patient));
+    }
+
     /// <summary>Get a single patient by ID.</summary>
     [HttpGet("{patientId:int}")]
     [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]

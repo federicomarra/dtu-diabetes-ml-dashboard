@@ -2,60 +2,198 @@
  * CONTROLLER — Patient Dashboard
  *
  * Owns all state and data for /patient.
- * Returns everything the view (page.tsx) needs; no logic in the page itself.
- *
- * TODO: replace demo data calls with real API calls from @/models/api once
- *       the backend is running:
- *   import { getGlucoseReadings, getTimeInRange, getAnomalies } from "@/models/api";
+ * Resolves the hardcoded patient SIM_000001, then loads glucose readings,
+ * TIR, and anomalies from the backend.
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi, ScatterplotData } from "@/models/types";
 import {
-  generateDemoReadings,
-  DEMO_ANOMALIES,
-} from "@/models/demoData";
-import type { Patient, TimeInRange, AnomalyDetection, GlucoseReading } from "@/models/types";
+  getPatientByExternalId,
+  getGlucoseReadings,
+  getTimeInRange,
+  getAnomalies,
+  acknowledgeAnomaly,
+  getAverageReading,
+  getHbA1c,
+  getGmi,
+  getScatterplot,
+} from "@/models/api";
+import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 
-// Demo patient — replace with session/auth lookup in production
-const DEMO_PATIENT: Patient = {
-  id: 1,
-  external_id: "SIM_00001",
-  name: "Demo Patient 000001",
-  age: 34,
-};
-
-const DEMO_TIR: TimeInRange = {
-  patient_id: 1,
-  temporal_span_days: 7,
-  very_low_pct: 1.2,
-  low_pct: 3.5,
-  in_range_pct: 72.1,
-  high_pct: 18.4,
-  very_high_pct: 4.8,
-};
+type State =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | {
+      status: "ready";
+      patient: Patient;
+      readings: GlucoseReading[];
+      multiWeekReadings: GlucoseReading[];
+      tir: TimeInRange | null;
+      anomalies: AnomalyDetection[];
+      averageGlucose: number | null;
+      hba1c: HbA1c | null;
+      gmi: Gmi | null;
+      scatterplotData: ScatterplotData | null;
+    };
 
 export function usePatientController() {
-  const [readings, setReadings] = useState<GlucoseReading[]>([]);
-  const anomalies: AnomalyDetection[] = DEMO_ANOMALIES[DEMO_PATIENT.id] ?? [];
+  const [state, setState] = useState<State>({ status: "loading" });
+  const { timeRange } = useTimeRange();
+  const { ranges: glucoseRanges } = useGlucoseRanges();
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setReadings(generateDemoReadings());
-    }, 0);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+
+    async function load() {
+      try {
+        setState({ status: "loading" });
+
+        // Resolve patient SIM_000001
+        let patient;
+        try {
+          patient = await getPatientByExternalId("SIM_000001");
+        } catch (err: unknown) {
+          if (cancelled) return;
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Failed to load patient",
+          });
+          return;
+        }
+
+        if (cancelled) return;
+
+        // Fetch data in parallel
+        const [readingsResult, tirResult, anomaliesResult, averageResult, hba1cResult, gmiResult, scatterplotResult] =
+          await Promise.allSettled([
+            getGlucoseReadings(patient.id, timeRange),
+            getTimeInRange(patient.id, {
+              ...timeRange,
+              VeryLow: glucoseRanges.veryLow,
+              Low: glucoseRanges.low,
+              High: glucoseRanges.high,
+              VeryHigh: glucoseRanges.veryHigh,
+            }),
+            getAnomalies(patient.id, { limit: 50 }),
+            getAverageReading(patient.id, timeRange),
+            getHbA1c(patient.id, timeRange),
+            getGmi(patient.id, timeRange),
+            getScatterplot(patient.id, timeRange),
+          ]);
+
+        if (cancelled) return;
+
+        const fetchedReadings =
+          readingsResult.status === "fulfilled"
+            ? readingsResult.value.readings
+            : [];
+
+        setState({
+          status: "ready",
+          patient,
+          readings: fetchedReadings,
+          multiWeekReadings: fetchedReadings,
+          tir: tirResult.status === "fulfilled" ? tirResult.value : null,
+          anomalies:
+            anomaliesResult.status === "fulfilled"
+              ? anomaliesResult.value.anomalies
+              : [],
+          averageGlucose:
+            averageResult.status === "fulfilled" ? averageResult.value : null,
+          hba1c: hba1cResult.status === "fulfilled" ? hba1cResult.value : null,
+          gmi: gmiResult.status === "fulfilled" ? gmiResult.value : null,
+          scatterplotData: scatterplotResult.status === "fulfilled" ? scatterplotResult.value : null,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Failed to load data",
+          });
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [timeRange, glucoseRanges]);
+
+  const handleAcknowledge = useCallback(async (anomalyId: number) => {
+    try {
+      await acknowledgeAnomaly(anomalyId);
+      setState((prev) => {
+        if (prev.status !== "ready") return prev;
+        return {
+          ...prev,
+          anomalies: prev.anomalies.map((a) =>
+            a.id === anomalyId ? { ...a, is_acknowledged: true } : a
+          ),
+        };
+      });
+    } catch (err) {
+      console.error("Failed to acknowledge anomaly:", anomalyId, err);
+    }
   }, []);
 
+  if (state.status === "loading") {
+    return {
+      loading: true as const,
+      error: null,
+      patient: null,
+      readings: [],
+      multiWeekReadings: [],
+      tir: null,
+      anomalies: [],
+      averageGlucose: null,
+      hba1c: null,
+      gmi: null,
+      scatterplotData: null,
+      latestReading: undefined,
+      unacknowledgedCount: 0,
+      handleAcknowledge,
+    };
+  }
+
+  if (state.status === "error") {
+    return {
+      loading: false as const,
+      error: state.message,
+      patient: null,
+      readings: [],
+      multiWeekReadings: [],
+      tir: null,
+      anomalies: [],
+      averageGlucose: null,
+      hba1c: null,
+      gmi: null,
+      scatterplotData: null,
+      latestReading: undefined,
+      unacknowledgedCount: 0,
+      handleAcknowledge,
+    };
+  }
+
+  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose, hba1c, gmi, scatterplotData } = state;
+
   return {
-    patient: DEMO_PATIENT,
+    loading: false as const,
+    error: null,
+    patient,
+    tir,
     readings,
-    tir: DEMO_TIR,
+    multiWeekReadings,
     anomalies,
-    latestReading: readings.length > 0 ? readings[readings.length - 1] : undefined,
+    averageGlucose,
+    hba1c,
+    gmi,
+    scatterplotData,
+    latestReading: readings.length > 0 ? readings[0] : undefined,
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
-    handleAcknowledge: (id: number) => {
-      console.log("Acknowledge anomaly:", id);
-      // TODO: call acknowledgeAnomaly(id) from @/models/api
-    },
+    handleAcknowledge,
   };
 }
