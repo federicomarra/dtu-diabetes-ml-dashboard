@@ -159,4 +159,162 @@ public class GlucoseService(AppDbContext db)
             (float)Math.Round(veryHighCount / (double)total * 100, 1)
         );
     }
+
+    /// <summary>
+    /// Calculate estimated HbA1c for a patient over a time window.
+    /// Uses the ADAG (Nathan et al.) formula: eA1c% = (46.7 + avg_mg_dL) / 28.7
+    /// IFCC conversion: mmol/mol = (eA1c% − 2.152) / 0.09148
+    /// Returns null if no readings are found in the window.
+    /// </summary>
+    public async Task<HbA1cResponse?> CalculateHbA1cAsync(
+        int patientId,
+        DateTime? start = null,
+        DateTime? end = null,
+        string? last = null)
+    {
+        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end, last);
+        if (avgMmoll is null) return null;
+
+        double avgMgDl = avgMmoll.Value * 18.018;
+        double percent   = Math.Round((46.7 + avgMgDl) / 28.7, 1);
+        double mmolPerMol = Math.Round((percent - 2.152) / 0.09148, 0);
+
+        return new HbA1cResponse(patientId, percent, mmolPerMol);
+    }
+
+    /// <summary>
+    /// Calculate Glucose Management Indicator (GMI) for a patient over a time window.
+    /// Formula: GMI% = 3.31 + (0.02392 × avg_mg_dL)  — ADA/AGP standard.
+    /// Returns null if no readings are found in the window.
+    /// </summary>
+    public async Task<GmiResponse?> CalculateGmiAsync(
+        int patientId,
+        DateTime? start = null,
+        DateTime? end = null,
+        string? last = null)
+    {
+        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end, last);
+        if (avgMmoll is null) return null;
+
+        double avgMgDl = avgMmoll.Value * 18.018;
+        double gmi = Math.Round(3.31 + (0.02392 * avgMgDl), 1);
+
+        return new GmiResponse(patientId, gmi);
+    }
+
+    /// <summary>
+    /// Calculate per-day average, min and max glucose for a patient over a time window.
+    /// Readings are grouped by UTC calendar date.
+    /// Returns null if no readings are found.
+    /// </summary>
+    public async Task<ScatterplotResponse?> CalculateScatterplotAsync(
+        int patientId,
+        DateTime? start = null,
+        DateTime? end = null,
+        string? last = null)
+    {
+        var query = db.Glucoses.Where(r => r.PatientId == patientId);
+
+        if (start.HasValue)
+            query = query.Where(r => r.Timestamp >= start.Value);
+        if (end.HasValue)
+            query = query.Where(r => r.Timestamp <= end.Value);
+
+        if (!start.HasValue && !end.HasValue && last is null)
+            last = "2w";
+
+        if (last is not null)
+        {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == patientId)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last[..^1], out int hours))
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            else if (last.EndsWith("d") && int.TryParse(last[..^1], out int days))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            else if (last.EndsWith("w") && int.TryParse(last[..^1], out int weeks))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            else if (last.EndsWith("m") && int.TryParse(last[..^1], out int months))
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            else
+                return null; // invalid format → treated as no data (caller returns 400)
+        }
+
+        // Materialise so we can group in-memory by UTC date
+        var rows = await query
+            .Select(r => new { r.GlucoseMmoll, r.Timestamp })
+            .ToListAsync();
+
+        if (rows.Count == 0) return null;
+
+        var points = rows
+            .GroupBy(r => DateTime.SpecifyKind(r.Timestamp, DateTimeKind.Utc).Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new DailyGlucosePoint(
+                g.Key.ToString("yyyy-MM-dd"),
+                Math.Round(g.Average(r => r.GlucoseMmoll), 2),
+                Math.Round(g.Min(r => r.GlucoseMmoll), 2),
+                Math.Round(g.Max(r => r.GlucoseMmoll), 2)
+            ))
+            .ToList();
+
+        return new ScatterplotResponse(patientId, points, points.Count);
+    }
+
+    // ── Shared helpers ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the average GlucoseMmoll for a patient in the given time window,
+    /// or null if no readings exist. Applies the same start/end/last logic used
+    /// by all other glucose queries.
+    /// </summary>
+    private async Task<double?> GetAverageGlucoseAsync(
+        int patientId,
+        DateTime? start,
+        DateTime? end,
+        string? last)
+    {
+        var query = db.Glucoses.Where(r => r.PatientId == patientId);
+
+        if (start.HasValue)
+            query = query.Where(r => r.Timestamp >= start.Value);
+        if (end.HasValue)
+            query = query.Where(r => r.Timestamp <= end.Value);
+
+        if (!start.HasValue && !end.HasValue && last is null)
+            last = "2w";
+
+        if (last is not null)
+        {
+            var latestTimestamp = await db.Glucoses
+                .Where(r => r.PatientId == patientId)
+                .Select(r => (DateTime?)r.Timestamp)
+                .MaxAsync();
+
+            var baseTime = latestTimestamp.HasValue
+                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
+                : DateTime.UtcNow;
+
+            if (last.EndsWith("h") && int.TryParse(last[..^1], out int hours))
+                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
+            else if (last.EndsWith("d") && int.TryParse(last[..^1], out int days))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
+            else if (last.EndsWith("w") && int.TryParse(last[..^1], out int weeks))
+                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
+            else if (last.EndsWith("m") && int.TryParse(last[..^1], out int months))
+                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
+            else
+                return null; // invalid format → treat as no data
+        }
+
+        return await query
+            .Select(r => (double?)r.GlucoseMmoll)
+            .AverageAsync();
+    }
 }

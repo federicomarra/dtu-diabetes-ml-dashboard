@@ -19,7 +19,7 @@ import { convertGlucose } from "@/models/glucoseUnits";
 import {
   LOW_THRESHOLD,
   HIGH_THRESHOLD,
-  VERY_HIGH_THRESHOLD,
+  /*VERY_HIGH_THRESHOLD,*/
   CHART_DOMAIN_MIN,
   CHART_DOMAIN_MAX,
 } from "@/models/glucoseConfig";
@@ -146,7 +146,7 @@ interface DayPanelProps {
   day: DayData;
   low: number;
   high: number;
-  veryHigh: number;
+  /*veryHigh: number;*/
   domainMin: number;
   domainMax: number;
   unit: string;
@@ -154,7 +154,7 @@ interface DayPanelProps {
   mounted: boolean;
 }
 
-function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToday, mounted }: DayPanelProps) {
+function DayPanel({ day, low, high, /*veryHigh,*/ domainMin, domainMax, unit, isToday, mounted }: DayPanelProps) {
   const hasData = day.points.length > 0;
 
   // Recharts needs a 'key' field — use minuteOfDay
@@ -166,10 +166,12 @@ function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToda
   // Color each data point based on glucose level
   const lineColor = hasData
     ? (() => {
-        const lastGlucose = day.points[day.points.length - 1]?.glucose ?? 0;
-        if (lastGlucose > veryHigh) return "var(--danger)";
-        if (lastGlucose > high) return "var(--warning)";
-        if (lastGlucose < low) return "var(--warning)";
+        const meanDailyGlucose = day.points.map((p) => p.glucose).reduce((a, b) => a + b, 0) / day.points.length;
+        /*if (meanDailyGlucose > veryHigh) return "var(--danger)";
+        if (meanDailyGlucose < low) return "var(--warning)";*/
+        if (meanDailyGlucose < low) return "var(--danger)";
+        if (meanDailyGlucose > high) return "var(--warning)";
+
         return "var(--primary)";
       })()
     : "var(--primary)";
@@ -208,13 +210,13 @@ function DayPanel({ day, low, high, veryHigh, domainMin, domainMax, unit, isToda
                 strokeWidth={1}
               />
               {/* Very high threshold */}
-              <ReferenceLine
+              {/*<ReferenceLine
                 y={veryHigh}
                 stroke="var(--danger)"
                 strokeDasharray="3 3"
                 strokeOpacity={0.7}
                 strokeWidth={1}
-              />
+              />*/}
               {/* Low threshold */}
               <ReferenceLine
                 y={low}
@@ -272,7 +274,7 @@ interface WeekRowProps {
   week: WeekGroup;
   low: number;
   high: number;
-  veryHigh: number;
+  /*veryHigh: number;*/
   domainMin: number;
   domainMax: number;
   unit: string;
@@ -280,7 +282,7 @@ interface WeekRowProps {
   mounted: boolean;
 }
 
-function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayStr, mounted }: WeekRowProps) {
+function WeekRow({ week, low, high, /*veryHigh,*/ domainMin, domainMax, unit, todayStr, mounted }: WeekRowProps) {
   const mondayLabel = fmtDayMonth(week.startDate);
   const sundayLabel = fmtDayMonth(week.endDate);
 
@@ -305,7 +307,7 @@ function WeekRow({ week, low, high, veryHigh, domainMin, domainMax, unit, todayS
               day={day}
               low={low}
               high={high}
-              veryHigh={veryHigh}
+              /*veryHigh={veryHigh}*/
               domainMin={domainMin}
               domainMax={domainMax}
               unit={unit}
@@ -329,7 +331,7 @@ export default function MultiWeeklyChart({
 
   const low      = convertGlucose(thresholds?.low      ?? LOW_THRESHOLD,       unit);
   const high     = convertGlucose(thresholds?.high     ?? HIGH_THRESHOLD,      unit);
-  const veryHigh = convertGlucose(thresholds?.veryHigh ?? VERY_HIGH_THRESHOLD, unit);
+  /*const veryHigh = convertGlucose(thresholds?.veryHigh ?? VERY_HIGH_THRESHOLD, unit);*/
   const domainMin = convertGlucose(CHART_DOMAIN_MIN, unit);
   const domainMax = convertGlucose(CHART_DOMAIN_MAX, unit);
 
@@ -369,11 +371,11 @@ export default function MultiWeeklyChart({
           </span>
           <span className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: "var(--warning)" }} />
-            High / Low
+            High (&gt;{high} {unit})
           </span>
           <span className={styles.legendItem}>
             <span className={styles.legendDot} style={{ background: "var(--danger)" }} />
-            Very High (&gt;{veryHigh} {unit})
+            Low (&lt;{low} {unit})
           </span>
         </div>
       </div>
@@ -398,7 +400,7 @@ export default function MultiWeeklyChart({
                 week={week}
                 low={low}
                 high={high}
-                veryHigh={veryHigh}
+                /*veryHigh={veryHigh}*/
                 domainMin={domainMin}
                 domainMax={domainMax}
                 unit={unit}
@@ -414,19 +416,19 @@ export default function MultiWeeklyChart({
            <div className={styles.verticalScaleLabel}>{domainMax}</div>
            <div className={styles.verticalScaleBar} />
            
-           {weeks.length > 2 && (
+           {/*weeks.length > 2 && (
              <>
                <div className={styles.verticalScaleLabel} style={{ color: "var(--danger)" }}>{veryHigh}</div>
                <div className={styles.verticalScaleBar} />
              </>
-           )}
+           )}*/}
 
            {weeks.length > 1 && (
              <>
                <div className={styles.verticalScaleTarget}>
                   <div style={{ color: "var(--warning)" }}>{high}</div>
                   <div className={styles.verticalScaleTargetText}>Target</div>
-                  <div style={{ color: "var(--warning)" }}>{low}</div>
+                  <div style={{ color: "var(--danger)" }}>{low}</div>
                </div>
                <div className={styles.verticalScaleBar} />
              </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -9,6 +9,9 @@ import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
 import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
+import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
+import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
+import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -47,6 +50,19 @@ export default function DoctorPatientDetail() {
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
+
+  // Shared daily-view state — GlucoseChart is the source of truth
+  const [dailyOffset, setDailyOffset] = useState(0);
+  const [glucoseLatestDay, setGlucoseLatestDay] = useState<Date | null>(null);
+
+  const handleGlucoseOffsetChange = useCallback((offset: number, latestDay: Date | null) => {
+    setDailyOffset(offset);
+    setGlucoseLatestDay(latestDay);
+  }, []);
+
+  const handleGlucoseLatestDayResolved = useCallback((day: Date) => {
+    setGlucoseLatestDay(day);
+  }, []);
 
   const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
   const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
@@ -107,7 +123,7 @@ export default function DoctorPatientDetail() {
     );
   }
 
-  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, handleAcknowledge } =
+  const { patient, tir, readings, multiWeekReadings, anomalies, latestReading, averageGlucose, hba1c, gmi, scatterplotData, handleAcknowledge } =
     ctrl;
 
   return (
@@ -179,6 +195,8 @@ export default function DoctorPatientDetail() {
         anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
+        hba1c={hba1c ?? undefined}
+        gmi={gmi ?? undefined}
       />
 
       {anomalies.length > 0 && (
@@ -186,7 +204,12 @@ export default function DoctorPatientDetail() {
       )}
 
       <div className={styles.chartsGrid}>
-        <GlucoseChart readings={readings} patientId={patient!.id} />
+        <GlucoseChart
+          readings={readings}
+          patientId={patient!.id}
+          onOffsetChange={handleGlucoseOffsetChange}
+          onLatestDayResolved={handleGlucoseLatestDayResolved}
+        />
         {tir && (
           <TIRChart
             tir={tir}
@@ -195,7 +218,27 @@ export default function DoctorPatientDetail() {
         )}
       </div>
 
+      <div className={styles.chartsGridHalf}>
+        <InsulinDailyChart
+          patientId={patient!.id}
+          syncOffset={dailyOffset}
+          syncLatestDay={glucoseLatestDay}
+        />
+        <CarboDailyChart
+          patientId={patient!.id}
+          syncOffset={dailyOffset}
+          syncLatestDay={glucoseLatestDay}
+        />
+      </div>
+
       <MultiWeeklyChart readings={multiWeekReadings} />
+
+      {scatterplotData && (
+        <GlucoseScatterplot
+          points={scatterplotData.points}
+          patientId={patient!.id}
+        />
+      )}
 
       {showRangesModal && (
         <RangesModal

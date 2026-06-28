@@ -58,6 +58,31 @@ public record GlucoseRanges(
     double? VeryHigh = null
 );
 
+public record HbA1cResponse(
+    int PatientId,
+    double Percent,      // e.g. 6.5 (%)
+    double MmolPerMol    // e.g. 48  (IFCC mmol/mol)
+);
+
+public record GmiResponse(
+    int PatientId,
+    double Gmi           // e.g. 6.8 (%)
+);
+
+/// <summary>Daily aggregated glucose stats — one entry per calendar day (UTC).</summary>
+public record DailyGlucosePoint(
+    string Date,    // "yyyy-MM-dd"
+    double Average, // mmol/L daily average
+    double Min,     // mmol/L daily minimum
+    double Max      // mmol/L daily maximum
+);
+
+public record ScatterplotResponse(
+    int PatientId,
+    IEnumerable<DailyGlucosePoint> Points,
+    int Count
+);
+
 // ── Anomalies ─────────────────────────────────────────────────────────────────
 
 public record AnomalyDetectionDto(

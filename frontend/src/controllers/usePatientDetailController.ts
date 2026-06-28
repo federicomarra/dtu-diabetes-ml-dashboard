@@ -15,7 +15,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection } from "@/models/types";
+import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi, ScatterplotData } from "@/models/types";
 import {
   getPatientByExternalId,
   getGlucoseReadings,
@@ -23,6 +23,9 @@ import {
   getAnomalies,
   acknowledgeAnomaly,
   getAverageReading,
+  getHbA1c,
+  getGmi,
+  getScatterplot,
 } from "@/models/api";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -39,6 +42,9 @@ type State =
       tir: TimeInRange | null;
       anomalies: AnomalyDetection[];
       averageGlucose: number | null;
+      hba1c: HbA1c | null;
+      gmi: Gmi | null;
+      scatterplotData: ScatterplotData | null;
     };
 
 export function usePatientDetailController(externalId: string) {
@@ -72,7 +78,7 @@ export function usePatientDetailController(externalId: string) {
         if (cancelled) return;
 
         // 2. Fetch all data for this patient in parallel
-        const [readingsResult, tirResult, anomaliesResult, averageResult] =
+        const [readingsResult, tirResult, anomaliesResult, averageResult, hba1cResult, gmiResult, scatterplotResult] =
           await Promise.allSettled([
             getGlucoseReadings(patient.id, timeRange),
             getTimeInRange(patient.id, {
@@ -84,6 +90,9 @@ export function usePatientDetailController(externalId: string) {
             }),
             getAnomalies(patient.id, { limit: 50 }),
             getAverageReading(patient.id, timeRange),
+            getHbA1c(patient.id, timeRange),
+            getGmi(patient.id, timeRange),
+            getScatterplot(patient.id, timeRange),
           ]);
 
         if (cancelled) return;
@@ -106,6 +115,9 @@ export function usePatientDetailController(externalId: string) {
               : [],
           averageGlucose:
             averageResult.status === "fulfilled" ? averageResult.value : null,
+          hba1c: hba1cResult.status === "fulfilled" ? hba1cResult.value : null,
+          gmi: gmiResult.status === "fulfilled" ? gmiResult.value : null,
+          scatterplotData: scatterplotResult.status === "fulfilled" ? scatterplotResult.value : null,
         });
       } catch (err) {
         if (!cancelled) {
@@ -156,6 +168,9 @@ export function usePatientDetailController(externalId: string) {
       tir: null,
       anomalies: [],
       averageGlucose: null,
+      hba1c: null,
+      gmi: null,
+      scatterplotData: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
@@ -163,7 +178,7 @@ export function usePatientDetailController(externalId: string) {
   }
 
   if (state.status === "not_found") {
-    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
+    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, hba1c: null, gmi: null, scatterplotData: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
   }
 
   if (state.status === "error") {
@@ -177,13 +192,16 @@ export function usePatientDetailController(externalId: string) {
       tir: null,
       anomalies: [],
       averageGlucose: null,
+      hba1c: null,
+      gmi: null,
+      scatterplotData: null,
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
     };
   }
 
-  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose } = state;
+  const { patient, readings, multiWeekReadings, tir, anomalies, averageGlucose, hba1c, gmi, scatterplotData } = state;
 
   return {
     notFound: false as const,
@@ -195,6 +213,9 @@ export function usePatientDetailController(externalId: string) {
     multiWeekReadings,
     anomalies,
     averageGlucose,
+    hba1c,
+    gmi,
+    scatterplotData,
     latestReading: readings.length > 0 ? readings[0] : undefined, // ordered descending by backend
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,

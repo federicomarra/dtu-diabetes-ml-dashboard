@@ -1,7 +1,7 @@
 "use client";
 
-import { Activity, Droplets, AlertTriangle } from "lucide-react";
-import type { GlucoseReading, TimeInRange } from "@/models/types";
+import { Activity, Droplets, AlertTriangle, FlaskConical } from "lucide-react";
+import type { GlucoseReading, TimeInRange, HbA1c, Gmi } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
 import { useGlucoseRanges, type GlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -16,6 +16,8 @@ interface PatientOverviewProps {
   anomalyCount?: number;
   averageGlucose?: number | null;
   timeRangeLast?: string;
+  hba1c?: HbA1c;
+  gmi?: Gmi;
 }
 
 function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
@@ -52,6 +54,12 @@ function getStatusLabel(status?: string): string {
   }
 }
 
+function getA1cAndGMIColor(value: number): string {
+  if (value < 7.0) return "var(--success)";
+  if (value < 8.0) return "var(--warning)";
+  return "var(--danger)";
+}
+
 export default function PatientOverview({
   patientName,
   patientId,
@@ -61,6 +69,8 @@ export default function PatientOverview({
   anomalyCount = 0,
   averageGlucose,
   timeRangeLast = "2w",
+  hba1c,
+  gmi,
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: glucoseRanges } = useGlucoseRanges();
@@ -145,6 +155,45 @@ export default function PatientOverview({
             </div>
           </div>
         </div>)}
+
+        {/* HbA1c */}
+        {hba1c != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <FlaskConical size={18} />
+            </div>
+            <div>
+              <div className={styles.metricLabel}>HbA1c ({timeRangeLast})</div>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(hba1c.percent) }}
+              >
+                {hba1c.percent.toFixed(1)}%
+              </div>
+              <div className={styles.metricStatus} style={{ color: "var(--text-secondary)" }}>
+                {Math.round(hba1c.mmol_per_mol)} mmol/mol
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GMI */}
+        {gmi != null && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <FlaskConical size={18} />
+            </div>
+            <div>
+              <div className={styles.metricLabel}>GMI ({timeRangeLast})</div>
+              <div 
+                className={styles.metricValue}
+                style={{ color: getA1cAndGMIColor(gmi.gmi) }}
+              >
+                {gmi.gmi.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Anomalies */}
         <div className={styles.metric}>
