@@ -130,6 +130,9 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--val_patients", type=int, default=800)
     p.add_argument("--parquet", type=Path, default=PARQUET)
+    p.add_argument("--tag", default="",
+                   help="extra checkpoint-name tag (e.g. knobon/knoboff) so models "
+                        "trained on different cohorts don't overwrite each other")
     p.add_argument("--smoke_test", action="store_true")
     args = p.parse_args()
     set_seed(args.seed)
@@ -156,7 +159,8 @@ def main():
              + (["nll"] if args.probabilistic else [])
              + (["aug"] if args.augment else [])
              + ([f"sim{args.n_train_patients}"] if args.n_train_patients else [])
-             + ([f"h{HORIZON}"] if HORIZON != 40 else []))
+             + ([f"h{HORIZON}"] if HORIZON != 40 else [])
+             + ([args.tag] if args.tag else []))
     tag = "_".join(parts)
     best_name  = f"xchannel_{tag}_best.pt"  if tag else "xchannel_best.pt"
     final_name = f"xchannel_{tag}_final.pt" if tag else "xchannel_final.pt"
