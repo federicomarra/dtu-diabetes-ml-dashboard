@@ -13,31 +13,10 @@ import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
-import { useTimeRange } from "@/controllers/TimeRangeContext";
+import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import styles from "./patient-detail.module.css";
-
-const parseLast = (lastStr?: string) => {
-  const defaultVal = { value: 2, unit: "w" as const };
-  if (!lastStr) return defaultVal;
-  const match = lastStr.match(/^(\d+)([dwm])$/);
-  if (!match) return defaultVal;
-  const value = parseInt(match[1], 10);
-  const unit = match[2] as "d" | "w" | "m";
-  
-  if (unit === "d" && (value < 1 || value > 7)) {
-    if (value === 14) return { value: 2, unit: "w" as const };
-    return { value: Math.min(Math.max(value, 1), 7), unit };
-  }
-  if (unit === "w" && (value < 1 || value > 4)) {
-    return { value: Math.min(Math.max(value, 1), 4), unit };
-  }
-  if (unit === "m" && (value < 1 || value > 6)) {
-    return { value: Math.min(Math.max(value, 1), 6), unit };
-  }
-  return { value, unit };
-};
 
 /**
  * Doctor — Patient Detail Page (/doctor/[patient_id]) — thin shell.
