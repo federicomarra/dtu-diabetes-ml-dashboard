@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { healthCheck, getPatients, getAnomalies } from "@/models/api";
 
 export default function Home() {
+  const router = useRouter();
   const [systemStatus, setSystemStatus] = useState({
     online: false,
     loading: true,
@@ -13,6 +15,16 @@ export default function Home() {
   });
 
   const [hoveredPortal, setHoveredPortal] = useState<"patient" | "doctor" | null>(null);
+
+  const handlePatientPortalClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const savedId = localStorage.getItem("logged_in_patient_id");
+    if (savedId) {
+      router.push(`/patient/${savedId}`);
+    } else {
+      router.push("/patient");
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -237,6 +249,7 @@ export default function Home() {
         {/* Patient Portal Card */}
         <Link
           href="/patient"
+          onClick={handlePatientPortalClick}
           onMouseEnter={() => setHoveredPortal("patient")}
           onMouseLeave={() => setHoveredPortal(null)}
           style={{ textDecoration: "none" }}
