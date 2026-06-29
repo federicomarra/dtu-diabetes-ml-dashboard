@@ -5,10 +5,10 @@
  * Returns the patient list and aggregate stats loaded from the backend.
  *
  * API calls (see models/api.ts):
- *   GET api/patient/list?page=&per_page=
- *   GET api/glucose/{id}/latest
- *   GET api/glucose/{id}/tir
- *   GET api/anomaly/{id}?acknowledged=false
+ *   GET api/patient/list?page=&perPage=
+ *   GET api/glucose?id={patientId}&last={last}
+ *   GET api/glucose/tir?id={patientId}&last={last}&{rangeParams}
+ *   GET api/anomaly?id={patientId}&acknowledged=false
  */
 "use client";
 

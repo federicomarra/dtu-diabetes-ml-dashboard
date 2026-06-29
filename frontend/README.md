@@ -1,6 +1,6 @@
 # DTU Diabetes ML Dashboard — Frontend
 
-A Next.js dashboard built with **TypeScript**, **React 19**, **Recharts** for visualizations, and **React Query** for caching and state synchronisation. It serves as both a clinician portal and a patient monitoring interface.
+A Next.js dashboard built with **TypeScript**, **React 19**, and **Recharts** for visualizations. It serves as both a clinician portal and a patient monitoring interface.
 
 ## Getting Started
 

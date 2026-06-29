@@ -7,9 +7,13 @@
  *
  * API calls (see models/api.ts):
  *   GET api/patient/by-external/{externalId} → resolve external_id → patient
- *   GET api/glucose/{id}                     → glucose readings
- *   GET api/glucose/{id}/tir                 → time-in-range stats
- *   GET api/anomaly/{id}                     → anomaly list
+ *   GET api/glucose?id={patientId}           → glucose readings
+ *   GET api/glucose/tir?id={patientId}       → time-in-range stats
+ *   GET api/glucose/average?id={patientId}   → average glucose
+ *   GET api/glucose/hba1c?id={patientId}     → estimated HbA1c
+ *   GET api/glucose/gmi?id={patientId}       → GMI
+ *   GET api/glucose/scatterplot?id={patientId} → daily scatterplot averages
+ *   GET api/anomaly/{patientId}              → anomaly list
  *   POST api/anomaly/{anomalyId}/acknowledge → acknowledge anomaly
  */
 "use client";

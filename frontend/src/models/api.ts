@@ -63,11 +63,24 @@ export async function getPatientByExternalId(externalId: string): Promise<Patien
 }
 
 export async function createPatient(
-  patient: Pick<Patient, "external_id" | "name">
+  patient: { external_id: string; name: string; date_of_birth?: string }
 ): Promise<Patient> {
   const { data } = await api.post("/patient/create", patient);
   return data;
 }
+
+export async function uploadCsv(
+  patientId: number,
+  file: File
+): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(`/patient/${patientId}/upload-csv`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 
 // ─── Glucose ─────────────────────────────────────────────
 

@@ -100,7 +100,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
     {
-        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m")) {
+        if (last is not null && !System.Text.RegularExpressions.Regex.IsMatch(last, @"^\d+(h|d|w|m)$")) {
             return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
         }
 

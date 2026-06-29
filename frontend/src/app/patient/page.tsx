@@ -1,238 +1,197 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
-import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
-import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
-import PatientOverview from "@/views/PatientOverview/PatientOverview";
-import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
-import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
-import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
-import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
-import { usePatientController } from "@/controllers/usePatientController";
-import { useTimeRange } from "@/controllers/TimeRangeContext";
-import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
-import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getPatientByExternalId, createPatient } from "@/models/api";
 import styles from "./patient.module.css";
 
-const parseLast = (lastStr?: string) => {
-  const defaultVal = { value: 2, unit: "w" as const };
-  if (!lastStr) return defaultVal;
-  const match = lastStr.match(/^(\d+)([dwm])$/);
-  if (!match) return defaultVal;
-  const value = parseInt(match[1], 10);
-  const unit = match[2] as "d" | "w" | "m";
-  
-  if (unit === "d" && (value < 1 || value > 7)) {
-    if (value === 14) return { value: 2, unit: "w" as const };
-    return { value: Math.min(Math.max(value, 1), 7), unit };
-  }
-  if (unit === "w" && (value < 1 || value > 4)) {
-    return { value: Math.min(Math.max(value, 1), 4), unit };
-  }
-  if (unit === "m" && (value < 1 || value > 6)) {
-    return { value: Math.min(Math.max(value, 1), 6), unit };
-  }
-  return { value, unit };
-};
+export default function PatientLoginPortal() {
+  const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
-/**
- * Patient Dashboard — thin shell.
- * All data and business logic lives in usePatientController.
- */
-export default function PatientDashboard() {
-  const {
-    loading,
-    error,
-    patient,
-    readings,
-    multiWeekReadings,
-    tir,
-    anomalies,
-    latestReading,
-    unacknowledgedCount,
-    handleAcknowledge,
-    averageGlucose,
-    hba1c,
-    gmi,
-    scatterplotData,
-  } = usePatientController();
+  // Login form state
+  const [loginId, setLoginId] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  const { timeRange, setLast } = useTimeRange();
-  const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
-  const { unit } = useGlucoseUnit();
-  const [showRangesModal, setShowRangesModal] = useState(false);
+  // Register form state
+  const [registerId, setRegisterId] = useState("");
+  const [registerName, setRegisterName] = useState("");
+  const [registerDob, setRegisterDob] = useState("");
+  const [registerError, setRegisterError] = useState("");
+  const [registerLoading, setRegisterLoading] = useState(false);
 
-  // Shared daily-view state — GlucoseChart is the source of truth
-  const [dailyOffset, setDailyOffset] = useState(0);
-  const [glucoseLatestDay, setGlucoseLatestDay] = useState<Date | null>(null);
-
-  const handleGlucoseOffsetChange = useCallback((offset: number, latestDay: Date | null) => {
-    setDailyOffset(offset);
-    setGlucoseLatestDay(latestDay);
-  }, []);
-
-  const handleGlucoseLatestDayResolved = useCallback((day: Date) => {
-    setGlucoseLatestDay(day);
-  }, []);
-
-  const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
-  const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
-  const valuesArray = Array.from({ length: maxVal }, (_, i) => i + 1);
-
-  const handleUnitChange = (newUnit: "d" | "w" | "m") => {
-    let newValue = activeVal;
-    if (newUnit === "d") {
-      newValue = Math.min(Math.max(activeVal, 1), 7);
-    } else if (newUnit === "w") {
-      newValue = Math.min(Math.max(activeVal, 1), 4);
-    } else if (newUnit === "m") {
-      newValue = Math.min(Math.max(activeVal, 1), 6);
+  // 1. Check if user is already logged in
+  useEffect(() => {
+    const savedId = localStorage.getItem("logged_in_patient_id");
+    if (savedId) {
+      router.replace(`/patient/${savedId}`);
+    } else {
+      setCheckingAuth(false);
     }
-    setLast(`${newValue}${newUnit}`);
+  }, [router]);
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginId.trim()) return;
+
+    setLoginError("");
+    setLoginLoading(true);
+
+    try {
+      const patient = await getPatientByExternalId(loginId.trim());
+      localStorage.setItem("logged_in_patient_id", patient.external_id);
+      localStorage.setItem("logged_in_patient_name", patient.name);
+
+      window.dispatchEvent(new Event("storage"));
+      router.push(`/patient/${patient.external_id}`);
+    } catch (err: unknown) {
+      console.error(err);
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      if (status === 404) {
+        setLoginError("Patient ID not found. Please double check the ID or register a new user.");
+      } else {
+        setLoginError(errorMsg || "An error occurred during log in.");
+      }
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
-  const handleValueChange = (newValue: number) => {
-    setLast(`${newValue}${activeUnit}`);
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registerId.trim() || !registerName.trim()) return;
+
+    setRegisterError("");
+    setRegisterLoading(true);
+
+    try {
+      const newPatient = await createPatient({
+        external_id: registerId.trim(),
+        name: registerName.trim(),
+        date_of_birth: registerDob || undefined,
+      });
+
+      localStorage.setItem("logged_in_patient_id", newPatient.external_id);
+      localStorage.setItem("logged_in_patient_name", newPatient.name);
+
+      window.dispatchEvent(new Event("storage"));
+      router.push(`/patient/${newPatient.external_id}`);
+    } catch (err: unknown) {
+      console.error(err);
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setRegisterError(errorMsg || "This Patient ID may already exist. Please try a different ID.");
+    } finally {
+      setRegisterLoading(false);
+    }
   };
 
-  if (loading) {
+  if (checkingAuth) {
     return (
-      <div className={styles.dashboard}>
-        <p style={{ color: "var(--text-secondary)", marginTop: "2rem" }}>
-          Loading dashboard data…
-        </p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles.dashboard}>
-        <p style={{ color: "var(--color-high)", marginTop: "2rem" }}>
-          Error: {error}
-        </p>
+      <div className={styles.loadingSpinner}>
+        <p style={{ color: "var(--text-secondary)" }}>Checking authentication...</p>
       </div>
     );
   }
 
   return (
-    <div className={styles.dashboard}>
-      <div className={styles.titleRow}>
-        <h2 className={styles.pageTitle}>Patient Dashboard</h2>
-        <div className={styles.controls}>
-          <div className={styles.timeRangeSelector}>
-            <span className={styles.selectorLabel}>Last</span>
-            <select
-              className={styles.selectInput}
-              value={activeVal}
-              onChange={(e) => handleValueChange(Number(e.target.value))}
-            >
-              {valuesArray.map((val) => (
-                <option key={val} value={val}>
-                  {val}
-                </option>
-              ))}
-            </select>
-            <select
-              className={styles.selectInput}
-              value={activeUnit}
-              onChange={(e) => handleUnitChange(e.target.value as "d" | "w" | "m")}
-            >
-              <option value="d">Days</option>
-              <option value="w">Weeks</option>
-              <option value="m">Months</option>
-            </select>
-          </div>
-
+    <div className={styles.loginContainer}>
+      <div className={styles.loginCard}>
+        <div className={styles.tabs}>
           <button
-            id="page-customize-ranges-btn"
-            className={`${styles.rangesBtn} ${
-              showRangesModal ? styles.rangesBtnActive : ""
-            }`}
-            onClick={() => setShowRangesModal(true)}
-            title="Customize glucose ranges"
+            onClick={() => {
+              setActiveTab("login");
+              setLoginError("");
+              setRegisterError("");
+            }}
+            className={`${styles.tabBtn} ${activeTab === "login" ? styles.tabBtnActive : ""}`}
           >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
-              />
-            </svg>
-            Custom Ranges
+            Log In
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("register");
+              setLoginError("");
+              setRegisterError("");
+            }}
+            className={`${styles.tabBtn} ${activeTab === "register" ? styles.tabBtnActive : ""}`}
+          >
+            Create User
           </button>
         </div>
-      </div>
 
-      <PatientOverview
-        patientName={patient!.name}
-        patientId={patient!.external_id}
-        patientAge={patient!.age}
-        latestReading={latestReading}
-        tir={tir ?? undefined}
-        anomalyCount={unacknowledgedCount}
-        averageGlucose={averageGlucose}
-        timeRangeLast={timeRange.last}
-        hba1c={hba1c ?? undefined}
-        gmi={gmi ?? undefined}
-      />
-
-      {anomalies.length > 0 && (
-        <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />
-      )}
-
-      <div className={styles.chartsGrid}>
-        <GlucoseChart
-          readings={readings}
-          patientId={patient!.id}
-          onOffsetChange={handleGlucoseOffsetChange}
-          onLatestDayResolved={handleGlucoseLatestDayResolved}
-        />
-        {tir && (
-          <TIRChart
-            tir={tir}
-            patientId={patient!.id}
-          />
+        {activeTab === "login" ? (
+          <form onSubmit={handleLoginSubmit}>
+            <div className={styles.formGroup}>
+              <label htmlFor="login-id" className={styles.formLabel}>
+                Patient External ID
+              </label>
+              <input
+                type="text"
+                id="login-id"
+                placeholder="e.g. SIM_000001"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                className={styles.formInput}
+                required
+              />
+              {loginError && <span className={styles.errorText}>{loginError}</span>}
+            </div>
+            <button type="submit" disabled={loginLoading} className={styles.submitBtn}>
+              {loginLoading ? "Logging in..." : "Enter Patient Portal"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleRegisterSubmit}>
+            <div className={styles.formGroup}>
+              <label htmlFor="register-id" className={styles.formLabel}>
+                Desired Patient ID (External ID)
+              </label>
+              <input
+                type="text"
+                id="register-id"
+                placeholder="e.g. john72"
+                value={registerId}
+                onChange={(e) => setRegisterId(e.target.value)}
+                className={styles.formInput}
+                required
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label htmlFor="register-name" className={styles.formLabel}>
+                Full Name
+              </label>
+              <input
+                type="text"
+                id="register-name"
+                placeholder="e.g. John Doe"
+                value={registerName}
+                onChange={(e) => setRegisterName(e.target.value)}
+                className={styles.formInput}
+                required
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label htmlFor="register-dob" className={styles.formLabel}>
+                Date of Birth
+              </label>
+              <input
+                type="date"
+                id="register-dob"
+                value={registerDob}
+                onChange={(e) => setRegisterDob(e.target.value)}
+                className={styles.formInput}
+              />
+              {registerError && <span className={styles.errorText}>{registerError}</span>}
+            </div>
+            <button type="submit" disabled={registerLoading} className={styles.submitBtn}>
+              {registerLoading ? "Creating..." : "Create & Enter Portal"}
+            </button>
+          </form>
         )}
       </div>
-
-      <div className={styles.chartsGridHalf}>
-        <InsulinDailyChart
-          patientId={patient!.id}
-          syncOffset={dailyOffset}
-          syncLatestDay={glucoseLatestDay}
-        />
-        <CarboDailyChart
-          patientId={patient!.id}
-          syncOffset={dailyOffset}
-          syncLatestDay={glucoseLatestDay}
-        />
-      </div>
-
-      <MultiWeeklyChart readings={multiWeekReadings} />
-
-      {scatterplotData && (
-        <GlucoseScatterplot
-          points={scatterplotData.points}
-          patientId={patient!.id}
-        />
-      )}
-
-      {showRangesModal && (
-        <RangesModal
-          unit={unit}
-          thresholds={glucoseRanges}
-          onApply={onThresholdsChange}
-          onClose={() => setShowRangesModal(false)}
-        />
-      )}
     </div>
   );
 }

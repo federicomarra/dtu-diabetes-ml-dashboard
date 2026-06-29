@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
 using DiabetesApi.Models;
 using DiabetesApi.Services;
+using Microsoft.AspNetCore.Http;
+using System.Globalization;
 
 namespace DiabetesApi.Routes;
 
@@ -80,6 +82,232 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
         await db.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetPatient), new { patientId = patient.Id }, ToDto(patient));
+    }
+
+    /// <summary>Upload glucose, insulin, and carb data from LibreView CSV.</summary>
+    [HttpPost("{patientId:int}/upload-csv")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UploadCsv(int patientId, IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "No file uploaded or file is empty" });
+
+        var patient = await db.Patients.FindAsync(patientId);
+        if (patient is null) return NotFound(new { error = "Patient not found" });
+
+        try
+        {
+            using var reader = new StreamReader(file.OpenReadStream());
+            string? headerLine = null;
+            string? line;
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (line.StartsWith("Glucose Data")) continue; // Skip metadata header line
+                headerLine = line;
+                break;
+            }
+
+            if (headerLine == null)
+                return BadRequest(new { error = "CSV is empty or missing header" });
+
+            char delimiter = ',';
+            if (headerLine.Contains(';') && !headerLine.Contains(','))
+            {
+                delimiter = ';';
+            }
+
+            var headers = ParseCsvLine(headerLine, delimiter);
+            int timestampIdx = headers.IndexOf("Device Timestamp");
+            int recordTypeIdx = headers.IndexOf("Record Type");
+            int historicGlucoseIdx = headers.IndexOf("Historic Glucose mmol/L");
+            int scanGlucoseIdx = headers.IndexOf("Scan Glucose mmol/L");
+            int rapidInsulinIdx = headers.IndexOf("Rapid-Acting Insulin (units)");
+            int longInsulinIdx = headers.IndexOf("Long-Acting Insulin Value (units)");
+            int carbsIdx = headers.IndexOf("Carbohydrates (grams)");
+
+            if (timestampIdx == -1 || recordTypeIdx == -1)
+            {
+                return BadRequest(new { error = "Required columns 'Device Timestamp' or 'Record Type' not found in CSV headers." });
+            }
+
+            // Fetch existing data to avoid duplicates (N+1 queries prevention)
+            var existingGlucoseTimestamps = await db.Glucoses
+                .Where(g => g.PatientId == patientId)
+                .Select(g => g.Timestamp)
+                .ToHashSetAsync();
+
+            var existingMealTimestamps = await db.Meals
+                .Where(m => m.PatientId == patientId)
+                .Select(m => m.Timestamp)
+                .ToHashSetAsync();
+
+            var existingInsulinTimestamps = await db.Insulins
+                .Where(i => i.PatientId == patientId)
+                .Select(i => i.Timestamp)
+                .ToHashSetAsync();
+
+            var glucosesToInsert = new List<Glucose>();
+            var mealsToInsert = new List<Models.Meal>();
+            var insulinsToInsert = new List<Models.Insulin>();
+
+            string[] formats = {
+                "dd-MM-yyyy HH:mm",
+                "dd-MM-yyyy HH:mm:ss",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd HH:mm",
+                "yyyy-MM-ddTHH:mm:ss",
+                "dd/MM/yyyy HH:mm",
+                "dd/MM/yyyy HH:mm:ss"
+            };
+
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var row = ParseCsvLine(line, delimiter);
+                if (row.Count <= timestampIdx || row.Count <= recordTypeIdx) continue;
+
+                string timestampStr = row[timestampIdx];
+                if (string.IsNullOrWhiteSpace(timestampStr)) continue;
+
+                if (!DateTime.TryParseExact(timestampStr, formats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedTime))
+                {
+                    if (!DateTime.TryParse(timestampStr, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsedTime))
+                    {
+                        continue; // skip unparseable timestamps
+                    }
+                }
+
+                DateTime timestampUtc = DateTime.SpecifyKind(parsedTime, DateTimeKind.Utc);
+
+                if (!int.TryParse(row[recordTypeIdx], out int recordType)) continue;
+
+                // 1. Parse Glucose
+                double glucoseVal = 0;
+                bool hasGlucose = false;
+                if (recordType == 0 && historicGlucoseIdx != -1 && historicGlucoseIdx < row.Count && double.TryParse(row[historicGlucoseIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out glucoseVal))
+                {
+                    hasGlucose = true;
+                }
+                else if (recordType == 1 && scanGlucoseIdx != -1 && scanGlucoseIdx < row.Count && double.TryParse(row[scanGlucoseIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out glucoseVal))
+                {
+                    hasGlucose = true;
+                }
+
+                if (hasGlucose && !existingGlucoseTimestamps.Contains(timestampUtc))
+                {
+                    string status = "in_range";
+                    if (glucoseVal < 3.0) status = "very_low";
+                    else if (glucoseVal < 3.9) status = "low";
+                    else if (glucoseVal > 13.9) status = "very_high";
+                    else if (glucoseVal > 10.0) status = "high";
+
+                    glucosesToInsert.Add(new Glucose
+                    {
+                        PatientId = patientId,
+                        Timestamp = timestampUtc,
+                        GlucoseMmoll = glucoseVal,
+                        Source = "libre",
+                        Status = status
+                    });
+                    existingGlucoseTimestamps.Add(timestampUtc);
+                }
+
+                // 2. Parse Carbs
+                if (recordType == 5 && carbsIdx != -1 && carbsIdx < row.Count && double.TryParse(row[carbsIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double carbsVal))
+                {
+                    if (!existingMealTimestamps.Contains(timestampUtc))
+                    {
+                        mealsToInsert.Add(new Models.Meal
+                        {
+                            PatientId = patientId,
+                            Timestamp = timestampUtc,
+                            Carbs = carbsVal,
+                            MealType = null
+                        });
+                        existingMealTimestamps.Add(timestampUtc);
+                    }
+                }
+
+                // 3. Parse Insulin (Rapid-acting/bolus)
+                if (rapidInsulinIdx != -1 && rapidInsulinIdx < row.Count && double.TryParse(row[rapidInsulinIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double rapidInsulinVal))
+                {
+                    if (!existingInsulinTimestamps.Contains(timestampUtc))
+                    {
+                        insulinsToInsert.Add(new Models.Insulin
+                        {
+                            PatientId = patientId,
+                            Timestamp = timestampUtc,
+                            Units = rapidInsulinVal,
+                            EventType = "bolus"
+                        });
+                        existingInsulinTimestamps.Add(timestampUtc);
+                    }
+                }
+
+                // 4. Parse Insulin (Long-acting/basal)
+                if (longInsulinIdx != -1 && longInsulinIdx < row.Count && double.TryParse(row[longInsulinIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double longInsulinVal))
+                {
+                    if (!existingInsulinTimestamps.Contains(timestampUtc))
+                    {
+                        insulinsToInsert.Add(new Models.Insulin
+                        {
+                            PatientId = patientId,
+                            Timestamp = timestampUtc,
+                            Units = longInsulinVal,
+                            EventType = "basal"
+                        });
+                        existingInsulinTimestamps.Add(timestampUtc);
+                    }
+                }
+            }
+
+            if (glucosesToInsert.Count > 0) db.Glucoses.AddRange(glucosesToInsert);
+            if (mealsToInsert.Count > 0) db.Meals.AddRange(mealsToInsert);
+            if (insulinsToInsert.Count > 0) db.Insulins.AddRange(insulinsToInsert);
+
+            await db.SaveChangesAsync();
+
+            return Ok(new {
+                message = "CSV imported successfully",
+                glucose_count = glucosesToInsert.Count,
+                meal_count = mealsToInsert.Count,
+                insulin_count = insulinsToInsert.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = $"Failed to parse CSV: {ex.Message}" });
+        }
+    }
+
+    private static List<string> ParseCsvLine(string line, char delimiter)
+    {
+        var result = new List<string>();
+        var currentToken = new System.Text.StringBuilder();
+        bool inQuotes = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (c == delimiter && !inQuotes)
+            {
+                result.Add(currentToken.ToString().Trim());
+                currentToken.Clear();
+            }
+            else
+            {
+                currentToken.Append(c);
+            }
+        }
+        result.Add(currentToken.ToString().Trim());
+        return result;
     }
 
     private PatientDto ToDto(Models.Patient p) => new(
