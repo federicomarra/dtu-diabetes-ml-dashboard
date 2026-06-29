@@ -9,14 +9,16 @@
 ```
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │     Frontend     │     │     Backend      │     │     Database     │
-│   TypeScript     │     │       C#         │     │       SQL        │
+│    TypeScript    │     │        C#        │     │       SQL        │
 │    (Next.js)     │────▶│    (.NET 10)     │────▶│   (PostgreSQL)   │
 │  localhost:3000  │     │  localhost:8000  │     │  localhost:5432  │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
                                   │
+                                  │
+                                  ▼
                          ┌──────────────────┐
                          │        ML        │
-                         │     (Python)     │
+                         │      Python      │
                          │    (PyTorch)     │
                          │  local / DTU HPC │
                          └──────────────────┘
