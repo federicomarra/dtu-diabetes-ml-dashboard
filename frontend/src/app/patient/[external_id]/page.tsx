@@ -103,11 +103,12 @@ export default function PatientDashboard() {
       setTimeout(() => {
         router.refresh();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const errMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to upload CSV file";
       setUploadResult({
         success: false,
-        message: err.response?.data?.error || "Failed to upload CSV file",
+        message: errMsg,
       });
     } finally {
       setUploading(false);
@@ -129,7 +130,7 @@ export default function PatientDashboard() {
       <div className={styles.dashboard} style={{ textAlign: "center", padding: "4rem 2rem" }}>
         <h2 style={{ color: "var(--color-high)", marginBottom: "1rem" }}>Patient Not Found</h2>
         <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
-          We couldn't find a patient with ID: <code>{external_id}</code>.
+          We couldn&apos;t find a patient with ID: <code>{external_id}</code>.
         </p>
         <button
           onClick={() => router.push("/patient")}

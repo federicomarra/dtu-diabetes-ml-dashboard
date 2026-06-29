@@ -46,12 +46,14 @@ export default function PatientLoginPortal() {
 
       window.dispatchEvent(new Event("storage"));
       router.push(`/patient/${patient.external_id}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      if (err.response?.status === 404) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      if (status === 404) {
         setLoginError("Patient ID not found. Please double check the ID or register a new user.");
       } else {
-        setLoginError(err.response?.data?.error || "An error occurred during log in.");
+        setLoginError(errorMsg || "An error occurred during log in.");
       }
     } finally {
       setLoginLoading(false);
@@ -77,9 +79,10 @@ export default function PatientLoginPortal() {
 
       window.dispatchEvent(new Event("storage"));
       router.push(`/patient/${newPatient.external_id}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setRegisterError(err.response?.data?.error || "This Patient ID may already exist. Please try a different ID.");
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setRegisterError(errorMsg || "This Patient ID may already exist. Please try a different ID.");
     } finally {
       setRegisterLoading(false);
     }

@@ -22,9 +22,12 @@ export default function NavBar() {
   };
 
   useEffect(() => {
-    syncLoginState();
+    const timer = setTimeout(() => {
+      syncLoginState();
+    }, 0);
     window.addEventListener("storage", syncLoginState);
     return () => {
+      clearTimeout(timer);
       window.removeEventListener("storage", syncLoginState);
     };
   }, []);
