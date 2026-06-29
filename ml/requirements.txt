@@ -22,3 +22,6 @@ python-calamine==0.6.2   # fast engine for pandas read_excel (handles both)
 
 # ── testing ─────────────────────────────────────────────────────────────────
 pytest
+
+# ── inference microservice ─────────────────────────────────────────────────
+flask==3.0.3
