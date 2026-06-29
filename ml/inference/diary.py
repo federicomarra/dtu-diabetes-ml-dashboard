@@ -102,13 +102,15 @@ def _group_events(flagged_starts, stride):
 def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=float("inf"),
                 features="raw", meals=None, boluses=None, device=None, stride=5,
                 n_cal_days=5, threshold_k=2.0, min_event_min=30, min_confidence=0.30,
-                mc_passes=30, rule_cfg=RuleConfig()) -> list[Event]:
+                mc_passes=30, rule_cfg=RuleConfig(), return_scores=False):
+    """Returns list[Event]; if return_scores=True, returns (events, all_window_scores)
+    so callers can map an event's anomaly_score to a per-patient percentile (strength)."""
     device = device or torch.device("cpu")
     feat_arr = to_iob_cob(arr) if features == "iob_cob" else arr
 
     starts, scores, embs = _score_windows(feat_arr, valid, detector, device, stride)
     if not starts:
-        return []
+        return ([], np.asarray([], dtype=float)) if return_scores else []
 
     # per-patient robust threshold on the first n_cal_days of (baseline) scores.
     # threshold_k curbs over-detection (higher k → fewer flags).
@@ -151,7 +153,7 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
             mc_uncertainty=float(unc[0]), ood_distance=dist, ood_flag=ood_flag,
             characterised=characterised, rule_label=rule_label,
         ))
-    return events
+    return (events, np.asarray(scores, dtype=float)) if return_scores else events
 
 
 # ── CLI demo on an Ohio patient (needs trained detector + head checkpoints) ─────

@@ -20,7 +20,12 @@ Request  (POST /infer):
 Response:
   {"patient_id": 12, "n_windows": ..., "anomalies": [
      {"start": "<iso>", "end": "<iso>", "start_minute": int, "duration_min": int,
-      "anomaly_type": "missed_bolus"|"late_bolus", "confidence": 0.0-1.0, "score": float}]}
+      "anomaly_type": "missed_bolus"|"late_bolus",
+      "anomaly_strength": 0.0-100.0,   # score percentile vs THIS patient's windows — the honest UI knob
+      "confidence": 0.0-1.0,           # head's type-lean, uncalibrated, NOT a probability
+      "score": float}]}                # raw surprise (forecast residual)
+The frontend thresholds on `anomaly_strength` ("show anomalies above X%"); it is
+self-calibrating per patient, so no absolute score knowledge is needed.
 """
 
 from __future__ import annotations
@@ -89,13 +94,20 @@ def infer():
 
     meals, boluses = derive_events(arr)
     z = zscore_channels(arr)
-    events = build_diary(
+    events, all_scores = build_diary(
         z, valid,
         detector=_MODEL["detector"], head=_MODEL["head"],
         ood_mu=_MODEL["ood_mu"], ood_inv_cov=_MODEL["ood_inv_cov"], ood_radius=_MODEL["ood_radius"],
         meals=meals, boluses=boluses, device=_MODEL["device"],
-        threshold_k=threshold_k, min_event_min=min_event_min,
+        threshold_k=threshold_k, min_event_min=min_event_min, return_scores=True,
     )
+
+    def strength(score: float) -> float:
+        # honest per-patient 0-100%: how anomalous vs ALL of this patient's windows.
+        # Self-calibrating, score-derived — no absolute threshold knowledge needed.
+        if all_scores.size == 0:
+            return 0.0
+        return round(100.0 * float((all_scores < score).mean()), 1)
 
     out = []
     for e in events:
@@ -111,10 +123,11 @@ def infer():
             "start_minute": int(e.start_min),
             "duration_min": int(e.duration_min),
             "anomaly_type": atype,
-            "confidence": round(conf, 3),       # head class prob — a surprise score, not calibrated
-            "score": round(float(e.anomaly_score), 4),
+            "anomaly_strength": strength(e.anomaly_score),  # per-patient score percentile 0-100% (UI knob)
+            "confidence": round(conf, 3),       # head class prob — type lean, uncalibrated, NOT a probability
+            "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
         })
-    out.sort(key=lambda a: a["score"], reverse=True)
+    out.sort(key=lambda a: a["anomaly_strength"], reverse=True)
     return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
                    anomalies=out[:max_events]), 200
 
