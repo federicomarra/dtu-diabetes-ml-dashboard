@@ -92,13 +92,56 @@ public record AnomalyDetectionDto(
     string AnomalyType,
     float Confidence,
     string? Description,
-    bool IsAcknowledged
+    bool IsAcknowledged,
+    float? Severity = null,        // σ above patient baseline; the frontend slider filters on this
+    string? DetectedAt = null      // ISO; anomaly window start
 );
 
 public record AnomaliesResponse(
     int PatientId,
     IEnumerable<AnomalyDetectionDto> Anomalies,
     int Count
+);
+
+// ── ML inference service (POST $ML_URL/infer) ──────────────────────────────────
+// Serialized/deserialized with snake_case (set in MlInferenceService), matching
+// ml/docs/ML_INFERENCE_CONTRACT.md. Detector-only: we assemble the 3 channels from
+// glucoses+insulins+meals and send only `histories[]`; meals[]/boluses[] (the
+// missed/late rule stream) are omitted, so anomalies are detector-surfaced.
+
+// One per-timestamp row of the 3 model channels, assembled from glucoses+insulins+meals.
+// NOT the `histories` DB table (that's the training-input table) — only the JSON key is
+// "histories", which is what the ML /infer contract expects.
+public record MlChannelRow(
+    string Timestamp,
+    float? GlucoseMmoll,           // null where only an insulin/meal event exists at this minute
+    float? InsulinU,
+    float? ChoGrams                // ANNOUNCED carbs (from the meals table = logged-at-bolus)
+);
+
+public record MlInferRequest(
+    int PatientId,
+    float ThresholdK,              // low (e.g. 2.0) so ML returns everything; frontend filters later
+    IEnumerable<MlChannelRow> Histories     // JSON key "histories" (ML contract); rows built from event tables
+);
+
+public record MlAnomaly(
+    string Start,
+    string End,
+    int StartMinute,
+    int DurationMin,
+    string AnomalyType,            // "missed_bolus" | "late_bolus" (CHECK-safe)
+    string Description,
+    bool RuleConfirmed,
+    float Severity,                // σ above this patient's baseline
+    float AnomalyStrength,         // 0–100 magnitude bar (NOT a probability)
+    float Score
+);
+
+public record MlInferResponse(
+    int PatientId,
+    int NWindows,
+    IEnumerable<MlAnomaly> Anomalies
 );
 
 // ── Histories ─────────────────────────────────────────────────────────────────

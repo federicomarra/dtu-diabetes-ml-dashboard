@@ -31,7 +31,6 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/diabetes_db
       CORS_ORIGINS: "*"
-      # The backend calls the ML microservice by its compose service name (NOT localhost).
       ML_URL: http://ml:5000
     depends_on:
       postgres:
