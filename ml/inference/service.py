@@ -155,8 +155,7 @@ def infer():
 # Load the model at import time so gunicorn/flask workers are ready before the first request.
 try:
     _MODEL = _load_model()
-    print(f"[ml-service] model ready: {DETECTOR_CKPT.name} + {HEAD_CKPT.name} on {_MODEL['device']}",
-          flush=True)
+    print(f"[ml-service] model ready: {DETECTOR_CKPT.name} on {_MODEL['device']}", flush=True)
 except Exception as exc:  # keep the service up so /health reports 'loading' instead of crashing
     print(f"[ml-service] WARNING model load failed: {exc}", flush=True)
 
