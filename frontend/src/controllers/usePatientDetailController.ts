@@ -55,6 +55,11 @@ export function usePatientDetailController(externalId: string) {
   const [state, setState] = useState<State>({ status: "loading" });
   const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges } = useGlucoseRanges();
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => {
+    setRefreshKey((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,7 +141,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [externalId, timeRange, glucoseRanges]);
+  }, [externalId, timeRange, glucoseRanges, refreshKey]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {
@@ -178,11 +183,12 @@ export function usePatientDetailController(externalId: string) {
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
+      refresh,
     };
   }
 
   if (state.status === "not_found") {
-    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, hba1c: null, gmi: null, scatterplotData: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge };
+    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, hba1c: null, gmi: null, scatterplotData: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge, refresh };
   }
 
   if (state.status === "error") {
@@ -202,6 +208,7 @@ export function usePatientDetailController(externalId: string) {
       latestReading: undefined,
       unacknowledgedCount: 0,
       handleAcknowledge,
+      refresh,
     };
   }
 
@@ -223,5 +230,6 @@ export function usePatientDetailController(externalId: string) {
     latestReading: readings.length > 0 ? readings[0] : undefined, // ordered descending by backend
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,
+    refresh,
   };
 }
