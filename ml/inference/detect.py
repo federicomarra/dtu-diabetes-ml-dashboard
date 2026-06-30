@@ -37,6 +37,7 @@ class Detection:
     start_min: int
     duration_min: int
     anomaly_score: float
+    severity: float          # σ above the patient's baseline median (same units as threshold_k)
     rule_label: str | None   # 'missed' / 'late' (deterministic) or None
 
 
@@ -86,6 +87,13 @@ def detect(arr, valid, *, detector, device=None, stride=5, n_cal_days=5,
     thr = calibrate_threshold(scores, n_cal, k=threshold_k)         # median + k·IQR on baseline days
     flagged = [s for s, sc in zip(starts, scores) if sc > thr]
 
+    # robust baseline stats (same window/spread the threshold uses) → per-event severity
+    # in σ above the patient's median: interpretable AND magnitude-discriminating (unlike a
+    # percentile, which saturates near 100% for every flagged tail event).
+    base = scores[:n_cal]
+    med = float(np.median(base))
+    sigma = max(float(np.subtract(*np.percentile(base, [75, 25])) / 1.349), 1e-9)
+
     rule_minutes = classify_meals(meals, boluses or [], rule_cfg) if meals is not None else {}
     pos = {s: i for i, s in enumerate(starts)}
 
@@ -100,5 +108,6 @@ def detect(arr, valid, *, detector, device=None, stride=5, n_cal_days=5,
             if cls in ("missed", "late") and any(start_min - WIN <= m <= end_min for m in mins):
                 label = cls; break
         peak = float(max(scores[pos[s]] for s in grp))
-        events.append(Detection(start_min, end_min - start_min, peak, label))
+        severity = (peak - med) / sigma
+        events.append(Detection(start_min, end_min - start_min, peak, severity, label))
     return events, np.asarray(scores, dtype=float)

@@ -32,10 +32,12 @@ Response:
       "anomaly_type": "missed_bolus"|"late_bolus",   # DB-allowed type (rule-named or default)
       "description": str,              # honest qualifier (rule-confirmed vs model-detected/unconfirmed)
       "rule_confirmed": bool,          # True = a logged meal/bolus pattern named it; False = detector-only
-      "anomaly_strength": 0.0-100.0,   # score percentile vs THIS patient's windows — the honest UI knob
+      "severity": float,               # σ above THIS patient's baseline median (interpretable, stable across queries)
+      "anomaly_strength": 0.0-100.0,   # severity relative to the strongest flag — magnitude bar (UI knob)
       "score": float}]}                # raw surprise (forecast residual)
-The frontend thresholds on `anomaly_strength` ("show anomalies above X%"); it is
-self-calibrating per patient, so no absolute score knowledge is needed.
+The frontend thresholds on `severity` (σ, e.g. "show > 3σ") or `anomaly_strength`
+(0-100 bar). Both self-calibrate per patient — no absolute score knowledge needed.
+Severity is the honest cross-query number; strength is a within-query display bar.
 """
 
 from __future__ import annotations
@@ -111,12 +113,13 @@ def infer():
         meals=meals, boluses=boluses, threshold_k=threshold_k, min_event_min=min_event_min,
     )
 
-    def strength(score: float) -> float:
-        # honest per-patient 0-100%: how anomalous vs ALL of this patient's windows.
-        # Self-calibrating, score-derived — no absolute threshold knowledge needed.
-        if all_scores.size == 0:
-            return 0.0
-        return round(100.0 * float((all_scores < score).mean()), 1)
+    # 0-100 strength bar = each event's severity (σ above baseline) relative to the
+    # STRONGEST surfaced anomaly → magnitude-discriminating (the true outlier reads 100%,
+    # marginal flags read low), unlike a percentile that saturates at ~100% for all of them.
+    sev_max = max((e.severity for e in events), default=1.0) or 1.0
+
+    def strength(sev: float) -> float:
+        return round(100.0 * sev / sev_max, 1)
 
     # DETECTOR-SURFACED: every detected excursion is an anomaly (the model's contribution).
     # The rule only NAMES it when a logged meal/bolus pattern coincides; otherwise it's an
@@ -140,10 +143,11 @@ def infer():
             "anomaly_type": atype,
             "description": desc,
             "rule_confirmed": e.rule_label is not None,
-            "anomaly_strength": strength(e.anomaly_score),  # per-patient score percentile 0-100% (UI knob)
+            "severity": round(float(e.severity), 2),        # σ above this patient's baseline (interpretable, stable)
+            "anomaly_strength": strength(e.severity),        # 0-100 bar relative to the strongest flag (UI knob)
             "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
         })
-    out.sort(key=lambda a: a["anomaly_strength"], reverse=True)
+    out.sort(key=lambda a: a["severity"], reverse=True)
     return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
                    anomalies=out[:max_events]), 200
 
