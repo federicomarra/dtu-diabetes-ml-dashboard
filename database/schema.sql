@@ -89,9 +89,10 @@ CREATE TABLE IF NOT EXISTS anomalies (
     anomaly_type        VARCHAR(30) NOT NULL                  
                             CHECK (anomaly_type IN ('missed_bolus', 'late_bolus')),
     confidence          REAL NOT NULL,
+    severity            REAL,                                 -- σ above patient baseline; read-time threshold filters on this
     description         TEXT,
-    is_acknowledged     BOOLEAN DEFAULT FALSE
-    --detected_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    is_acknowledged     BOOLEAN DEFAULT FALSE,
+    detected_at         TIMESTAMP                             -- anomaly window start (the table has no other time column)
 );
 
 CREATE INDEX idx_anomaly_patient ON anomalies(patient_id);

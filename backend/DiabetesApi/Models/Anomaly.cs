@@ -24,6 +24,12 @@ public class Anomaly
     [Column("confidence")]
     public double Confidence { get; set; }
 
+    [Column("severity")]
+    public double? Severity { get; set; }
+
+    [Column("detected_at")]
+    public DateTime? DetectedAt { get; set; }
+
     [Column("description")]
     public string? Description { get; set; }
 
