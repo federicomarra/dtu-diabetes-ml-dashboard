@@ -86,7 +86,7 @@ export function useDoctorController() {
                 High: glucoseRanges.high,
                 VeryHigh: glucoseRanges.veryHigh,
               }),
-              getAnomalies(patient.id, { acknowledged: false }),
+              getAnomalies(patient.id, timeRange),
               getAverageReading(patient.id, timeRange),
             ]);
 
@@ -99,7 +99,7 @@ export function useDoctorController() {
               tir: tir.status === "fulfilled" ? tir.value : null,
               anomalyCount:
                 anomaliesResp.status === "fulfilled"
-                  ? anomaliesResp.value.count
+                  ? anomaliesResp.value.anomalies.filter((a) => !a.is_acknowledged).length
                   : 0,
               averageGlucose:
                 averageGlucoseResp.status === "fulfilled"

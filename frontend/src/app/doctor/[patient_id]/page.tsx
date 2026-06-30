@@ -15,6 +15,13 @@ import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import {
+  useSeverityInference,
+  severityToPct,
+  SEVERITY_MIN,
+  SEVERITY_MAX,
+  SEVERITY_STEP,
+} from "@/controllers/SeverityInferenceContext";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import styles from "./patient-detail.module.css";
 
@@ -27,6 +34,7 @@ export default function DoctorPatientDetail() {
   const ctrl = usePatientDetailController(patient_id);
   const { timeRange, setLast } = useTimeRange();
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
+  const { inferenceEnabled, setInferenceEnabled, minSeverity, setMinSeverity } = useSeverityInference();
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
 
@@ -162,6 +170,30 @@ export default function DoctorPatientDetail() {
             </svg>
             Custom Ranges
           </button>
+
+          {/* Anomaly detection: toggle inference for the current window + sensitivity filter */}
+          <button
+            className={`${styles.rangesBtn} ${inferenceEnabled ? styles.rangesBtnActive : ""}`}
+            onClick={() => setInferenceEnabled(!inferenceEnabled)}
+            title="Run ML anomaly detection over the selected window"
+          >
+            {inferenceEnabled ? "Detection: ON" : "Detection: OFF"}
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+            <label htmlFor="sensitivity">Sensitivity</label>
+            <input
+              id="sensitivity"
+              type="range"
+              min={SEVERITY_MIN}
+              max={SEVERITY_MAX}
+              step={SEVERITY_STEP}
+              value={minSeverity}
+              onChange={(e) => setMinSeverity(Number(e.target.value))}
+              title={`${minSeverity}σ above baseline`}
+            />
+            <span>{severityToPct(minSeverity)}%</span>
+          </div>
         </div>
       </div>
 

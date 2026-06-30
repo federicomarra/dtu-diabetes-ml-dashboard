@@ -18,13 +18,14 @@
  */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi, ScatterplotData } from "@/models/types";
 import {
   getPatientByExternalId,
   getGlucoseReadings,
   getTimeInRange,
   getAnomalies,
+  runDetection,
   acknowledgeAnomaly,
   getAverageReading,
   getHbA1c,
@@ -33,6 +34,7 @@ import {
 } from "@/models/api";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 
 type State =
   | { status: "loading" }
@@ -55,6 +57,10 @@ export function usePatientDetailController(externalId: string) {
   const [state, setState] = useState<State>({ status: "loading" });
   const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges } = useGlucoseRanges();
+  const { inferenceEnabled, minSeverity } = useSeverityInference();
+  // Remembers the window we last ran detection for, so moving the sensitivity slider
+  // (minSeverity) only RE-READS — it never re-triggers an expensive detection pass.
+  const lastDetectKey = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +68,7 @@ export function usePatientDetailController(externalId: string) {
     async function load() {
       try {
         setState({ status: "loading" });
+        if (!inferenceEnabled) lastDetectKey.current = null; // re-enabling later re-detects
 
         // 1. Resolve external_id → patient object via dedicated endpoint
         let patient;
@@ -81,6 +88,21 @@ export function usePatientDetailController(externalId: string) {
 
         if (cancelled) return;
 
+        // 1b. If inference is ON, run ML detection for this window BEFORE reading — but only
+        // once per window (the ref guard), so the sensitivity slider only re-reads.
+        if (inferenceEnabled) {
+          const detectKey = JSON.stringify(timeRange);
+          if (lastDetectKey.current !== detectKey) {
+            lastDetectKey.current = detectKey;
+            try {
+              await runDetection(patient.id, timeRange);
+            } catch (e) {
+              console.error("Detection failed:", e);
+            }
+            if (cancelled) return;
+          }
+        }
+
         // 2. Fetch all data for this patient in parallel
         const [readingsResult, tirResult, anomaliesResult, averageResult, hba1cResult, gmiResult, scatterplotResult] =
           await Promise.allSettled([
@@ -92,7 +114,7 @@ export function usePatientDetailController(externalId: string) {
               High: glucoseRanges.high,
               VeryHigh: glucoseRanges.veryHigh,
             }),
-            getAnomalies(patient.id, { limit: 50 }),
+            getAnomalies(patient.id, { ...timeRange, minSeverity }),
             getAverageReading(patient.id, timeRange),
             getHbA1c(patient.id, timeRange),
             getGmi(patient.id, timeRange),
@@ -136,7 +158,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [externalId, timeRange, glucoseRanges]);
+  }, [externalId, timeRange, glucoseRanges, inferenceEnabled, minSeverity]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {

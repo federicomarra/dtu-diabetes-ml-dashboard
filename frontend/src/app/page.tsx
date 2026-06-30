@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { healthCheck, getPatients, getAnomalies } from "@/models/api";
+import type { AnomalyDetection } from "@/models/types";
 
 export default function Home() {
   const router = useRouter();
@@ -37,10 +38,14 @@ export default function Home() {
         let alertsCount = 0;
         try {
           const anomaliesPromises = patients.patients.map((p) =>
-            getAnomalies(p.id, { acknowledged: false }).catch(() => ({ count: 0 }))
+            getAnomalies(p.id).catch(() => ({ anomalies: [] as AnomalyDetection[] }))
           );
           const anomaliesResps = await Promise.all(anomaliesPromises);
-          alertsCount = anomaliesResps.reduce((sum, res) => sum + (res.count || 0), 0);
+          // acknowledged is no longer a server filter → count unacknowledged client-side
+          alertsCount = anomaliesResps.reduce(
+            (sum, res) => sum + res.anomalies.filter((a) => !a.is_acknowledged).length,
+            0
+          );
         } catch (e) {
           console.error("Failed to fetch anomalies", e);
         }

@@ -43,14 +43,20 @@ export default function AnomalyAlert({
             <div className={styles.alertContent}>
               <span className={styles.alertType}>
                 {TYPE_LABELS[anomaly.anomaly_type] || anomaly.anomaly_type}
+                {anomaly.severity != null && (
+                  <strong className={styles.severity}>
+                    {" "}{anomaly.severity.toFixed(1)}σ
+                  </strong>
+                )}
               </span>
               {anomaly.detected_at && (
                 <span className={styles.alertTime} suppressHydrationWarning>
                   {format(new Date(anomaly.detected_at), "MMM d, HH:mm")}
                 </span>
               )}
+              {/* confidence is a magnitude bar (rarity), NOT a probability — label it honestly */}
               <span className={styles.confidence}>
-                {Math.round(anomaly.confidence * 100)}% confidence
+                {Math.round(anomaly.confidence * 100)}% strength
               </span>
               {anomaly.description && (
                 <p className={styles.description}>{anomaly.description}</p>
