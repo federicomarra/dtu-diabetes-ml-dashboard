@@ -12,8 +12,9 @@
  *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/glucose/hba1c?id={id}     → getHbA1c()
  *   GET  api/glucose/gmi?id={id}       → getGmi()
- *   GET  api/anomaly/{id}              → getAnomalies()
- *   POST api/anomaly/{id}/acknowledge  → acknowledgeAnomaly()
+ *   GET  api/anomaly?id&min_severity&start&end&last → getAnomalies()
+ *   POST api/anomaly/detect?id&start&end&last        → runDetection()
+ *   POST api/anomaly/{id}/acknowledge                → acknowledgeAnomaly()
  *   GET  api/insulin/{id}              → getInsulins()
  *   GET  api/meal/{id}                 → getMeals()
  *   GET  api/history/{id}              → getHistory()
@@ -141,11 +142,29 @@ export async function getScatterplot(
 
 // ─── Anomalies ───────────────────────────────────────────
 
+/** Read stored anomalies, filtered by the severity threshold + window (inference=false path). */
 export async function getAnomalies(
   patientId: number,
-  params?: { acknowledged?: boolean; limit?: number }
+  params?: { minSeverity?: number; start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; anomalies: AnomalyDetection[]; count: number }> {
-  const { data } = await api.get(`/anomalies/${patientId}`, { params });
+  const { data } = await api.get(`/anomaly`, {
+    params: {
+      id: patientId,
+      min_severity: params?.minSeverity,
+      start: params?.start,
+      end: params?.end,
+      last: params?.last,
+    },
+  });
+  return data;
+}
+
+/** Run ML detection over a window and overwrite that window's anomalies (inference=true path). */
+export async function runDetection(
+  patientId: number,
+  params?: { start?: string; end?: string; last?: string }
+): Promise<{ patient_id: number; anomalies: AnomalyDetection[]; count: number }> {
+  const { data } = await api.post(`/anomaly/detect`, null, { params: { id: patientId, ...params } });
   return data;
 }
 

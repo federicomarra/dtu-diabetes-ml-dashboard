@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { GlucoseUnitProvider } from "@/controllers/GlucoseUnitContext";
 import { TimeRangeProvider } from "@/controllers/TimeRangeContext";
 import { GlucoseRangesProvider } from "@/controllers/GlucoseRangesContext";
+import { SeverityInferenceProvider } from "@/controllers/SeverityInferenceContext";
 import NavBar from "@/views/NavBar/NavBar";
 import "./globals.css";
 
@@ -28,10 +29,12 @@ export default function RootLayout({
         <GlucoseUnitProvider>
           <TimeRangeProvider>
             <GlucoseRangesProvider>
-              <NavBar/>
-              <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
-                {children}
-              </main>
+              <SeverityInferenceProvider>
+                <NavBar/>
+                <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "1.5rem" }}>
+                  {children}
+                </main>
+              </SeverityInferenceProvider>
             </GlucoseRangesProvider>
           </TimeRangeProvider>
         </GlucoseUnitProvider>
