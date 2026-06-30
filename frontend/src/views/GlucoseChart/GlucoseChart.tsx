@@ -12,7 +12,21 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from "recharts";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import {
+  format,
+  subDays,
+  startOfDay,
+  endOfDay,
+  differenceInDays,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  addMonths,
+  subMonths,
+  isSameDay,
+  isAfter,
+} from "date-fns";
 import type { GlucoseReading } from "@/models/types";
 import { getGlucoseReadings } from "@/models/api";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
@@ -68,6 +82,30 @@ export default function GlucoseChart({
 
   const [fetchedReadings, setFetchedReadings] = useState<GlucoseReading[] | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  // Initialize calendarMonth when latestDay is fetched
+  useEffect(() => {
+    if (latestDay) {
+      setCalendarMonth(latestDay);
+    }
+  }, [latestDay]);
+
+  // Click outside to close calendar
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   /** Fetch the window [startOfDay(anchor - offsetDays), endOfDay(anchor - offsetDays)]. */
   const fetchByAnchor = useCallback(
@@ -153,6 +191,30 @@ export default function GlucoseChart({
     onOffsetChange?.(0, latestDay);
   };
 
+  const activeDate = latestDay ? subDays(latestDay, offset) : new Date();
+
+  const handleCalendarDayClick = (day: Date) => {
+    if (!latestDay) return;
+    const selected = startOfDay(day);
+    if (isAfter(selected, latestDay)) return;
+
+    const diff = differenceInDays(latestDay, selected);
+    if (diff < 0) return;
+
+    const direction = diff > offset ? 'left' : 'right';
+    triggerAnimation(direction);
+    setOffset(diff);
+    fetchByAnchor(latestDay, diff);
+    onOffsetChange?.(diff, latestDay);
+    setShowCalendar(false);
+  };
+
+  // Calendar variables
+  const monthStart = startOfMonth(calendarMonth);
+  const monthEnd = endOfMonth(calendarMonth);
+  const startDayOfWeek = getDay(monthStart);
+  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
   // Decide which readings to display
   const activeReadings = patientId ? (fetchedReadings ?? []) : (fallbackReadings ?? []);
 
@@ -221,7 +283,79 @@ export default function GlucoseChart({
               ‹
             </button>
 
-            <span className={styles.dayLabel}>{displayDate}</span>
+            <div className={styles.dateContainer} ref={calendarRef}>
+              <button
+                type="button"
+                className={styles.dayLabel}
+                onClick={() => {
+                  setShowCalendar(!showCalendar);
+                  if (activeDate) {
+                    setCalendarMonth(activeDate);
+                  }
+                }}
+                title="Click to open calendar"
+              >
+                {displayDate} <span style={{ marginLeft: "0.4rem", fontSize: "0.85rem" }}></span>
+              </button>
+
+              {showCalendar && (
+                <div className={styles.calendarPopup}>
+                  <div className={styles.calendarHeader}>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                      className={styles.calendarNavBtn}
+                      title="Previous month"
+                    >
+                      &lt;
+                    </button>
+                    <span className={styles.calendarMonthName}>
+                      {format(calendarMonth, "MMMM yyyy")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                      className={styles.calendarNavBtn}
+                      title="Next month"
+                    >
+                      &gt;
+                    </button>
+                  </div>
+
+                  <div className={styles.calendarWeekdays}>
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((wd) => (
+                      <span key={wd} className={styles.calendarWeekday}>
+                        {wd}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className={styles.calendarGrid}>
+                    {Array.from({ length: startDayOfWeek }).map((_, i) => (
+                      <span key={`empty-${i}`} className={styles.calendarEmptyCell} />
+                    ))}
+
+                    {daysInMonth.map((day) => {
+                      const isSelected = isSameDay(day, activeDate);
+                      const isFuture = latestDay ? isAfter(startOfDay(day), latestDay) : false;
+                      return (
+                        <button
+                          key={day.toISOString()}
+                          type="button"
+                          disabled={isFuture}
+                          onClick={() => handleCalendarDayClick(day)}
+                          className={`${styles.calendarDayBtn} ${
+                            isSelected ? styles.calendarDaySelected : ""
+                          } ${isFuture ? styles.calendarDayDisabled : ""}`}
+                        >
+                          {format(day, "d")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* › go forward toward latest */}
             <button
