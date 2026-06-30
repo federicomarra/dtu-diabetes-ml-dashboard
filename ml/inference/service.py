@@ -46,7 +46,6 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-import numpy as np
 import torch
 from flask import Flask, jsonify, request
 
@@ -90,8 +89,9 @@ def infer():
     max_events = int(body.get("max_events", 50))
 
     arr, valid, t0 = histories_to_array(rows)
-    if arr.shape[0] == 0 or valid.sum() == 0:
+    if arr.shape[0] == 0 or valid.sum() == 0 or t0 is None:
         return jsonify(patient_id=patient_id, n_windows=0, anomalies=[]), 200
+    assert t0 is not None  # narrowed by the guard above (non-empty rows → a start time)
 
     # Rule input = logged meal/bolus EVENTS (actual carb vs bolus timing), a stream
     # SEPARATE from the detector's announced-carb histories channel. The backend sends
@@ -108,7 +108,7 @@ def infer():
         meals, boluses = derive_events(arr)
 
     z = zscore_channels(arr)
-    events, all_scores = detect(
+    events, _ = detect(
         z, valid, detector=_MODEL["detector"], device=_MODEL["device"],
         meals=meals, boluses=boluses, threshold_k=threshold_k, min_event_min=min_event_min,
     )
