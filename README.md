@@ -117,9 +117,7 @@
 |
 ├── docker-compose.yml             # Local dev environment
 |
-├── Jenkinsfile                    # CI/CD pipeline (DTU HPC)
-|
-└── hpc_job.sh                     # DTU HPC LSF job script (DTU HPC)
+└── Jenkinsfile                    # CI/CD pipeline (DTU HPC)
 ```
 
 ## Quick Start

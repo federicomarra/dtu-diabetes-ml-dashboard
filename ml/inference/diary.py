@@ -23,7 +23,7 @@ CLI at the bottom loads real checkpoints and prints a diary for an Ohio patient.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +85,7 @@ def _score_windows(arr, valid, detector, device, stride):
     return starts, np.concatenate(scores), np.concatenate(embs)
 
 
-def _group_events(flagged_starts, stride):
+def _group_events(flagged_starts):
     """Merge flagged window starts into [first, last] groups (gap ≤ MERGE_GAP_MIN)."""
     if not flagged_starts:
         return []
@@ -124,7 +124,7 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
 
     pos = {s: i for i, s in enumerate(starts)}
     events: list[Event] = []
-    for grp in _group_events(flagged, stride):
+    for grp in _group_events(flagged):
         start_min = grp[0] + L                       # anomaly lives in the horizon
         end_min = grp[-1] + WIN
         if end_min - start_min < min_event_min:      # drop short blips → less over-detection
@@ -184,7 +184,7 @@ def _cli():
     p = load_ohio_patient(args.patient)
     # OOD radius: CLI override → stored (99th-pct) radius → fallback heuristic
     radius = (args.ood_radius if args.ood_radius is not None
-              else hk.get("ood_radius", _default_radius(mu, inv_cov)))
+              else hk.get("ood_radius", _default_radius(mu)))
 
     arr = np.zeros((p.T, 8), dtype=np.float32)
     arr[:, :N_CHANNELS] = p.render()[:, :N_CHANNELS]
@@ -196,13 +196,14 @@ def _cli():
                          ood_radius=radius, threshold_k=args.threshold_k,
                          min_event_min=args.min_event_min, features=args.features,
                          meals=p.meals, boluses=p.boluses, device=device)
+    assert isinstance(events, list)   # no return_scores → list[Event] (narrows the union)
     print(f"Patient {p.pid}: {len(events)} detected anomaly events")
     print("DETECTION generalises; CHARACTERISATION = similarity to synthetic archetypes, not diagnosis.\n")
     for e in events[: args.max_events]:
         print("  " + e.to_text())
 
 
-def _default_radius(mu, inv_cov):
+def _default_radius(mu):
     return float(np.sqrt(len(mu)) * 3.0)   # ~3σ in a chi-like sense; tune at deploy
 
 
