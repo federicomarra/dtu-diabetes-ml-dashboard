@@ -212,8 +212,10 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
             byTime[m.Timestamp] = (cur.glu, cur.ins, (cur.cho ?? 0) + (float)m.Carbs);
         }
 
+        // Plain second-resolution ISO (no sub-second): Python 3.10 datetime.fromisoformat
+        // (used by the ML loader) rejects the 7-digit fraction that "O" emits.
         return byTime.Select(kv => new MlChannelRow(
-            kv.Key.ToString("O"), kv.Value.glu, kv.Value.ins, kv.Value.cho)).ToList();
+            kv.Key.ToString("yyyy-MM-ddTHH:mm:ss"), kv.Value.glu, kv.Value.ins, kv.Value.cho)).ToList();
     }
 
     /// <summary>Latest glucose timestamp for the patient (the data's "now"), or UtcNow if none.</summary>
