@@ -59,6 +59,20 @@ def test_no_meal_when_no_carbs():
     assert meals == []
 
 
+def test_rate_carbs_aggregate_to_one_meal():
+    # sim/histories store carbs as g/min over absorption: 30 min @ 2 g/min = one 60 g meal.
+    # The rule's min_carb_g=10 would drop each minute individually → must aggregate the run.
+    base = datetime.fromisoformat("2026-01-01T00:00:00")
+    rows = [{"timestamp": (base + timedelta(minutes=i)).isoformat(),
+             "glucose_mmoll": 7.0, "insulin_u": 0.0,
+             "cho_grams": 2.0 if 100 <= i < 130 else 0.0} for i in range(300)]
+    arr, _, _ = histories_to_array(rows)
+    meals, _ = derive_events(arr)
+    assert len(meals) == 1
+    assert meals[0].minute == 100                 # onset of the run
+    assert abs(meals[0].carb_g - 60.0) < 1e-6      # Σ over the 30-min run
+
+
 def test_zscore_only_touches_channels():
     arr, _, _ = histories_to_array(_rows())
     z = zscore_channels(arr)

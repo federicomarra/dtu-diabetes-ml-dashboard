@@ -81,22 +81,38 @@ def histories_to_array(rows: Sequence[dict]) -> tuple[np.ndarray, np.ndarray, da
     return arr, valid, t0
 
 
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """Contiguous True runs in a bool mask → list of (start, end_exclusive)."""
+    if not mask.any():
+        return []
+    idx = np.flatnonzero(mask)
+    breaks = np.flatnonzero(np.diff(idx) > 1)
+    starts = np.r_[idx[0], idx[breaks + 1]]
+    ends = np.r_[idx[breaks], idx[-1]] + 1
+    return list(zip(starts.tolist(), ends.tolist()))
+
+
 def derive_events(arr: np.ndarray) -> tuple[list[_Meal], list[_Bolus]]:
     """
-    Meals = minutes with carbs > 0 (col 2). Boluses = insulin spikes above the
-    rolling basal estimate (col 1 minus its median filter), the same basal/bolus
-    split used in gap_assess. Feeds rules.classify_meals (.minute/.carb_g/.units).
+    Aggregate the per-minute carb/insulin RATE channels into discrete events the
+    rule layer expects. Sim (and `histories`) store carbs as g/min over the meal's
+    absorption and insulin as U/min over delivery, so a single 60 g meal is ~30
+    minutes of small values; summing a contiguous run recovers the total. Real
+    LibreView imports put one value at one minute → a run of length 1 (same code).
+
+    Meal  = a contiguous carb run; minute = onset, carb_g = Σ carbs over the run.
+    Bolus = a contiguous run of insulin ABOVE the rolling basal; units = Σ spike.
+    Feeds rules.classify_meals (.minute/.carb_g for meals, .minute/.units for boluses).
     """
     if arr.shape[0] == 0:
         return [], []
-    cho = arr[:, 2]
-    meals = [_Meal(int(m), float(cho[m])) for m in np.nonzero(cho > 0)[0]]
+    cho = arr[:, 2].astype(float)
+    meals = [_Meal(int(s), float(cho[s:e].sum())) for s, e in _runs(cho > 0)]
 
     ins = arr[:, 1].astype(float)
     win = min(_BASAL_WINDOW, len(ins) if len(ins) % 2 else len(ins) - 1) or 1
-    basal = median_filter(ins, size=win)
-    spike = ins - basal
-    boluses = [_Bolus(int(m), float(spike[m])) for m in np.nonzero(spike > _BOLUS_MIN_U)[0]]
+    spike = ins - median_filter(ins, size=win)
+    boluses = [_Bolus(int(s), float(spike[s:e].sum())) for s, e in _runs(spike > _BOLUS_MIN_U)]
     return meals, boluses
 
 
