@@ -44,6 +44,12 @@ export default function PatientDashboard() {
   const [dailyOffset, setDailyOffset] = useState(0);
   const [glucoseLatestDay, setGlucoseLatestDay] = useState<Date | null>(null);
 
+  const [hasInsulin, setHasInsulin] = useState(true);
+  const [hasCarbo, setHasCarbo] = useState(true);
+
+  const handleInsulinPresence = useCallback((presence: boolean) => setHasInsulin(presence), []);
+  const handleCarboPresence = useCallback((presence: boolean) => setHasCarbo(presence), []);
+
   const handleGlucoseOffsetChange = useCallback((offset: number, latestDay: Date | null) => {
     setDailyOffset(offset);
     setGlucoseLatestDay(latestDay);
@@ -164,6 +170,10 @@ export default function PatientDashboard() {
   }
 
   const { patient, readings, multiWeekReadings, tir, anomalies, latestReading, averageGlucose, hba1c, gmi, scatterplotData, handleAcknowledge } = ctrl;
+
+  const allChartsPresent = hasInsulin && hasCarbo;
+  const onlyOneChart = (hasInsulin || hasCarbo) && !allChartsPresent;
+  const noCharts = !hasInsulin && !hasCarbo;
 
   return (
     <div className={styles.dashboard}>
@@ -315,33 +325,103 @@ export default function PatientDashboard() {
         <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />
       )}
 
-      <div className={styles.chartsGrid}>
+      {/* Row 1: Glucose + TIR side-by-side when both charts present, else glucose full width */}
+      <div className={allChartsPresent ? styles.chartsGrid : styles.chartsGridFull}>
         <GlucoseChart
+          key="glucose"
           readings={readings}
           patientId={patient!.id}
           onOffsetChange={handleGlucoseOffsetChange}
           onLatestDayResolved={handleGlucoseLatestDayResolved}
         />
-        {tir && (
+        {allChartsPresent && tir && (
           <TIRChart
+            key="tir-top"
             tir={tir}
             patientId={patient!.id}
           />
         )}
       </div>
 
-      <div className={styles.chartsGridHalf}>
-        <InsulinDailyChart
-          patientId={patient!.id}
-          syncOffset={dailyOffset}
-          syncLatestDay={glucoseLatestDay}
-        />
-        <CarboDailyChart
-          patientId={patient!.id}
-          syncOffset={dailyOffset}
-          syncLatestDay={glucoseLatestDay}
-        />
-      </div>
+      {/* Row 2: layout depends on data availability */}
+      {allChartsPresent ? (
+        /* Both insulin & carbo → half-half */
+        <div className={styles.chartsGridHalf}>
+          <InsulinDailyChart
+            key="insulin"
+            patientId={patient!.id}
+            syncOffset={dailyOffset}
+            syncLatestDay={glucoseLatestDay}
+            onDataPresence={handleInsulinPresence}
+          />
+          <CarboDailyChart
+            key="carbo"
+            patientId={patient!.id}
+            syncOffset={dailyOffset}
+            syncLatestDay={glucoseLatestDay}
+            onDataPresence={handleCarboPresence}
+          />
+        </div>
+      ) : onlyOneChart ? (
+        /* Only one of insulin/carbo → TIR 1/3 left, chart 2/3 right */
+        <div className={tir ? styles.chartsGridFlipped : styles.chartsGridFull}>
+          {tir && (
+            <TIRChart
+              key="tir-bottom"
+              tir={tir}
+              patientId={patient!.id}
+            />
+          )}
+          {hasInsulin && (
+            <InsulinDailyChart
+              key="insulin"
+              patientId={patient!.id}
+              syncOffset={dailyOffset}
+              syncLatestDay={glucoseLatestDay}
+              onDataPresence={handleInsulinPresence}
+            />
+          )}
+          {hasCarbo && (
+            <CarboDailyChart
+              key="carbo"
+              patientId={patient!.id}
+              syncOffset={dailyOffset}
+              syncLatestDay={glucoseLatestDay}
+              onDataPresence={handleCarboPresence}
+            />
+          )}
+        </div>
+      ) : (
+        /* No insulin/carbo at all → just TIR full width if available */
+        <>
+          {tir && (
+            <div className={styles.chartsGridFull}>
+              <TIRChart
+                key="tir-bottom"
+                tir={tir}
+                patientId={patient!.id}
+              />
+            </div>
+          )}
+          {/* Hidden mounting points so onDataPresence callbacks still fire */}
+          <div style={{ display: "none" }}>
+            <InsulinDailyChart
+              key="insulin"
+              patientId={patient!.id}
+              syncOffset={dailyOffset}
+              syncLatestDay={glucoseLatestDay}
+              onDataPresence={handleInsulinPresence}
+            />
+            <CarboDailyChart
+              key="carbo"
+              patientId={patient!.id}
+              syncOffset={dailyOffset}
+              syncLatestDay={glucoseLatestDay}
+              onDataPresence={handleCarboPresence}
+            />
+          </div>
+        </>
+      )}
 
       <MultiWeeklyChart readings={multiWeekReadings} />
 

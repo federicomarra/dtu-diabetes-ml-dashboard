@@ -27,6 +27,10 @@ interface CarboDailyChartProps {
   syncOffset?: number;
   /** Controlled mode: the glucose chart's anchor day. */
   syncLatestDay?: Date | null;
+  /**
+   * Called when the chart resolves whether it has data for the initial load.
+   */
+  onDataPresence?: (hasData: boolean) => void;
 }
 
 // ─── Random demo data generator ──────────────────────────────────────────────
@@ -76,6 +80,7 @@ export default function CarboDailyChart({
   events: fallbackEvents,
   syncOffset,
   syncLatestDay,
+  onDataPresence,
 }: CarboDailyChartProps) {
   const isControlled = syncOffset !== undefined && syncLatestDay !== undefined;
 
@@ -128,12 +133,14 @@ export default function CarboDailyChart({
           );
           setOwnLatestDay(startOfDay(new Date(latest.timestamp)));
           setHasDataOnLatestDay(true);
+          onDataPresence?.(true);
         } else {
           setHasDataOnLatestDay(false);
+          onDataPresence?.(false);
         }
       })
       .catch(() => {
-        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); }
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); onDataPresence?.(false); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
