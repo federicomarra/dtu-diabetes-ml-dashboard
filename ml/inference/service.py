@@ -1,5 +1,5 @@
 """
-Stateless ML inference microservice (Flask, port 5000).
+Stateless ML inference microservice (Flask, port 5001).
 
 The C# backend orchestrates; this service only does INFERENCE. The backend POSTs
 a patient's `histories` window as JSON; we run XCHANNEL detection + the missed/late
@@ -161,4 +161,4 @@ except Exception as exc:  # keep the service up so /health reports 'loading' ins
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)))

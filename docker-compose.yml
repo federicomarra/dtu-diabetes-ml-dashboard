@@ -31,28 +31,28 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/diabetes_db
       CORS_ORIGINS: "*"
-      ML_URL: http://ml:5000
+      ML_URL: http://ml:5001
     depends_on:
       postgres:
         condition: service_healthy
       ml:
         condition: service_started
 
-  # ML inference microservice (stateless Flask, port 5000)
+  # ML inference microservice (stateless Flask, port 5001)
   ml:
     build:
       context: .
       dockerfile: ml/Dockerfile
     container_name: diabetes-ml
     ports:
-      - "5000:5000"
+      - "5001:5001"
     environment:
       DETECTOR_CKPT: /app/ml/data/checkpoints/xchannel_nll_pooled_best.pt
     # checkpoint mounted read-only — swap the deliverable model without rebuilding
     volumes:
       - ./ml/data/checkpoints:/app/ml/data/checkpoints:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
       interval: 10s
       timeout: 5s
       retries: 6
