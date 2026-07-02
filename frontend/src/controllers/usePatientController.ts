@@ -77,7 +77,7 @@ export function usePatientController() {
               High: glucoseRanges.high,
               VeryHigh: glucoseRanges.veryHigh,
             }),
-            getAnomalies(patient.id, { limit: 50 }),
+            getAnomalies(patient.id, timeRange),
             getAverageReading(patient.id, timeRange),
             getHbA1c(patient.id, timeRange),
             getGmi(patient.id, timeRange),

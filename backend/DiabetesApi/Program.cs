@@ -36,6 +36,17 @@ else
 builder.Services.AddScoped<GlucoseService>();
 builder.Services.AddScoped<PatientService>();
 
+// ML inference microservice client (reaches the `ml` container at $ML_URL; localhost = the
+// backend's own container, so this MUST be the compose service DNS). Inference is a
+// sliding-window pass — weeks of data take a while — so the timeout is generous (gunicorn
+// side is 300 s); bound the demo window to keep the synchronous call snappy.
+var mlUrl = builder.Configuration["ML_URL"] ?? "http://ml:5001";
+builder.Services.AddHttpClient<MlInferenceService>(c =>
+{
+    c.BaseAddress = new Uri(mlUrl);
+    c.Timeout = TimeSpan.FromSeconds(120);
+});
+
 // ── Controllers ───────────────────────────────────────────────────────────────
 builder.Services.AddControllers()
     .AddJsonOptions(opts =>

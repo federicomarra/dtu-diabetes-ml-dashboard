@@ -6,17 +6,19 @@
 
 ## Architecture
 
-```
+```text
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │     Frontend     │     │     Backend      │     │     Database     │
-│   TypeScript     │     │       C#         │     │       SQL        │
+│    TypeScript    │     │        C#        │     │       SQL        │
 │    (Next.js)     │────▶│    (.NET 10)     │────▶│   (PostgreSQL)   │
 │  localhost:3000  │     │  localhost:8000  │     │  localhost:5432  │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
                                   │
+                                  │
+                                  ▼
                          ┌──────────────────┐
                          │        ML        │
-                         │     (Python)     │
+                         │      Python      │
                          │    (PyTorch)     │
                          │  local / DTU HPC │
                          └──────────────────┘
@@ -31,7 +33,7 @@
 
 ## Project Structure
 
-```
+```text
 ├── backend/                       # ASP.NET Core 10 API
 │   ├── DiabetesApi/               # Main API project
 │   │   ├── Routes/                # Minimal-API route handlers
@@ -95,9 +97,18 @@
 │           └── NavBar/            # Navigation bar component
 │
 ├── ml/                            # Machine learning module (Python)
-│   ├── training/                  # Model training (train_anomaly.py)
-│   └── inference/                 # Prediction service
-|
+│   ├── dataset.py                 # Data loading, normalisation, sliding-window Dataset
+│   ├── data/                      # Parquet cohort, OhioT1DM, checkpoints, scalers
+│   ├── models/                    # One subfolder per model architecture
+│   │   ├── patch_tst/             # Arc 1 baseline: PatchTST masked-patch pretraining
+│   │   ├── carla/                 # Arc 1 baseline: CARLA contrastive
+│   │   └── xchannel/              # Arc 1 primary: iTransformer cross-channel forecaster
+│   ├── inference/                 # DB→model adapter (diary.py; loader.py = histories→array)
+│   ├── ohio_eval/ hupa_eval/ realdata/  # Real-dataset adapters + proxy-label eval
+│   ├── scripts/                   # One-off analysis and plotting scripts
+│   ├── figures/                   # Output figures (thesis-ready, 300 dpi)
+│   ├── tests/                     # Unit tests (pytest)
+│   └── docs/                      # Design specs (gitignored)
 ├── database/                      # Schema & seeding scripts
 |   ├── schema.sql                 # Database schema
 |   ├── upload_parquet.py          # Upload parquet files to database
@@ -106,19 +117,19 @@
 |
 ├── docker-compose.yml             # Local dev environment
 |
-├── Jenkinsfile                    # CI/CD pipeline (DTU HPC)
-|
-└── hpc_job.sh                     # DTU HPC LSF job script (DTU HPC)
+└── Jenkinsfile                    # CI/CD pipeline (DTU HPC)
 ```
 
 ## Quick Start
 
 ### Prerequisites
+
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 18+](https://nodejs.org/)
 - [Docker](https://docker.com/)
 
 ### 1. Clone & configure
+
 ```bash
 git clone https://github.com/federicomarra/dtu-diabetes-ml-dashboard.git
 cd dtu-diabetes-ml-dashboard
@@ -126,6 +137,7 @@ cp .env.example .env
 ```
 
 ### 2. Start with Docker (recommended)
+
 ```bash
 # Start all services (database, backend, frontend)
 docker compose up
@@ -147,11 +159,13 @@ Services available after startup:
 ### 3. Manual setup (without Docker)
 
 **Database only:**
+
 ```bash
 docker compose up postgres -d
 ```
 
 **Backend:**
+
 ```bash
 cd backend
 dotnet restore DiabetesApi.sln
@@ -161,6 +175,7 @@ dotnet run --project DiabetesApi/DiabetesApi.csproj
 The API starts on `http://localhost:8000`. Swagger UI is at `http://localhost:8000/swagger`.
 
 **Frontend:**
+
 ```bash
 cd frontend
 npm install
@@ -170,11 +185,13 @@ npm run dev
 The frontend starts on `http://localhost:3000` (or `http://localhost:3001` if `3000` is occupied).
 
 ### 4. Seed synthetic data
+
 ```bash
 python database/seed.py
 ```
 
 ### 5. Run backend tests
+
 ```bash
 cd backend
 dotnet test DiabetesApi.Tests/ -v
@@ -186,8 +203,8 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 ### Health
 
-| Method | Endpoint     | Description                             |
-|--------|--------------|-----------------------------------------|
+| Method | Endpoint      | Description                                   |
+|--------|-------------- |-----------------------------------------------|
 | GET    | `/api/health` | Health check — returns `{"status":"healthy"}` |
 
 ### Patients (`/api/patient`)
@@ -242,10 +259,10 @@ All routes are prefixed with `/api` and served by ASP.NET Core.
 
 The backend exposes an auto-generated **OpenAPI 3.0** spec powered by [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore).
 
-| Resource                    | URL (local Docker)                          |
-|-----------------------------|---------------------------------------------|
-| Swagger UI (interactive)    | http://localhost:8000/swagger               |
-| Raw OpenAPI 3.0 JSON spec   | http://localhost:8000/swagger/v1/swagger.json |
+| Resource                    | URL (local Docker)                                                                             |
+|-----------------------------|------------------------------------------------------------------------------------------------|
+| Swagger UI (interactive)    | [http://localhost:8000/swagger](http://localhost:8000/swagger)                                 |
+| Raw OpenAPI 3.0 JSON spec   | [http://localhost:8000/swagger/v1/swagger.json](http://localhost:8000/swagger/v1/swagger.json) |
 
 ### How it works
 

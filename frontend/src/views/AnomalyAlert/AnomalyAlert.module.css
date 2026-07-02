@@ -56,6 +56,11 @@
   font-size: 0.9rem;
 }
 
+.severity {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .alertTime {
   font-size: 0.8rem;
   color: var(--text-secondary);

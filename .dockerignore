@@ -1,0 +1,20 @@
+# Applies to builds whose context is the repo root — i.e. the `ml` inference image
+# (backend/frontend build from their own subdir contexts, unaffected). Keeps the ml
+# build context tiny: code only, no datasets/checkpoints (checkpoints are mounted).
+.git
+.venv
+**/__pycache__
+**/*.pyc
+node_modules
+frontend
+backend
+database
+# heavy / irrelevant ml artefacts — the service needs none of these
+ml/data
+ml/figures
+ml/docs
+ml/tests
+ml/scripts
+**/*.parquet
+**/*.out
+**/*.err

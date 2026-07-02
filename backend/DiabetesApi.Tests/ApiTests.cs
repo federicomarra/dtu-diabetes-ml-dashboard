@@ -382,7 +382,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/anomaly/{patient.Id}");
+        var resp = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -391,36 +391,30 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetAnomalies_WithFilters_FiltersCorrectly()
+    public async Task GetAnomalies_WithMinSeverity_FiltersCorrectly()
     {
         var patient = await SeedPatientAsync("P_ANOMALY_FILTER", "AF Patient");
 
         await using var db = CreateDb();
         db.Anomalies.AddRange(
-            new Anomaly { PatientId = patient.Id, AnomalyType = "missed_bolus", Confidence = 0.9, IsAcknowledged = true },
-            new Anomaly { PatientId = patient.Id, AnomalyType = "late_bolus",   Confidence = 0.8, IsAcknowledged = false },
-            new Anomaly { PatientId = patient.Id, AnomalyType = "hyperglycemia",Confidence = 0.75, IsAcknowledged = false }
+            new Anomaly { PatientId = patient.Id, AnomalyType = "missed_bolus", Confidence = 0.9, Severity = 2.0 },
+            new Anomaly { PatientId = patient.Id, AnomalyType = "late_bolus",   Confidence = 0.8, Severity = 4.0 },
+            new Anomaly { PatientId = patient.Id, AnomalyType = "missed_bolus", Confidence = 0.95, Severity = 6.0 }
         );
         await db.SaveChangesAsync();
 
-        // 1. Filter by acknowledged = true
-        var respAck = await _client.GetAsync($"/api/anomaly/{patient.Id}?acknowledged=true");
-        Assert.Equal(HttpStatusCode.OK, respAck.StatusCode);
-        var bodyAck = await respAck.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(1, bodyAck.GetProperty("count").GetInt32());
-        Assert.Equal("missed_bolus", bodyAck.GetProperty("anomalies")[0].GetProperty("anomaly_type").GetString());
+        // No filter → all three.
+        var respAll = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
+        var bodyAll = await respAll.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(3, bodyAll.GetProperty("count").GetInt32());
 
-        // 2. Filter by acknowledged = false
-        var respUnack = await _client.GetAsync($"/api/anomaly/{patient.Id}?acknowledged=false");
-        Assert.Equal(HttpStatusCode.OK, respUnack.StatusCode);
-        var bodyUnack = await respUnack.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyUnack.GetProperty("count").GetInt32());
-
-        // 3. Filter with limit = 1
-        var respLimit = await _client.GetAsync($"/api/anomaly/{patient.Id}?limit=1");
-        Assert.Equal(HttpStatusCode.OK, respLimit.StatusCode);
-        var bodyLimit = await respLimit.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(1, bodyLimit.GetProperty("count").GetInt32());
+        // min_severity = 3 → only the 4σ and 6σ anomalies.
+        var respSev = await _client.GetAsync($"/api/anomaly?id={patient.Id}&min_severity=3");
+        Assert.Equal(HttpStatusCode.OK, respSev.StatusCode);
+        var bodySev = await respSev.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(2, bodySev.GetProperty("count").GetInt32());
+        // Ordered by severity descending → strongest (6σ) first.
+        Assert.Equal(6.0, bodySev.GetProperty("anomalies")[0].GetProperty("severity").GetDouble(), 3);
     }
 
     [Fact]

@@ -31,19 +31,14 @@ interface ChartPoint {
   avg: number;
   min: number;
   max: number;
-  errorUp: number;
-  errorDown: number;
   colorType: ColorType;
   // Split series so we can render different colors via multiple <Scatter> elements
-   avgSuccess: number;
-   errorUpSuccess: number;
-   errorDownSuccess: number;
-   avgWarning: number;
-   errorUpWarning: number;
-   errorDownWarning: number;
-   avgDanger: number;
-   errorUpDanger: number;
-   errorDownDanger: number;
+  avgSuccess: number;
+  errorSuccess: [number, number] | null;
+  avgWarning: number;
+  errorWarning: [number, number] | null;
+  avgDanger: number;
+  errorDanger: [number, number] | null;
 }
 
 interface Props {
@@ -62,7 +57,11 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds: { veryLow: number; low: number; high: number; veryHigh: number }): ChartPoint[] {
+function toDisplayPts(
+  points: DailyGlucosePoint[],
+  unit: GlucoseUnit,
+  thresholds: { veryLow: number; low: number; high: number; veryHigh: number }
+): ChartPoint[] {
   const vl = convertGlucose(thresholds.veryLow, unit);
   const l = convertGlucose(thresholds.low, unit);
   const h = convertGlucose(thresholds.high, unit);
@@ -72,7 +71,7 @@ function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds
     const avg = convertGlucose(p.average, unit);
     const min = convertGlucose(p.min, unit);
     const max = convertGlucose(p.max, unit);
-    
+
     let colorType: ColorType = "Success";
     if (avg < vl || avg > vh) colorType = "Danger";
     else if (avg < l || avg > h) colorType = "Warning";
@@ -86,18 +85,13 @@ function toDisplayPts(points: DailyGlucosePoint[], unit: GlucoseUnit, thresholds
       avg,
       min,
       max,
-      errorUp,
-      errorDown,
       colorType,
       avgSuccess: colorType === "Success" ? avg : NaN,
-      errorUpSuccess: colorType === "Success" ? errorUp : NaN,
-      errorDownSuccess: colorType === "Success" ? errorDown : NaN,
+      errorSuccess: colorType === "Success" ? [errorDown, errorUp] : null,
       avgWarning: colorType === "Warning" ? avg : NaN,
-      errorUpWarning: colorType === "Warning" ? errorUp : NaN,
-      errorDownWarning: colorType === "Warning" ? errorDown : NaN,
+      errorWarning: colorType === "Warning" ? [errorDown, errorUp] : null,
       avgDanger: colorType === "Danger" ? avg : NaN,
-      errorUpDanger: colorType === "Danger" ? errorUp : NaN,
-      errorDownDanger: colorType === "Danger" ? errorDown : NaN,
+      errorDanger: colorType === "Danger" ? [errorDown, errorUp] : null,
     };
   });
 }
@@ -138,12 +132,12 @@ function ScatterTooltip({ active, payload, unit }: ScatterTooltipProps) {
     <div className={styles.tooltip}>
       <div className={styles.tooltipDate}>{p.displayDate}</div>
       <div className={styles.tooltipRow}>
-        <span className={styles.tooltipLabel}>Avg</span>
-        <span className={styles.tooltipVal}>{p.avg.toFixed(1)} {unit}</span>
-      </div>
-      <div className={styles.tooltipRow}>
         <span className={styles.tooltipLabel}>Max</span>
         <span className={styles.tooltipVal}>{p.max.toFixed(1)} {unit}</span>
+      </div>
+      <div className={styles.tooltipRow}>
+        <span className={styles.tooltipLabel}>Avg</span>
+        <span className={styles.tooltipVal}>{p.avg.toFixed(1)} {unit}</span>
       </div>
       <div className={styles.tooltipRow}>
         <span className={styles.tooltipLabel}>Min</span>
@@ -189,11 +183,10 @@ export default function GlucoseScatterplot({ points }: Props) {
       <div className={styles.header}>
         <div>
           <h3 className={styles.title}>Daily Glucose Averages</h3>
-          <p className={styles.subtitle}>Average, min and max with errors per day</p>
+          <p className={styles.subtitle}>Average, min and max per day</p>
         </div>
 
         <div className={styles.switcher}>
-
           <button
             className={styles.switchBtn + (mode === "scientific" ? " " + styles.switchBtnActive : "")}
             onClick={() => setMode("scientific")}
@@ -236,17 +229,11 @@ export default function GlucoseScatterplot({ points }: Props) {
                   position: "insideLeft",
                   fontSize: 12,
                   fill: "var(--text-secondary)",
-                  dx: -8
+                  dx: -8,
                 }}
               />
 
-              <ReferenceArea
-                y1={l}
-                y2={h}
-                fill="var(--success)"
-                fillOpacity={0.08}
-                stroke="none"
-              />
+              <ReferenceArea y1={l} y2={h} fill="var(--success)" fillOpacity={0.08} stroke="none" />
 
               <ReferenceLine
                 y={vl}
@@ -282,31 +269,25 @@ export default function GlucoseScatterplot({ points }: Props) {
               {mode === "scientific" ? (
                 <>
                   <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props) => <ScientificDot {...props} color="var(--success)" />}>
-                    <ErrorBar dataKey="errorUpSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
-                    <ErrorBar dataKey="errorDownSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
+                    <ErrorBar dataKey="errorSuccess" width={5} strokeWidth={1.5} stroke="var(--success)" direction="y" />
                   </Scatter>
                   <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props) => <ScientificDot {...props} color="var(--warning)" />}>
-                    <ErrorBar dataKey="errorUpWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
-                    <ErrorBar dataKey="errorDownWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
+                    <ErrorBar dataKey="errorWarning" width={5} strokeWidth={1.5} stroke="var(--warning)" direction="y" />
                   </Scatter>
                   <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props) => <ScientificDot {...props} color="var(--danger)" />}>
-                    <ErrorBar dataKey="errorUpDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
-                    <ErrorBar dataKey="errorDownDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
+                    <ErrorBar dataKey="errorDanger" width={5} strokeWidth={1.5} stroke="var(--danger)" direction="y" />
                   </Scatter>
                 </>
               ) : (
                 <>
                   <Scatter dataKey="avgSuccess" fill="var(--success)" shape={(props) => <ModernDot {...props} color="var(--success)" />}>
-                    <ErrorBar dataKey="errorUpSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
-                    <ErrorBar dataKey="errorDownSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorSuccess" width={12} strokeWidth={10} stroke="var(--success)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
                   <Scatter dataKey="avgWarning" fill="var(--warning)" shape={(props) => <ModernDot {...props} color="var(--warning)" />}>
-                    <ErrorBar dataKey="errorUpWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
-                    <ErrorBar dataKey="errorDownWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorWarning" width={12} strokeWidth={10} stroke="var(--warning)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
                   <Scatter dataKey="avgDanger" fill="var(--danger)" shape={(props) => <ModernDot {...props} color="var(--danger)" />}>
-                    <ErrorBar dataKey="errorUpDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
-                    <ErrorBar dataKey="errorDownDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
+                    <ErrorBar dataKey="errorDanger" width={12} strokeWidth={10} stroke="var(--danger)" strokeOpacity={0.22} direction="y" />
                   </Scatter>
                 </>
               )}
@@ -327,7 +308,7 @@ export default function GlucoseScatterplot({ points }: Props) {
               <line x1="2" y1="0" x2="8" y2="0" stroke="var(--text-secondary)" strokeWidth="1.5" />
               <line x1="2" y1="16" x2="8" y2="16" stroke="var(--text-secondary)" strokeWidth="1.5" />
             </svg>
-            <span className={styles.legendText}>Min - Max range (whisker error bars)</span>
+            <span className={styles.legendText}>Min - Max range (whisker)</span>
           </>
         ) : (
           <>
@@ -345,4 +326,3 @@ export default function GlucoseScatterplot({ points }: Props) {
     </div>
   );
 }
-

@@ -154,6 +154,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Pyright / Pylance
+pyrightconfig.json
+
 # pytype static type analyzer
 .pytype/
 
@@ -230,3 +233,6 @@ CLAUDE.md
 
 # Python
 /ml/data
+/ml/docs
+/ml/figures
+/logs

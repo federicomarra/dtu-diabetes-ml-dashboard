@@ -55,10 +55,11 @@ export interface AnomalyDetection {
   patient_id: number;
   glucose_reading_id: number | null;
   anomaly_type: "missed_bolus" | "late_bolus" | "unusual_pattern";
-  confidence: number;
+  confidence: number;          // 0–1 magnitude bar (NOT a probability)
   description: string | null;
   is_acknowledged: boolean;
-  detected_at?: string; // not present in backend; kept for forward-compat
+  severity?: number;           // σ above the patient's baseline — the headline number; the slider filters on this
+  detected_at?: string;        // ISO; anomaly window start
 }
 
 export interface TimeInRange {
