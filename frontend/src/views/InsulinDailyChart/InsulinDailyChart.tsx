@@ -286,7 +286,7 @@ export default function InsulinDailyChart({
                 borderRadius: "8px",
               }}
               formatter={(value: unknown, name) => [
-                `${value} U`,
+                `${value} U${name === "basal" ? "/h" : ""}`,
                 name === "basal" ? "Basal" : "Bolus",
               ]}
               labelFormatter={(_label: unknown, payload) => {
@@ -302,7 +302,7 @@ export default function InsulinDailyChart({
             <Bar dataKey="bolus" fill="var(--primary)" opacity={0.8} radius={[3, 3, 0, 0]} />
             {/* Basal as line */}
             <Line
-              type="monotone"
+              type="stepAfter"
               dataKey="basal"
               stroke="var(--warning, #f59e0b)"
               strokeWidth={2}
