@@ -102,6 +102,9 @@ export default function PatientDashboard() {
       // Refresh page data
       setTimeout(() => {
         router.refresh();
+        if (ctrl.refresh) {
+          ctrl.refresh();
+        }
       }, 1500);
     } catch (err: unknown) {
       console.error(err);
