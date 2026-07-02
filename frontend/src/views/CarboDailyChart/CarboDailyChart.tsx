@@ -146,7 +146,7 @@ export default function CarboDailyChart({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [patientId]);
+  }, [patientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── In controlled mode: re-fetch when parent's offset/anchor changes ─────────
   useEffect(() => {

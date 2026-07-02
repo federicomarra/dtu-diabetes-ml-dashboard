@@ -113,7 +113,6 @@ export default function DoctorPatientDetail() {
 
   const allChartsPresent = hasInsulin && hasCarbo;
   const onlyOneChart = (hasInsulin || hasCarbo) && !allChartsPresent;
-  const noCharts = !hasInsulin && !hasCarbo;
 
   return (
     <div className={styles.dashboard}>
