@@ -25,4 +25,5 @@ pytest
 
 # ── inference microservice ─────────────────────────────────────────────────
 flask==3.0.3
-flasgger==0.9.7.1
+flask-smorest==0.44.0
+marshmallow==3.23.2
