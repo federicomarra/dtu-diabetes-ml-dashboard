@@ -48,6 +48,7 @@ from pathlib import Path
 
 import torch
 from flask import Flask, jsonify, request
+from flasgger import Swagger
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -60,6 +61,13 @@ CKPT_DIR = Path(os.environ.get("CKPT_DIR", "ml/data/checkpoints"))
 DETECTOR_CKPT = Path(os.environ.get("DETECTOR_CKPT", CKPT_DIR / "xchannel_nll_pooled_best.pt"))
 
 app = Flask(__name__)
+swagger = Swagger(app, template={
+    "info": {
+        "title": "Diabetes ML Inference API",
+        "description": "Stateless ML inference microservice for diabetes anomaly detection.",
+        "version": "v1"
+    }
+})
 _MODEL: dict = {}
 
 
@@ -73,6 +81,15 @@ def _load_model() -> dict:
 
 @app.get("/health")
 def health():
+    """
+    Health check endpoint
+    ---
+    responses:
+      200:
+        description: Service is healthy and model is loaded
+      503:
+        description: Service is starting up or model is loading
+    """
     ok = bool(_MODEL)
     return jsonify(status="ok" if ok else "loading",
                    detector=DETECTOR_CKPT.name,
@@ -81,6 +98,43 @@ def health():
 
 @app.post("/infer")
 def infer():
+    """
+    Run anomaly detection inference on patient data windows
+    ---
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          properties:
+            patient_id:
+              type: integer
+              description: ID of the patient
+            threshold_k:
+              type: number
+              default: 3.0
+            min_event_min:
+              type: integer
+              default: 30
+            max_events:
+              type: integer
+              default: 50
+            histories:
+              type: array
+              items:
+                type: object
+            meals:
+              type: array
+              items:
+                type: object
+            boluses:
+              type: array
+              items:
+                type: object
+    responses:
+      200:
+        description: Detection results
+    """
     body = request.get_json(force=True, silent=True) or {}
     rows = body.get("histories") or []
     patient_id = body.get("patient_id")
