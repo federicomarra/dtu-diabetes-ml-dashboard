@@ -66,9 +66,9 @@ DETECTOR_CKPT = Path(os.environ.get("DETECTOR_CKPT", CKPT_DIR / "xchannel_nll_po
 
 class HistoryPointSchema(ma.Schema):
     timestamp  = ma.fields.Str(required=True, metadata={"description": "ISO-8601 timestamp"})
-    glucose_mmoll = ma.fields.Float(load_default=None)
-    insulin_u  = ma.fields.Float(load_default=0.0)
-    cho_grams  = ma.fields.Float(load_default=0.0)
+    glucose_mmoll = ma.fields.Float(load_default=None, required=True)
+    insulin_u  = ma.fields.Float(load_default=0.0, allow_none=True)
+    cho_grams  = ma.fields.Float(load_default=0.0, allow_none=True)
 
 class MealEventSchema(ma.Schema):
     timestamp = ma.fields.Str(required=True)
@@ -79,13 +79,13 @@ class BolusEventSchema(ma.Schema):
     units     = ma.fields.Float(required=True, metadata={"description": "Bolus units"})
 
 class InferRequestSchema(ma.Schema):
-    patient_id    = ma.fields.Int(load_default=None, metadata={"description": "Patient identifier echoed back in the response"})
+    patient_id    = ma.fields.Int(load_default=None, required=True, metadata={"description": "Patient identifier echoed back in the response"})
     threshold_k   = ma.fields.Float(load_default=3.0, metadata={"description": "Anomaly threshold in σ above baseline"})
     min_event_min = ma.fields.Int(load_default=30, metadata={"description": "Minimum event duration in minutes"})
     max_events    = ma.fields.Int(load_default=50, metadata={"description": "Maximum number of anomalies returned"})
     histories     = ma.fields.List(ma.fields.Nested(HistoryPointSchema), required=True, metadata={"description": "CGM + bolus + carb time-series"})
-    meals         = ma.fields.List(ma.fields.Nested(MealEventSchema), load_default=None, metadata={"description": "Logged meal events (optional rule input)"})
-    boluses       = ma.fields.List(ma.fields.Nested(BolusEventSchema), load_default=None, metadata={"description": "Logged bolus events (optional rule input)"})
+    meals         = ma.fields.List(ma.fields.Nested(MealEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged meal events (optional rule input)"})
+    boluses       = ma.fields.List(ma.fields.Nested(BolusEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged bolus events (optional rule input)"})
 
 class AnomalySchema(ma.Schema):
     start            = ma.fields.Str()
