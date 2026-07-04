@@ -104,8 +104,8 @@ public record AnomaliesResponse(
 );
 
 // ── ML inference service (POST $ML_URL/infer) ──────────────────────────────────
-// Serialized/deserialized with snake_case (set in MlInferenceService), matching
-// ml/docs/ML_INFERENCE_CONTRACT.md. Detector-only: we assemble the 3 channels from
+// Serialized/deserialized with snake_case (set in MlInferenceService).
+// Detector-only: we assemble the 3 channels from
 // glucoses+insulins+meals and send only `histories[]`; meals[]/boluses[] (the
 // missed/late rule stream) are omitted, so anomalies are detector-surfaced.
 

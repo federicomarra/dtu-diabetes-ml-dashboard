@@ -12,7 +12,7 @@ namespace DiabetesApi.Services;
 /// </summary>
 public class MlInferenceService(HttpClient http)
 {
-    // ML uses snake_case on the wire (see ml/docs/ML_INFERENCE_CONTRACT.md); match it both ways.
+    // ML uses snake_case on the wire; match it both ways.
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
