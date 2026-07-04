@@ -1,18 +1,18 @@
 """
-Combined inference path — the "clinical diary" (INSTRUCTIONS §278–297).
+Combined inference path - the "clinical diary".
 
 Ties the three pieces together for one patient:
 
-    XCHANNEL detector  →  per-window forecast-residual anomaly score
-         ↓ per-patient robust threshold (median + 2·IQR/1.349 on baseline)
-    flagged windows  →  grouped into EVENTS (start, duration)
-         ↓ for each event
-    ├─ rule classifier      → deterministic label (missed/late/large) IF inputs logged
-    └─ similarity head      → soft "resembles X 72%" + MC-Dropout uncertainty + latent-OOD
+    1. XCHANNEL detector: per-window forecast-residual anomaly score
+    2. per-patient robust threshold (median + 2*IQR/1.349 on baseline)
+    3. flagged windows grouped into EVENTS (start, duration)
+    4. for each event:
+         - rule classifier: deterministic label (missed/late/large) IF inputs logged
+         - similarity head: soft "resembles X 72%" + MC-Dropout uncertainty + latent-OOD
 
-Two claims are kept strictly separate (§289–297):
-  * DETECTION  generalises   — "unusual for this patient vs their baseline"
-  * CHARACTERISATION limited — "resembles missed bolus (72%)", a similarity to
+Two claims are kept strictly separate:
+  * DETECTION  generalises   - "unusual for this patient vs their baseline"
+  * CHARACTERISATION limited - "resembles missed bolus (72%)", a similarity to
     synthetic archetypes, NOT a diagnosis; OOD-flagged "uncharacterised" when the
     window is far from the normal cluster.
 
@@ -25,6 +25,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, overload
 
 import numpy as np
 import torch
@@ -38,7 +39,7 @@ from characterization.head import mc_predict, ood_distance, CLASSES  # noqa: E40
 from characterization.rules import classify_meals, RuleConfig  # noqa: E402
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
-MERGE_GAP_MIN = 30          # flagged windows within this gap → one event
+MERGE_GAP_MIN = 30          # flagged windows within this gap -> one event
 
 
 @dataclass
@@ -50,8 +51,8 @@ class Event:
     class_probs: dict                    # {class: prob}
     mc_uncertainty: float
     ood_distance: float
-    ood_flag: bool                       # True → far from normal cluster
-    characterised: bool = True           # False → label withheld (OOD / normal / low-conf)
+    ood_flag: bool                       # True -> far from normal cluster
+    characterised: bool = True           # False -> label withheld (OOD / normal / low-conf)
     rule_label: str | None = None        # deterministic, when inputs logged
 
     def to_text(self) -> str:
@@ -86,7 +87,7 @@ def _score_windows(arr, valid, detector, device, stride):
 
 
 def _group_events(flagged_starts):
-    """Merge flagged window starts into [first, last] groups (gap ≤ MERGE_GAP_MIN)."""
+    """Merge flagged window starts into [first, last] groups (gap <= MERGE_GAP_MIN)."""
     if not flagged_starts:
         return []
     groups, cur = [], [flagged_starts[0]]
@@ -99,6 +100,16 @@ def _group_events(flagged_starts):
     return groups
 
 
+@overload
+def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=..., features=...,
+                meals=..., boluses=..., device=..., stride=..., n_cal_days=..., threshold_k=...,
+                min_event_min=..., min_confidence=..., mc_passes=..., rule_cfg=...,
+                return_scores: Literal[False] = ...) -> list[Event]: ...
+@overload
+def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=..., features=...,
+                meals=..., boluses=..., device=..., stride=..., n_cal_days=..., threshold_k=...,
+                min_event_min=..., min_confidence=..., mc_passes=..., rule_cfg=...,
+                return_scores: Literal[True]) -> tuple[list[Event], np.ndarray]: ...
 def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=float("inf"),
                 features="raw", meals=None, boluses=None, device=None, stride=5,
                 n_cal_days=5, threshold_k=2.0, min_event_min=30, min_confidence=0.30,
@@ -113,13 +124,13 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
         return ([], np.asarray([], dtype=float)) if return_scores else []
 
     # per-patient robust threshold on the first n_cal_days of (baseline) scores.
-    # threshold_k curbs over-detection (higher k → fewer flags).
+    # threshold_k curbs over-detection (higher k -> fewer flags).
     n_cal = min(len(scores), n_cal_days * 1440 // stride)
     thr = calibrate_threshold(scores, n_cal, k=threshold_k)
     flagged = [s for s, sc in zip(starts, scores) if sc > thr]
 
     # rule-derived meal labels (deterministic), if meals are logged.
-    # boluses may be an empty list — that IS the "missed" case — so test for None.
+    # boluses may be an empty list - that IS the "missed" case - so test for None.
     rule_minutes = classify_meals(meals, boluses or [], rule_cfg) if meals is not None else {}
 
     pos = {s: i for i, s in enumerate(starts)}
@@ -127,7 +138,7 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
     for grp in _group_events(flagged):
         start_min = grp[0] + L                       # anomaly lives in the horizon
         end_min = grp[-1] + WIN
-        if end_min - start_min < min_event_min:      # drop short blips → less over-detection
+        if end_min - start_min < min_event_min:      # drop short blips -> less over-detection
             continue
         idx = [pos[s] for s in grp]
         emb = torch.from_numpy(embs[idx].mean(0, keepdims=True)).float().to(device)
@@ -138,7 +149,7 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
         top = CLASSES[int(probs.argmax())]
         ood_flag = dist > ood_radius
         # withhold the class when far from normal, when it just looks 'normal', or
-        # when the head is barely above chance — don't force a clinical-looking label
+        # when the head is barely above chance - don't force a clinical-looking label
         characterised = bool((not ood_flag) and (top != "normal") and (probs.max() >= min_confidence))
 
         rule_label = None
@@ -156,7 +167,7 @@ def build_diary(arr, valid, *, detector, head, ood_mu, ood_inv_cov, ood_radius=f
     return (events, np.asarray(scores, dtype=float)) if return_scores else events
 
 
-# ── CLI demo on an Ohio patient (needs trained detector + head checkpoints) ─────
+# -- CLI demo on an Ohio patient (needs trained detector + head checkpoints) -----
 
 def _cli():
     import argparse
@@ -182,7 +193,7 @@ def _cli():
     mu, inv_cov = np.asarray(hk["ood_mu"]), np.asarray(hk["ood_inv_cov"])
 
     p = load_ohio_patient(args.patient)
-    # OOD radius: CLI override → stored (99th-pct) radius → fallback heuristic
+    # OOD radius: CLI override -> stored (99th-pct) radius -> fallback heuristic
     radius = (args.ood_radius if args.ood_radius is not None
               else hk.get("ood_radius", _default_radius(mu)))
 
@@ -196,7 +207,7 @@ def _cli():
                          ood_radius=radius, threshold_k=args.threshold_k,
                          min_event_min=args.min_event_min, features=args.features,
                          meals=p.meals, boluses=p.boluses, device=device)
-    assert isinstance(events, list)   # no return_scores → list[Event] (narrows the union)
+    assert isinstance(events, list)   # no return_scores -> list[Event] (narrows the union)
     print(f"Patient {p.pid}: {len(events)} detected anomaly events")
     print("DETECTION generalises; CHARACTERISATION = similarity to synthetic archetypes, not diagnosis.\n")
     for e in events[: args.max_events]:
@@ -204,7 +215,7 @@ def _cli():
 
 
 def _default_radius(mu):
-    return float(np.sqrt(len(mu)) * 3.0)   # ~3σ in a chi-like sense; tune at deploy
+    return float(np.sqrt(len(mu)) * 3.0)   # ~3sigma in a chi-like sense; tune at deploy
 
 
 if __name__ == "__main__":

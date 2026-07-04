@@ -12,15 +12,15 @@ Typical usage
 
 Window format
 -------------
-    x      : float32 tensor [WINDOW_LEN x N_CHANNELS]   — z-scored signals
-    labels : dict[str, float]                             — binary per class
+    x      : float32 tensor [WINDOW_LEN x N_CHANNELS]   - z-scored signals
+    labels : dict[str, float]                             - binary per class
              1.0 if that anomaly class is present anywhere in the window, else 0.0
 
 Channels (columns 0-2 of x)
 ----------------------------
     0  blood_glucose    (mmol/L)
-    1  insulin_mU_min   (mU/min — basal + bolus)
-    2  cho_mg_announced (mg/min — bolus_carbs spread from bolus delivery time; 0 if missed bolus)
+    1  insulin_mU_min   (mU/min - basal + bolus)
+    2  cho_mg_announced (mg/min - bolus_carbs spread from bolus delivery time; 0 if missed bolus)
        This matches real CGM datasets: carbs are logged when the patient boluses,
        not the physiological absorption curve. cho_mg_min stays in the Parquet for reference.
 
@@ -29,12 +29,12 @@ Anomaly classes in labels
     bolus   : missed, late
     meal    : large
     exercise: prolonged, anaerobic
-    (aerobic is not an anomaly — it is the expected exercise behavior)
+    (aerobic is not an anomaly - it is the expected exercise behavior)
 
 Memory note
 -----------
 load_patients streams the Parquet in Arrow batches and stores one compact
-float32 [T, 8] array per patient — the 12k-patient training split costs
+float32 [T, 8] array per patient - the 12k-patient training split costs
 ~8 GB. Window indexes are int32 numpy arrays (a Python tuple list at
 stride=1 alone was ~8 GB). Never convert the full cohort to pandas: the
 object-dtype string columns need >64 GB and OOM-killed the HPC jobs.
@@ -55,7 +55,7 @@ import pyarrow.parquet as pq
 import torch
 from torch.utils.data import Dataset
 
-# ── public constants ───────────────────────────────────────────────────────────
+# -- public constants -----------------------------------------------------------
 
 CHANNELS: list[str] = ["blood_glucose", "insulin_mU_min", "cho_mg_announced"]
 N_CHANNELS: int = len(CHANNELS)  # 3
@@ -63,15 +63,15 @@ N_CHANNELS: int = len(CHANNELS)  # 3
 ANOMALY_CLASSES: list[str] = ["missed", "late", "large", "prolonged", "anaerobic"]
 
 WINDOW_LEN: int = 120   # 2h context window (minutes)
-TRAIN_STRIDE: int = 15  # 15-min stride → ~7× window overlap during training
-EVAL_STRIDE: int = 1    # 1-min stride → per-minute anomaly scores at inference
+TRAIN_STRIDE: int = 15  # 15-min stride -> ~7x window overlap during training
+EVAL_STRIDE: int = 1    # 1-min stride -> per-minute anomaly scores at inference
 
 # Default file paths (relative to project root, i.e. run from dtu-diabetes-ml-dashboard/)
 _PARQUET = Path("ml/data/sim_data/results_5000p_42d.parquet")
 _SCALER_FILE = Path("ml/data/scalers.json")
 _SPLIT_FILE = Path("ml/data/patient_split.json")
 
-# ── reproducibility ─────────────────────────────────────────────────────────
+# -- reproducibility ---------------------------------------------------------
 
 def set_seed(seed: int = 42) -> None:
     """Seed Python, NumPy and torch (CPU+CUDA) RNGs for reproducible runs."""
@@ -106,7 +106,7 @@ _CLASS_TO_COL: dict[str, str] = {
 }
 
 
-# ── patient split ──────────────────────────────────────────────────────────────
+# -- patient split --------------------------------------------------------------
 
 def make_patient_split(
     parquet: Path = _PARQUET,
@@ -118,7 +118,7 @@ def make_patient_split(
     Read all patient IDs from the Parquet, shuffle, split 60/20/20 by patient ID.
 
     Split is deterministic (fixed seed) and saved to JSON so training runs are
-    reproducible without re-computing.  Always split by patient, never by day —
+    reproducible without re-computing.  Always split by patient, never by day -
     mixing days from the same patient across train/val/test leaks physiology.
     """
     pf = pq.ParquetFile(parquet)
@@ -136,7 +136,7 @@ def make_patient_split(
     n_val = int(n * ratios[1])
 
     split: dict[str, list[str]] = {
-        "_parquet": str(parquet),
+        "_parquet": str(parquet),   # type: ignore  # metadata key; the rest are ID lists
         "train": all_ids[:n_train],
         "val":   all_ids[n_train : n_train + n_val],
         "test":  all_ids[n_train + n_val :],
@@ -146,12 +146,12 @@ def make_patient_split(
     out.write_text(json.dumps(split, indent=2))
     print(
         f"Split: {len(split['train'])} train / {len(split['val'])} val / "
-        f"{len(split['test'])} test  →  {out}"
+        f"{len(split['test'])} test  ->  {out}"
     )
     return split
 
 
-# ── data loading ───────────────────────────────────────────────────────────────
+# -- data loading ---------------------------------------------------------------
 
 def load_patients(
     patient_ids: list[str],
@@ -162,14 +162,14 @@ def load_patients(
     Load signal + label arrays for the requested patients from Parquet.
 
     Streams the file in Arrow record batches and converts each batch straight
-    to numpy — the full cohort is never materialised as an Arrow table or a
+    to numpy - the full cohort is never materialised as an Arrow table or a
     pandas DataFrame. (A pandas conversion of the 12k-patient training split
     needs >64 GB because the string columns become Python objects; it
-    OOM-killed the HPC jobs.) Peak memory ≈ the compact output dict.
+    OOM-killed the HPC jobs.) Peak memory ~ the compact output dict.
 
     Returns
     -------
-    dict pid → float32 array of shape [T, 8]  where T = n_days × 1440 minutes:
+    dict pid -> float32 array of shape [T, 8]  where T = n_days x 1440 minutes:
         columns 0-2  : signal channels (CHANNELS order, see module docstring)
         columns 3-7  : binary anomaly flags per minute (ANOMALY_CLASSES order)
 
@@ -188,14 +188,14 @@ def load_patients(
 
     want = pa.array(sorted({str(p) for p in patient_ids}), type=pa.large_string())
 
-    # Per-patient chunk accumulators — a patient can span several batches
+    # Per-patient chunk accumulators - a patient can span several batches
     arr_chunks: dict[str, list[np.ndarray]] = {}
     min_chunks: dict[str, list[np.ndarray]] = {}
 
     pf = pq.ParquetFile(parquet)
     for batch in pf.iter_batches(batch_size=batch_rows, columns=base_cols):
-        keep = pc.is_in(batch.column("patient_id"), value_set=want)
-        n_keep = pc.sum(keep).as_py() or 0
+        keep = pc.is_in(batch.column("patient_id"), value_set=want)   # type: ignore  # pyarrow.compute is dynamically generated
+        n_keep = pc.sum(keep).as_py() or 0   # type: ignore  # pyarrow.compute is dynamically generated
         if n_keep == 0:
             continue
         if n_keep < batch.num_rows:
@@ -212,8 +212,8 @@ def load_patients(
             else:
                 arr[:, j] = batch.column(ch).to_numpy(zero_copy_only=False)
         for k, cls in enumerate(ANOMALY_CLASSES):
-            # null labels mean "normal"/"none" — never equal to an anomaly class
-            eq = pc.fill_null(pc.equal(batch.column(_CLASS_TO_COL[cls]), cls), False)
+            # null labels mean "normal"/"none" - never equal to an anomaly class
+            eq = pc.fill_null(pc.equal(batch.column(_CLASS_TO_COL[cls]), cls), False)   # type: ignore  # pyarrow.compute is dynamically generated
             arr[:, N_CHANNELS + k] = eq.to_numpy(zero_copy_only=False)
 
         for pid in np.unique(pids):
@@ -233,7 +233,7 @@ def load_patients(
     return data
 
 
-# ── scalers ────────────────────────────────────────────────────────────────────
+# -- scalers --------------------------------------------------------------------
 
 def fit_scalers(
     patient_data: dict[str, np.ndarray],
@@ -275,7 +275,7 @@ def fit_scalers(
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2))
-    print(f"Scalers saved  →  {out}")
+    print(f"Scalers saved  ->  {out}")
     return scalers
 
 
@@ -292,7 +292,7 @@ def _apply_scalers(
     GLOBAL z-score: signal columns (0-2) scaled by population stats. Labels
     untouched.
 
-    inplace=True mutates arr and returns it — skips the full-array copy,
+    inplace=True mutates arr and returns it - skips the full-array copy,
     which matters when scaling the 12k-patient training dict (~8 GB).
     """
     out = arr if inplace else arr.copy()
@@ -301,7 +301,7 @@ def _apply_scalers(
     return out
 
 
-# ── normalization modes ──────────────────────────────────────────────────────
+# -- normalization modes ------------------------------------------------------
 
 NORM_MODES = ("per_patient", "global")
 
@@ -316,7 +316,7 @@ def _patient_zscore(arr: np.ndarray, inplace: bool = False) -> np.ndarray:
     population), puts every patient on a comparable scale for population
     pretraining, and matches the per-patient threshold calibration downstream.
 
-    Uses the patient's whole series, so it is acausal — fine for synthetic
+    Uses the patient's whole series, so it is acausal - fine for synthetic
     training/eval. The causal, deployment-faithful version (baseline-days
     stats only) is scheduled separately for real-data evaluation.
     """
@@ -347,7 +347,7 @@ def normalize_patients(
     raise ValueError(f"unknown norm mode {norm!r}; expected one of {NORM_MODES}")
 
 
-# ── window index ───────────────────────────────────────────────────────────────
+# -- window index ---------------------------------------------------------------
 
 def _make_window_index(
     patient_data: dict[str, np.ndarray],
@@ -358,12 +358,12 @@ def _make_window_index(
 
     A window is valid when [start : start + WINDOW_LEN] fits entirely within
     the patient's continuous time series.  Windows freely cross day boundaries
-    — physiological dynamics are continuous across midnight.
+    - physiological dynamics are continuous across midnight.
 
     Returns (pids, pid_idx, starts): window i belongs to patient
     pids[pid_idx[i]] and begins at row starts[i].  Stored as numpy because a
     Python list of (pid, start) tuples at stride=1 on a 4k-patient split is
-    ~80M tuples ≈ 8 GB.
+    ~80M tuples ~ 8 GB.
     """
     pids = list(patient_data.keys())
     pid_parts: list[np.ndarray] = []
@@ -378,7 +378,7 @@ def _make_window_index(
     return pids, np.concatenate(pid_parts), np.concatenate(start_parts)
 
 
-# ── dataset class ──────────────────────────────────────────────────────────────
+# -- dataset class --------------------------------------------------------------
 
 class GlucoseWindowDataset(Dataset):
     """
@@ -389,7 +389,7 @@ class GlucoseWindowDataset(Dataset):
     x      : float32 tensor  [WINDOW_LEN, N_CHANNELS]
              z-scored signal channels for the i-th window
     labels : dict[str, float]
-             binary flag per ANOMALY_CLASS — 1.0 if that class appears
+             binary flag per ANOMALY_CLASS - 1.0 if that class appears
              at any minute within the window, else 0.0
     """
 
@@ -415,7 +415,7 @@ class GlucoseWindowDataset(Dataset):
         norm        : 'per_patient' (default, spec) or 'global'
         """
         raw = _preloaded if _preloaded is not None else load_patients(patient_ids, parquet)
-        # Scale in place only when we loaded the data ourselves — a caller's
+        # Scale in place only when we loaded the data ourselves - a caller's
         # _preloaded dict must not be mutated (build_datasets frees its copy).
         own = _preloaded is None
         self._data: dict[str, np.ndarray] = normalize_patients(
@@ -433,7 +433,7 @@ class GlucoseWindowDataset(Dataset):
 
         Windows are stored contiguous per patient (see _make_window_index) and
         the eval loader runs shuffle=False, so a score array produced in this
-        same order can be sliced into per-patient blocks — needed for
+        same order can be sliced into per-patient blocks - needed for
         per-patient threshold calibration. Within each block the windows are in
         time order, so "first N days" means this patient's first N days.
         """
@@ -448,13 +448,13 @@ class GlucoseWindowDataset(Dataset):
         x = torch.from_numpy(window[:, :N_CHANNELS].copy())   # [120, 3]
 
         # Collapse per-minute flags to window-level binary presence
-        label_flags = window[:, N_CHANNELS:].max(axis=0)      # [5] — max over time
+        label_flags = window[:, N_CHANNELS:].max(axis=0)      # [5] - max over time
         labels = {cls: float(label_flags[j]) for j, cls in enumerate(ANOMALY_CLASSES)}
 
         return x, labels
 
 
-# ── convenience builder ────────────────────────────────────────────────────────
+# -- convenience builder --------------------------------------------------------
 
 def build_datasets(
     split: Optional[dict[str, list[str]]] = None,
@@ -483,11 +483,11 @@ def build_datasets(
     train_stride : window stride for the training set (default 15 min)
     eval_stride  : window stride for val/test (default 1 min)
     max_per_split: cap each split to N patients (for memory-limited dev runs)
-    max_val      : cap the val split to N patients (after max_per_split) — a
+    max_val      : cap the val split to N patients (after max_per_split) - a
                    stable checkpoint-selection signal needs far fewer than the
                    full 4k val patients, and scoring 5M val windows every epoch
                    is wasteful. Train and test are untouched.
-    include_*    : skip building unused splits — None is returned in their
+    include_*    : skip building unused splits - None is returned in their
                    place. Pretraining doesn't need test; anomaly scoring
                    doesn't need train/val. Skipping the 12k-patient train
                    load saves minutes of I/O and ~16 GB of RAM.
@@ -495,19 +495,19 @@ def build_datasets(
 
     Normalization
     -------------
-    norm='per_patient' (default): each patient is z-scored by its own stats —
+    norm='per_patient' (default): each patient is z-scored by its own stats -
     no population scalers, no cache, and eval-only runs never touch the train
     split (so include_train=False skips it for free).
 
     norm='global': population scalers are fit on the train split, written to
     ml/data/scalers.json tagged with the parquet path, and re-used when the
     tag matches (lets eval-only runs skip the train load). Caching is disabled
-    when max_per_split is set — scalers fit on a subset must never leak into
+    when max_per_split is set - scalers fit on a subset must never leak into
     full runs.
 
     Returns
     -------
-    (train_ds, val_ds, test_ds)  — GlucoseWindowDataset or None per include flag
+    (train_ds, val_ds, test_ds)  - GlucoseWindowDataset or None per include flag
     """
     if norm not in NORM_MODES:
         raise ValueError(f"unknown norm mode {norm!r}; expected one of {NORM_MODES}")
@@ -518,7 +518,7 @@ def build_datasets(
             if cached.get("_parquet") == str(parquet):
                 split = cached
             else:
-                print(f"Split cache is for a different parquet — regenerating…")
+                print("Split cache is for a different parquet - regenerating...")
                 split = make_patient_split(parquet)
         else:
             split = make_patient_split(parquet)
@@ -533,20 +533,20 @@ def build_datasets(
         test_ids  = test_ids[:max_per_split]
 
     # Validation only needs a representative subset for a stable checkpoint-
-    # selection signal — capping it avoids scoring millions of val windows
+    # selection signal - capping it avoids scoring millions of val windows
     # every epoch. Does not touch train (gradient steps) or test (final eval).
     if max_val is not None:
         val_ids = val_ids[:max_val]
 
     # Global mode fits/caches population scalers on the train split. Per-patient
-    # mode needs none of this — each patient self-normalizes.
+    # mode needs none of this - each patient self-normalizes.
     use_scaler_cache = norm == "global" and max_per_split is None
     scalers: Optional[dict[str, dict[str, float]]] = None
     if use_scaler_cache and _SCALER_FILE.exists():
         cached_sc = load_scalers()
         if cached_sc.get("_parquet") == str(parquet):
             scalers = {ch: cached_sc[ch] for ch in CHANNELS}
-            print(f"Re-using cached scalers  ←  {_SCALER_FILE}")
+            print(f"Re-using cached scalers  <-  {_SCALER_FILE}")
 
     train_ds = val_ds = test_ds = None
 
@@ -554,14 +554,14 @@ def build_datasets(
     # only) population scalers still need fitting on the train split.
     need_scalers = norm == "global" and scalers is None
     if include_train or need_scalers:
-        print(f"Loading {len(train_ids)} training patients …")
+        print(f"Loading {len(train_ids)} training patients ...")
         train_raw = load_patients(train_ids, parquet)
         if need_scalers:
             scalers = fit_scalers(
                 train_raw, parquet=parquet if use_scaler_cache else None
             )
         if include_train:
-            print(f"Building train dataset ({len(train_ids)} patients, stride={train_stride}, norm={norm}) …")
+            print(f"Building train dataset ({len(train_ids)} patients, stride={train_stride}, norm={norm}) ...")
             train_ds = GlucoseWindowDataset(
                 train_ids, scalers, parquet, stride=train_stride,
                 _preloaded=train_raw, norm=norm,
@@ -569,11 +569,11 @@ def build_datasets(
         del train_raw  # scaled copy now lives only in train_ds._data
 
     if include_val:
-        print(f"Building val dataset ({len(val_ids)} patients, stride={eval_stride}, norm={norm}) …")
+        print(f"Building val dataset ({len(val_ids)} patients, stride={eval_stride}, norm={norm}) ...")
         val_ds = GlucoseWindowDataset(val_ids, scalers, parquet, stride=eval_stride, norm=norm)
 
     if include_test:
-        print(f"Building test dataset ({len(test_ids)} patients, stride={eval_stride}, norm={norm}) …")
+        print(f"Building test dataset ({len(test_ids)} patients, stride={eval_stride}, norm={norm}) ...")
         test_ds = GlucoseWindowDataset(test_ids, scalers, parquet, stride=eval_stride, norm=norm)
 
     return train_ds, val_ds, test_ds

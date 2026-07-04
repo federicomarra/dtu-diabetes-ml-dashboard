@@ -2,8 +2,8 @@
 Plot PatchTST anomaly detection evaluation figures.
 
 Produces two figures saved to ml/figures/:
-  1. pr_curves.png    — Precision-recall curve per anomaly class (AUPRC in legend)
-  2. score_dist.png   — Anomaly score distribution: normal vs anomaly windows
+  1. pr_curves.png    - Precision-recall curve per anomaly class (AUPRC in legend)
+  2. score_dist.png   - Anomaly score distribution: normal vs anomaly windows
 
 Both figures are thesis-quality (300 dpi, labelled axes, clean style).
 
@@ -28,15 +28,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dataset import build_datasets, ANOMALY_CLASSES, EVAL_STRIDE
 from models.patch_tst.model import PatchTST
-from models.patch_tst.anomaly_score import score_dataset, score_dataset_last_patch
+from models.patch_tst.anomaly_score import score_dataset
 
-# ── config ────────────────────────────────────────────────────────────────────
+# -- config --------------------------------------------------------------------
 
 CHECKPOINT  = Path("ml/data/checkpoints/patchtst_best.pt")
 PARQUET     = Path("ml/data/sim_data/results_500p_14d_clean.parquet")
 FIGURES_DIR = Path("ml/figures")
 
-# one colour per anomaly class — colourblind-safe palette
+# one colour per anomaly class - colourblind-safe palette
 CLASS_COLORS = {
     "missed":    "#2563eb",
     "late":      "#dc2626",
@@ -46,7 +46,7 @@ CLASS_COLORS = {
 }
 
 
-# ── figure 1: precision-recall curves ────────────────────────────────────────
+# -- figure 1: precision-recall curves ----------------------------------------
 
 def plot_pr_curves(
     scores: np.ndarray,
@@ -108,10 +108,10 @@ def plot_pr_curves(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved -> {out_path}")
 
 
-# ── figure 2: score distribution ─────────────────────────────────────────────
+# -- figure 2: score distribution ---------------------------------------------
 
 def plot_score_distribution(
     scores: np.ndarray,
@@ -143,7 +143,7 @@ def plot_score_distribution(
     ax.set_xlabel("Reconstruction MSE (anomaly score)", fontsize=12)
     ax.set_ylabel("Density", fontsize=12)
     ax.set_title(
-        "Anomaly score distribution — normal vs anomaly windows",
+        "Anomaly score distribution - normal vs anomaly windows",
         fontsize=12, fontweight="bold",
     )
     ax.legend(fontsize=10)
@@ -153,10 +153,10 @@ def plot_score_distribution(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=300)
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved -> {out_path}")
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# -- main ----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Plot PatchTST eval figures")
@@ -164,15 +164,15 @@ def main() -> None:
     parser.add_argument("--batch_size",  type=int,  default=512)
     parser.add_argument("--num_workers", type=int,  default=4)
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
-                        help="normalization mode — MUST match the pretrain run")
+                        help="normalization mode - MUST match the pretrain run")
     parser.add_argument("--smoke_test",  action="store_true",
-                        help="Use 10 test patients only — fast local run")
+                        help="Use 10 test patients only - fast local run")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── load model ────────────────────────────────────────────────────────────
+    # -- load model ------------------------------------------------------------
     if not args.checkpoint.exists():
         raise FileNotFoundError(
             f"Checkpoint not found: {args.checkpoint}\n"
@@ -183,12 +183,13 @@ def main() -> None:
     model.load_state_dict(ckpt["model_state"])
     print(f"Loaded checkpoint epoch {ckpt['epoch']}  val_loss={ckpt['val_loss']:.4f}")
 
-    # ── data ──────────────────────────────────────────────────────────────────
+    # -- data ------------------------------------------------------------------
     max_per_split = 10 if args.smoke_test else None
     _, _, test_ds = build_datasets(
         parquet=PARQUET, max_per_split=max_per_split,
         include_train=False, include_val=False, norm=args.norm,
     )
+    assert test_ds is not None                          # built with include_test (the default)
     print(f"Test windows: {len(test_ds):,}  (stride={EVAL_STRIDE} min)")
 
     loader = DataLoader(
@@ -199,12 +200,12 @@ def main() -> None:
         pin_memory  = device.type == "cuda",
     )
 
-    # ── score ─────────────────────────────────────────────────────────────────
-    print("Scoring…")
+    # -- score -----------------------------------------------------------------
+    print("Scoring...")
     scores, labels = score_dataset(model, loader, device)
     print(f"Score range: min={scores.min():.4f}  max={scores.max():.4f}  mean={scores.mean():.4f}")
 
-    # ── figures ───────────────────────────────────────────────────────────────
+    # -- figures ---------------------------------------------------------------
     plot_pr_curves(scores, labels, FIGURES_DIR / "pr_curves.png")
     plot_score_distribution(scores, labels, FIGURES_DIR / "score_dist.png")
 

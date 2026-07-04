@@ -10,7 +10,7 @@ Both models are evaluated on the same test patients with the same eval stride
 PatchTST anomaly score : reconstruction MSE (full-window, no masking at inference)
 CARLA anomaly score    : GMM negative log-likelihood on encoder embeddings
 
-PRIMARY metric: AUPRC. AUROC secondary. Both are rank-based — absolute score
+PRIMARY metric: AUPRC. AUROC secondary. Both are rank-based - absolute score
 scales differ between models but comparisons via these metrics are valid.
 
 Usage
@@ -53,7 +53,7 @@ SPLIT_FILE    = Path("ml/data/patient_split.json")
 FIGURES_DIR   = Path("ml/figures")
 
 
-# ── shared helpers ────────────────────────────────────────────────────────────
+# -- shared helpers ------------------------------------------------------------
 
 def _metrics(scores: np.ndarray, labels: dict[str, np.ndarray]) -> tuple[dict, dict]:
     auprc = {
@@ -69,7 +69,7 @@ def _metrics(scores: np.ndarray, labels: dict[str, np.ndarray]) -> tuple[dict, d
     return auprc, auroc
 
 
-# ── PatchTST scoring ──────────────────────────────────────────────────────────
+# -- PatchTST scoring ----------------------------------------------------------
 
 def score_patchtst(
     checkpoint: Path,
@@ -86,7 +86,7 @@ def score_patchtst(
     return scores, labels
 
 
-# ── CARLA scoring ─────────────────────────────────────────────────────────────
+# -- CARLA scoring -------------------------------------------------------------
 
 def score_carla(
     checkpoint: Path,
@@ -107,7 +107,7 @@ def score_carla(
     scalers = load_scalers() if norm == "global" else None
 
     # Fit GMM on normal training embeddings
-    print("  Embedding training set for GMM fitting …")
+    print("  Embedding training set for GMM fitting ...")
     raw_train    = load_patients(train_ids, parquet)
     scaled_train = normalize_patients(raw_train, norm=norm, scalers=scalers, inplace=True)
     train_ds     = ContrastiveDataset(scaled_train, stride=60)   # GMM subsamples anyway
@@ -117,8 +117,8 @@ def score_carla(
     pca, gmm   = fit_gmm(normal_emb)
 
     # Score test set (reuse GlucoseWindowDataset from test_loader for labels)
-    print("  Scoring test set …")
-    # numpy chunks, not Python floats — stride-1 test scoring is 80M windows
+    print("  Scoring test set ...")
+    # numpy chunks, not Python floats - stride-1 test scoring is 80M windows
     all_scores: list[np.ndarray]            = []
     all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
 
@@ -135,7 +135,7 @@ def score_carla(
     return scores_arr, labels_arr
 
 
-# ── table printing ────────────────────────────────────────────────────────────
+# -- table printing ------------------------------------------------------------
 
 def print_table(
     pt_auprc: dict, pt_auroc: dict,
@@ -148,7 +148,7 @@ def print_table(
     for cls in ANOMALY_CLASSES:
         pt_ap = pt_auprc[cls]
         ca_ap = ca_auprc[cls]
-        winner_ap = "◀" if ca_ap > pt_ap else ("▶" if pt_ap > ca_ap else " ")
+        winner_ap = "<" if ca_ap > pt_ap else (">" if pt_ap > ca_ap else " ")
         print(
             f"{cls:<12} {prevalence[cls]:>5.2%}  "
             f"{pt_ap:>14.4f}  {ca_ap:>11.4f} {winner_ap} "
@@ -160,7 +160,7 @@ def print_table(
     print(f"{'mean AUPRC':<12} {'':>6}  {mean_pt:>14.4f}  {mean_ca:>11.4f}")
 
 
-# ── bar chart ─────────────────────────────────────────────────────────────────
+# -- bar chart -----------------------------------------------------------------
 
 def save_bar_chart(
     pt_auprc: dict, ca_auprc: dict, prevalence: dict,
@@ -178,7 +178,7 @@ def save_bar_chart(
     ax.set_xticks(x)
     ax.set_xticklabels(ANOMALY_CLASSES, fontsize=11)
     ax.set_ylabel("AUPRC", fontsize=12)
-    ax.set_title("PatchTST vs CARLA — AUPRC per anomaly class", fontsize=13)
+    ax.set_title("PatchTST vs CARLA - AUPRC per anomaly class", fontsize=13)
     ax.legend(fontsize=10)
     ax.set_ylim(0, max(max(pt_auprc.values()), max(ca_auprc.values())) * 1.3)
     ax.yaxis.grid(True, linestyle="--", alpha=0.5)
@@ -187,10 +187,10 @@ def save_bar_chart(
     out = FIGURES_DIR / "model_comparison.png"
     fig.savefig(out, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"\nFigure saved → {out}")
+    print(f"\nFigure saved -> {out}")
 
 
-# ── main ───────────────────────────────────────────────────────────────────────
+# -- main -----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PatchTST vs CARLA comparison")
@@ -198,9 +198,9 @@ def main() -> None:
     parser.add_argument("--carla_ckpt",    type=Path, default=CARLA_CKPT)
     parser.add_argument("--parquet",       type=Path, default=PARQUET)
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
-                        help="normalization mode — MUST match both pretrain runs")
+                        help="normalization mode - MUST match both pretrain runs")
     parser.add_argument("--smoke_test", action="store_true",
-                        help="10 test patients only — fast sanity check")
+                        help="10 test patients only - fast sanity check")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -217,7 +217,7 @@ def main() -> None:
     # include_train=False: per-patient norm needs no train load; global norm
     # reads the cached scalers written during pretraining. Keep the full train
     # list in the split so a global refit (if cache missing) uses all patients.
-    print("Building test dataset …")
+    print("Building test dataset ...")
     _, _, test_ds = build_datasets(
         split={"train": split["train"], "val": split["val"], "test": test_ids},
         parquet=args.parquet,
@@ -226,14 +226,15 @@ def main() -> None:
         include_val=False,
         norm=args.norm,
     )
+    assert test_ds is not None                          # built with include_test (the default)
     test_loader = DataLoader(test_ds, batch_size=512, shuffle=False, num_workers=4)
 
-    # ── PatchTST ───────────────────────────────────────────────────────────────
+    # -- PatchTST ---------------------------------------------------------------
     print(f"\n[PatchTST] Loading checkpoint: {args.patchtst_ckpt}")
     pt_scores, pt_labels = score_patchtst(args.patchtst_ckpt, test_loader, device)
     pt_auprc, pt_auroc   = _metrics(pt_scores, pt_labels)
 
-    # ── CARLA ──────────────────────────────────────────────────────────────────
+    # -- CARLA ------------------------------------------------------------------
     print(f"\n[CARLA] Loading checkpoint: {args.carla_ckpt}")
     ca_scores, ca_labels = score_carla(
         args.carla_ckpt, train_ids, test_loader, device, args.parquet, args.norm
@@ -246,7 +247,7 @@ def main() -> None:
     # cross-class contamination that depresses per-class AUPRC
     pt_any = any_anomaly_label(pt_labels)
     ca_any = any_anomaly_label(ca_labels)
-    print(f"\nANY-ANOMALY detection (any class vs normal | baseline ≈ {pt_any.mean():.2%})")
+    print(f"\nANY-ANOMALY detection (any class vs normal | baseline ~ {pt_any.mean():.2%})")
     print(f"  PatchTST  AUPRC={average_precision_score(pt_any, pt_scores):.4f}  "
           f"AUROC={roc_auc_score(pt_any, pt_scores):.4f}")
     print(f"  CARLA     AUPRC={average_precision_score(ca_any, ca_scores):.4f}  "
