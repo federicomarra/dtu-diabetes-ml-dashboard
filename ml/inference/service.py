@@ -4,18 +4,18 @@ Stateless ML inference microservice (Flask, port 5001).
 The C# backend orchestrates; this service only does INFERENCE. The backend POSTs
 a patient's `histories` window as JSON; we run XCHANNEL detection + the missed/late
 rule layer and return the anomalies (filtered to the frontend-chosen threshold).
-The backend writes them to the DB and returns them to the caller — this service
+The backend writes them to the DB and returns them to the caller - this service
 never touches the database.
 
-Design (see ml/docs/SYSTEM_INTEGRATION.md):
+Design:
   - DETECTOR-ONLY for the demo: the characterisation head is dropped. For a
-    missed/late-only demo it is redundant — the rule layer labels missed/late
+    missed/late-only demo it is redundant - the rule layer labels missed/late
     deterministically from logged carbs+insulin, and anomaly_strength comes from the
     score. No head checkpoint, no MC-dropout/OOD, one forward pass per window.
   - model loaded ONCE at startup (torch + checkpoint = seconds; never per request).
   - `patient_id` is request-envelope metadata, echoed back; the math ignores it.
   - anomaly_strength = the event score's percentile among THIS patient's windows
-    (0-100%) — the honest, self-calibrating UI knob. Only `missed_bolus`/`late_bolus`
+    (0-100%) - the honest, self-calibrating UI knob. Only `missed_bolus`/`late_bolus`
     are surfaced (other classes = future work).
 
 Request  (POST /infer):
@@ -32,11 +32,11 @@ Response:
       "anomaly_type": "missed_bolus"|"late_bolus",   # DB-allowed type (rule-named or default)
       "description": str,              # honest qualifier (rule-confirmed vs model-detected/unconfirmed)
       "rule_confirmed": bool,          # True = a logged meal/bolus pattern named it; False = detector-only
-      "severity": float,               # σ above THIS patient's baseline median (interpretable, stable across queries)
-      "anomaly_strength": 0.0-100.0,   # severity relative to the strongest flag — magnitude bar (UI knob)
+      "severity": float,               # sigma above THIS patient's baseline median (interpretable, stable across queries)
+      "anomaly_strength": 0.0-100.0,   # severity relative to the strongest flag - magnitude bar (UI knob)
       "score": float}]}                # raw surprise (forecast residual)
-The frontend thresholds on `severity` (σ, e.g. "show > 3σ") or `anomaly_strength`
-(0-100 bar). Both self-calibrate per patient — no absolute score knowledge needed.
+The frontend thresholds on `severity` (sigma, e.g. "show > 3sigma") or `anomaly_strength`
+(0-100 bar). Both self-calibrate per patient - no absolute score knowledge needed.
 Severity is the honest cross-query number; strength is a within-query display bar.
 """
 
@@ -64,7 +64,7 @@ _MODEL: dict = {}
 
 
 def _load_model() -> dict:
-    """Load the detector ONCE (called at startup). No head — detector-only demo."""
+    """Load the detector ONCE (called at startup). No head - detector-only demo."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     det = forecaster_from_ckpt(torch.load(DETECTOR_CKPT, map_location=device), device)
     det.eval()
@@ -91,7 +91,7 @@ def infer():
     arr, valid, t0 = histories_to_array(rows)
     if arr.shape[0] == 0 or valid.sum() == 0 or t0 is None:
         return jsonify(patient_id=patient_id, n_windows=0, anomalies=[]), 200
-    assert t0 is not None  # narrowed by the guard above (non-empty rows → a start time)
+    assert t0 is not None  # narrowed by the guard above (non-empty rows -> a start time)
 
     # Rule input = logged meal/bolus EVENTS (actual carb vs bolus timing), a stream
     # SEPARATE from the detector's announced-carb histories channel. The backend sends
@@ -113,8 +113,8 @@ def infer():
         meals=meals, boluses=boluses, threshold_k=threshold_k, min_event_min=min_event_min,
     )
 
-    # 0-100 strength bar = each event's severity (σ above baseline) relative to the
-    # STRONGEST surfaced anomaly → magnitude-discriminating (the true outlier reads 100%,
+    # 0-100 strength bar = each event's severity (sigma above baseline) relative to the
+    # STRONGEST surfaced anomaly -> magnitude-discriminating (the true outlier reads 100%,
     # marginal flags read low), unlike a percentile that saturates at ~100% for all of them.
     sev_max = max((e.severity for e in events), default=1.0) or 1.0
 
@@ -124,7 +124,7 @@ def infer():
     # DETECTOR-SURFACED: every detected excursion is an anomaly (the model's contribution).
     # The rule only NAMES it when a logged meal/bolus pattern coincides; otherwise it's an
     # honest model-detected excursion with no logged cause. On real data the rule rarely
-    # coincides (proxy labels are sparse), so gating on it would surface ~nothing — hence
+    # coincides (proxy labels are sparse), so gating on it would surface ~nothing - hence
     # we surface the detection and annotate. DB type stays missed/late (CHECK); the honest
     # qualifier lives in `description`.
     out = []
@@ -143,7 +143,7 @@ def infer():
             "anomaly_type": atype,
             "description": desc,
             "rule_confirmed": e.rule_label is not None,
-            "severity": round(float(e.severity), 2),        # σ above this patient's baseline (interpretable, stable)
+            "severity": round(float(e.severity), 2),        # sigma above this patient's baseline (interpretable, stable)
             "anomaly_strength": strength(e.severity),        # 0-100 bar relative to the strongest flag (UI knob)
             "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
         })

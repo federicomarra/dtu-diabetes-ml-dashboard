@@ -1,11 +1,11 @@
 """
-Head-free detection for the demo: XCHANNEL forecast-residual → per-patient robust
-threshold → events → deterministic missed/late rule label.
+Head-free detection for the demo: XCHANNEL forecast-residual -> per-patient robust
+threshold -> events -> deterministic missed/late rule label.
 
 This is the lean path `build_diary` minus the characterisation head: for a
 missed/late-only demo the head is redundant (the rule labels missed/late
 deterministically from logged carbs+insulin, and anomaly_strength comes from the
-score), so we drop it — no head checkpoint, no MC-dropout, no OOD, and only ONE
+score), so we drop it - no head checkpoint, no MC-dropout, no OOD, and only ONE
 detector forward pass per window (we skip the embedding pass build_diary needs).
 
 DETECTION generalises ("unusual vs this patient's baseline"); the rule label is
@@ -29,7 +29,7 @@ from models.patch_tst.anomaly_score import calibrate_threshold  # noqa: E402
 from characterization.rules import classify_meals, RuleConfig  # noqa: E402
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
-MERGE_GAP_MIN = 30          # flagged window starts within this gap → one event
+MERGE_GAP_MIN = 30          # flagged window starts within this gap -> one event
 
 
 @dataclass
@@ -37,13 +37,13 @@ class Detection:
     start_min: int
     duration_min: int
     anomaly_score: float
-    severity: float          # σ above the patient's baseline median (same units as threshold_k)
+    severity: float          # sigma above the patient's baseline median (same units as threshold_k)
     rule_label: str | None   # 'missed' / 'late' (deterministic) or None
 
 
 def score_windows(arr, valid, detector, device, stride):
     """Per valid window: (start minute, forecast-residual score). One forward pass
-    (no embeddings — the head path is dropped)."""
+    (no embeddings - the head path is dropped)."""
     T = arr.shape[0]
     z = arr[:, :N_CHANNELS]
     starts = [s for s in range(0, T - WIN + 1, stride) if valid[s : s + WIN].all()]
@@ -84,11 +84,11 @@ def detect(arr, valid, *, detector, device=None, stride=5, n_cal_days=5,
         return [], np.asarray([], dtype=float)
 
     n_cal = min(len(scores), n_cal_days * 1440 // stride)
-    thr = calibrate_threshold(scores, n_cal, k=threshold_k)         # median + k·IQR on baseline days
+    thr = calibrate_threshold(scores, n_cal, k=threshold_k)         # median + k*IQR on baseline days
     flagged = [s for s, sc in zip(starts, scores) if sc > thr]
 
-    # robust baseline stats (same window/spread the threshold uses) → per-event severity
-    # in σ above the patient's median: interpretable AND magnitude-discriminating (unlike a
+    # robust baseline stats (same window/spread the threshold uses) -> per-event severity
+    # in sigma above the patient's median: interpretable AND magnitude-discriminating (unlike a
     # percentile, which saturates near 100% for every flagged tail event).
     base = scores[:n_cal]
     med = float(np.median(base))

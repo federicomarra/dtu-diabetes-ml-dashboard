@@ -1,16 +1,16 @@
 """
-Characterization (similarity) head — INSTRUCTIONS.md Stage 2 (§264–297).
+Characterization (similarity) head.
 
 A small supervised classifier on top of the FROZEN XCHANNEL encoder. It is
 trained ONLY on simulator ground-truth labels and, on real data, its output is
-framed as a humble *similarity to synthetic archetypes* — never a diagnosis:
+framed as a humble *similarity to synthetic archetypes* - never a diagnosis:
 
     "this window most resembles missed bolus (72%), late bolus (21%), other (7%)"
 
 Three honesty mechanisms, all here:
-  * MC Dropout — keep dropout ON at inference, run N passes → mean probability +
+  * MC Dropout - keep dropout ON at inference, run N passes -> mean probability +
     variance (predictive uncertainty).
-  * latent-OOD — Mahalanobis distance from the NORMAL-class embedding cluster;
+  * latent-OOD - Mahalanobis distance from the NORMAL-class embedding cluster;
     a window far from it + high anomaly score is flagged "uncharacterized"
     rather than force-fit to a class.
   * it classifies the DETECTOR'S representation; it does not re-detect.
@@ -34,7 +34,7 @@ _PRECEDENCE = ["missed", "late", "large", "prolonged", "anaerobic"]
 
 
 def window_class(label_flags: dict[str, float] | np.ndarray) -> int:
-    """Collapse per-class window flags → one class index (0=normal)."""
+    """Collapse per-class window flags -> one class index (0=normal)."""
     if isinstance(label_flags, dict):
         present = {c for c in ANOMALY_CLASSES if label_flags.get(c, 0.0) > 0}
     else:
@@ -67,7 +67,7 @@ def mc_predict(head: CharacterizationHead, z: torch.Tensor, n_passes: int = 30):
     """
     MC-Dropout prediction. Dropout stays ON (head.train()) so each pass samples a
     sub-network. Returns (mean_probs [B,C], uncertainty [B]) where uncertainty is
-    the mean per-class std across passes — high = the model disagrees with itself.
+    the mean per-class std across passes - high = the model disagrees with itself.
     """
     was_training = head.training
     head.train()                          # enable dropout
@@ -76,7 +76,7 @@ def mc_predict(head: CharacterizationHead, z: torch.Tensor, n_passes: int = 30):
     return probs.mean(0), probs.std(0).mean(-1)
 
 
-# ── latent OOD (Mahalanobis to the normal cluster) ──────────────────────────────
+# -- latent OOD (Mahalanobis to the normal cluster) ------------------------------
 
 def fit_ood(normal_embeddings: np.ndarray, reg: float = 1e-3):
     """Mean + inverse covariance of the NORMAL-class embeddings."""

@@ -1,5 +1,5 @@
 #!/bin/sh
-### Characterization head — train + eval on DTU HPC
+### Characterization head - train + eval on DTU HPC
 ###
 ### Trains the similarity head on the FROZEN XCHANNEL encoder (sim labels), then
 ### evaluates per-class recall / MC-uncertainty / OOD on the sim test set.
@@ -31,7 +31,7 @@ echo "Started:  $(date)"
 echo "-----"
 mkdir -p logs ml/data/checkpoints
 
-### features MUST match the XCHANNEL checkpoint used (raw → xchannel_best.pt).
+### features MUST match the XCHANNEL checkpoint used (raw -> xchannel_best.pt).
 echo "=== TRAIN characterization head ==="
 python ml/characterization/train_head.py \
     --features       raw \

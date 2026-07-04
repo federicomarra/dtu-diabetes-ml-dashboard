@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,12 +32,12 @@ def test_glucose_mgdl_to_mmol(tmp_path):
 
 def test_announced_carb_semantics_and_render(tmp_path):
     rows = _grid(40)
-    rows[5][7] = 4.0;  rows[5][6] = 3.0   # min25: carb 4 servings + bolus → ANNOUNCED meal
-    rows[10][7] = 2.0                     # min50: carb 2 servings, NO bolus → unannounced meal
-    rows[14][6] = 2.0                     # min70: bolus only → correction (no carb)
+    rows[5][7] = 4.0;  rows[5][6] = 3.0   # min25: carb 4 servings + bolus -> ANNOUNCED meal
+    rows[10][7] = 2.0                     # min50: carb 2 servings, NO bolus -> unannounced meal
+    rows[14][6] = 2.0                     # min70: bolus only -> correction (no carb)
     p = load_hupa_patient(_write_csv(tmp_path, rows))
     assert len(p.meals) == 2 and len(p.boluses) == 2          # 2 carb events, 2 bolus events
-    # the min25 bolus carries its announced carb (4 servings → 40 g); the min70 bolus none
+    # the min25 bolus carries its announced carb (4 servings -> 40 g); the min70 bolus none
     bg = {b.minute: b.carb_g for b in p.boluses}
     assert abs(bg[25] - 4.0 * EXCHANGE_G) < 1e-6 and bg[70] == 0.0
     arr = p.render()
@@ -51,5 +50,5 @@ def test_announced_carb_semantics_and_render(tmp_path):
 
 def test_basal_daily_total_physiological(tmp_path):
     p = load_hupa_patient(_write_csv(tmp_path, _grid(288, basal=0.056)))   # one day
-    daily_U = p.basal_mU_min.sum() / 1000.0                                # mU/min·min → U
+    daily_U = p.basal_mU_min.sum() / 1000.0                                # mU/min*min -> U
     assert 8.0 <= daily_U <= 40.0, f"daily basal {daily_U:.1f} U non-physiological"

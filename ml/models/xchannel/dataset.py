@@ -11,7 +11,7 @@ Differs from the PatchTST GlucoseWindowDataset in two ways:
         target    [H]      glucose over (t, t+H]  (what we forecast)
         labels    dict     per-class flag over the HORIZON region (for eval)
 
-We reuse dataset.load_patients / normalize_patients verbatim — same parquet,
+We reuse dataset.load_patients / normalize_patients verbatim - same parquet,
 same per-patient z-score, same numpy-int32 window index trick (a Python list of
 tuples OOMs at this scale).
 """
@@ -42,7 +42,7 @@ def _make_index(patient_data, stride, train_on):
     """
     Flat int32 window index. A window [s : s+WIN] is valid if it fits the series.
     If train_on='normal', additionally drop any window whose L+H span contains
-    an anomaly flag — so the forecaster only ever learns clean dynamics.
+    an anomaly flag - so the forecaster only ever learns clean dynamics.
     """
     pids = list(patient_data.keys())
     pid_parts, start_parts = [], []
@@ -52,7 +52,7 @@ def _make_index(patient_data, stride, train_on):
         starts = np.arange(0, T - WIN + 1, stride, dtype=np.int32)
         if train_on == "normal" and starts.size:
             flags = arr[:, N_CHANNELS:]                       # [T, 5]
-            any_flag = flags.max(axis=1)                      # [T] — 1 if any class
+            any_flag = flags.max(axis=1)                      # [T] - 1 if any class
             win_has = sliding_window_view(any_flag, WIN)[starts].max(axis=1)
             starts = starts[win_has == 0]                     # keep clean windows
         pid_parts.append(np.full(starts.shape[0], i, dtype=np.int32))

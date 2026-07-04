@@ -2,15 +2,15 @@
 XCHANNEL OhioT1DM generalization eval via RULE-DERIVED proxy labels.
 
 This is the valid real-data test (the synthetic input-only injection was proven
-invalid — below chance on sim — because it keeps real glucose fixed). Here we
+invalid - below chance on sim - because it keeps real glucose fixed). Here we
 do NOT perturb anything: we take the patient's REAL data and label which real
 meals were missed/late/large using the rule classifier (ml/characterization).
 These are genuine behavioural anomalies where glucose ACTUALLY reacts, so the
-conditional-forecast residual can detect them — exactly as on the simulator's
+conditional-forecast residual can detect them - exactly as on the simulator's
 native anomalies.
 
 Labels are noisy proxies (a logged meal with no bolus might be a snack the
-patient correctly skipped; 12 patients; low prevalence) — state that. But it is
+patient correctly skipped; 12 patients; low prevalence) - state that. But it is
 the real thing, not a fabrication.
 
 Usage
@@ -37,7 +37,7 @@ from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 from realdata.excursion import excursion_window  # noqa: E402
 
 LABEL_POST_MIN = 60          # flat fallback (legacy)
-# Class-specific post-meal label windows — MATCH the sim generator's
+# Class-specific post-meal label windows - MATCH the sim generator's
 # LABEL_WINDOW_{MISSED,LATE,LARGE}_END so the real-eval positive region lines up with
 # where the model was trained to fire (and where glucose actually diverges: audit shows
 # Ohio missed peaks 90-120min, flat at 30-60). Flat 60 caught almost none of the signal.
@@ -48,15 +48,15 @@ ALIGNED = LABEL_WIN["aligned"]   # fallback window for excursion mode (no rise f
 
 def clean_meals(p, meal_min_g: float, rescue_lookback: int = 30):
     """Drop snacks (< meal_min_g) and hypo-rescue carbs (glucose <3.9 in the prior
-    `rescue_lookback` min) — both are correct no-bolus behaviour and must NOT count
-    as 'missed'. See ml/docs/DETECTION_RATIONALE.md §6."""
+    `rescue_lookback` min) - both are correct no-bolus behaviour and must NOT count
+    as 'missed'."""
     out = []
     for m in p.meals:
         if m.carb_g < meal_min_g:
             continue
         lo = max(0, m.minute - rescue_lookback)
         win = p.glucose[lo : m.minute + 1]
-        if win.size and np.nanmin(win) < 3.9:            # preceded by a low → rescue
+        if win.size and np.nanmin(win) < 3.9:            # preceded by a low -> rescue
             continue
         out.append(m)
     return out
@@ -66,8 +66,8 @@ def label_array(p, cfg: RuleConfig, meals, win=None, mode="flat",
                 drop_no_excursion=False, stats=None) -> np.ndarray:
     """[T,8] flag array: rule-labelled meals marked over their post-meal window.
 
-    mode 'flat'/'aligned' → fixed `win[cls]` minutes from the meal minute.
-    mode 'excursion'       → glucose-derived window (ml/realdata/excursion.py); falls
+    mode 'flat'/'aligned' -> fixed `win[cls]` minutes from the meal minute.
+    mode 'excursion'       -> glucose-derived window (ml/realdata/excursion.py); falls
     back to the aligned fixed window when no rise is found (unless drop_no_excursion).
     `stats` (optional dict) accumulates excursion-found / fallback counts for reporting."""
     win = win or LABEL_WIN["flat"]
@@ -109,7 +109,7 @@ def main():
                     help="anomaly-score aggregation (directional over-forecast variants)")
     ap.add_argument("--label_mode", choices=["flat", "aligned", "excursion"], default="flat",
                     help="post-meal label window: flat 60min, aligned to sim (180/240/300), "
-                         "or excursion (glucose-derived, ml/docs/EXCURSION_LABELS.md)")
+                         "or excursion (glucose-derived)")
     ap.add_argument("--drop_no_excursion", action="store_true",
                     help="excursion mode: drop meals with no detectable rise (sensitivity arm)")
     ap.add_argument("--clean", action="store_true",
@@ -149,7 +149,7 @@ def main():
     xf = to_iob_cob if args.features == "iob_cob" else (lambda a: a)
     meals_of = ((lambda p: clean_meals(p, args.meal_min_g, args.rescue_lookback))
                 if args.clean else (lambda p: p.meals))
-    print(f"Labels: {'CLEANED (meal≥%gg, no prior low)' % args.meal_min_g if args.clean else 'raw'}")
+    print(f"Labels: {'CLEANED (meal>=%gg, no prior low)' % args.meal_min_g if args.clean else 'raw'}")
 
     # rule-label counts across the cohort
     counts = {"missed": 0, "late": 0, "large": 0}
@@ -157,7 +157,7 @@ def main():
         for cls, mins in classify_meals(meals_of(p), p.boluses, cfg).items():
             counts[cls] += len(mins)
     n_meals = sum(len(meals_of(p)) for p in cohort)
-    print(f"OhioT1DM: {len(cohort)} patients, {n_meals} meals (post-filter) → "
+    print(f"OhioT1DM: {len(cohort)} patients, {n_meals} meals (post-filter) -> "
           f"rule labels: missed={counts['missed']} late={counts['late']} large={counts['large']}")
 
     print(f"\nDetection on REAL anomalies (label_mode={args.label_mode}"
@@ -174,16 +174,16 @@ def main():
             arr[:, N_CHANNELS:] = label_array(p, cfg, meals_of(p), win, args.label_mode,
                                               args.drop_no_excursion, exc_stats)[:, N_CHANNELS:]   # attach rule flags
             mean, std = _zscore_stats(base)
-            s, l = score_patient(model, device, arr, p.valid, mean, std, fcol,
-                                 args.stride, args.batch_size, args.score)
-            all_s.append(s); all_l.append(l)
+            s, lab = score_patient(model, device, arr, p.valid, mean, std, fcol,
+                                   args.stride, args.batch_size, args.score)
+            all_s.append(s); all_l.append(lab)
         scores, labels = np.concatenate(all_s), np.concatenate(all_l)
         if labels.sum() == 0:
             print(f"  {cls:<8}    n/a (no rule labels)"); continue
         print(f"  {cls:<8} {labels.mean():>7.2%} {int(labels.sum()):>7} "
               f"{average_precision_score(labels, scores):>9.4f} {roc_auc_score(labels, scores):>9.4f}")
     if args.label_mode == "excursion":
-        tot = exc_stats["found"] + exc_stats["none"]      # counted 3× (once per class loop)
+        tot = exc_stats["found"] + exc_stats["none"]      # counted 3x (once per class loop)
         f, n = exc_stats["found"] // 3, exc_stats["none"] // 3
         if tot:
             print(f"  excursion placement: {f} found / {n} no-rise "

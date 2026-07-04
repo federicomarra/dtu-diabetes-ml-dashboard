@@ -26,7 +26,7 @@ from dataset import (
     GlucoseWindowDataset,
 )
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# -- helpers -------------------------------------------------------------------
 
 T = 300  # minutes per fake patient, fits at least 2 windows at stride=120
 
@@ -58,7 +58,7 @@ def _make_fake_data(n_patients: int = 3, t: int = T, seed: int = 0) -> dict[str,
     return data
 
 
-# ── fixtures ──────────────────────────────────────────────────────────────────
+# -- fixtures ------------------------------------------------------------------
 
 @pytest.fixture
 def fake_data() -> dict[str, np.ndarray]:
@@ -81,7 +81,7 @@ def dataset(fake_data, scalers) -> GlucoseWindowDataset:
     )
 
 
-# ── fit_scalers ───────────────────────────────────────────────────────────────
+# -- fit_scalers ---------------------------------------------------------------
 
 class TestFitScalers:
     def test_returns_all_channels(self, scalers):
@@ -95,7 +95,7 @@ class TestFitScalers:
             assert "std"  in stats, f"missing std for {ch}"
 
     def test_std_is_positive(self, scalers):
-        # std is clamped to 1e-8 in fit_scalers — must never be zero or negative
+        # std is clamped to 1e-8 in fit_scalers - must never be zero or negative
         for ch, stats in scalers.items():
             assert stats["std"] > 0, f"std <= 0 for {ch}"
 
@@ -127,7 +127,7 @@ class TestFitScalers:
         assert set(loaded.keys()) == set(CHANNELS)
 
 
-# ── _apply_scalers ────────────────────────────────────────────────────────────
+# -- _apply_scalers ------------------------------------------------------------
 
 class TestApplyScalers:
     def test_does_not_mutate_input(self, fake_data, scalers):
@@ -165,11 +165,11 @@ class TestApplyScalers:
         assert scaled.dtype == arr.dtype
 
 
-# ── per-patient normalization ─────────────────────────────────────────────────
+# -- per-patient normalization -------------------------------------------------
 
 class TestPerPatientNorm:
     def test_each_patient_zero_mean_unit_std(self, fake_data):
-        # Per-patient z-score → EACH patient's signal cols have mean~0, std~1
+        # Per-patient z-score -> EACH patient's signal cols have mean~0, std~1
         for arr in fake_data.values():
             z = _patient_zscore(arr)
             sig = z[:, :N_CHANNELS]
@@ -215,11 +215,11 @@ class TestPerPatientNorm:
         assert x.shape == (WINDOW_LEN, N_CHANNELS)
 
 
-# ── GlucoseWindowDataset ──────────────────────────────────────────────────────
+# -- GlucoseWindowDataset ------------------------------------------------------
 
 class TestGlucoseWindowDataset:
 
-    # ── __len__ ───────────────────────────────────────────────────────────────
+    # -- __len__ ---------------------------------------------------------------
 
     def test_patient_window_counts_sum_to_len(self, fake_data, scalers):
         ds = GlucoseWindowDataset(
@@ -291,7 +291,7 @@ class TestGlucoseWindowDataset:
         )
         assert len(ds) == expected
 
-    # ── __getitem__ ───────────────────────────────────────────────────────────
+    # -- __getitem__ -----------------------------------------------------------
 
     def test_x_shape(self, dataset):
         x, _ = dataset[0]
@@ -311,7 +311,7 @@ class TestGlucoseWindowDataset:
         )
 
     def test_label_values_are_binary(self, dataset):
-        # Labels must be exactly 0.0 or 1.0 — no other values
+        # Labels must be exactly 0.0 or 1.0 - no other values
         for idx in range(min(len(dataset), 20)):
             _, labels = dataset[idx]
             for cls, val in labels.items():
@@ -337,13 +337,13 @@ class TestGlucoseWindowDataset:
         last_x, _ = ds[len(ds) - 1]
         assert last_x.shape == (WINDOW_LEN, N_CHANNELS)
 
-    # ── label binarisation ────────────────────────────────────────────────────
+    # -- label binarisation ----------------------------------------------------
 
     def test_label_is_1_when_anomaly_present_in_window(self, tmp_path):
         # Build a patient where the first WINDOW_LEN minutes have a missed bolus
         # at minute 50. The label for 'missed' must be 1.0.
         arr = np.zeros((T, N_CHANNELS + len(ANOMALY_CLASSES)), dtype=np.float32)
-        arr[:, :N_CHANNELS] = 1.0  # flat signals — scaler won't crash
+        arr[:, :N_CHANNELS] = 1.0  # flat signals - scaler won't crash
         missed_col = ANOMALY_CLASSES.index("missed")  # column index in label block
         arr[50, N_CHANNELS + missed_col] = 1.0        # anomaly at minute 50
 
@@ -355,12 +355,12 @@ class TestGlucoseWindowDataset:
             stride=TRAIN_STRIDE,
             _preloaded=data,
         )
-        # Window 0 covers minutes 0–119, which includes minute 50
+        # Window 0 covers minutes 0-119, which includes minute 50
         _, labels = ds[0]
         assert labels["missed"] == 1.0
 
     def test_label_is_0_when_anomaly_outside_window(self, tmp_path):
-        # Anomaly at minute 200, which is beyond the first window (0–119)
+        # Anomaly at minute 200, which is beyond the first window (0-119)
         arr = np.zeros((T, N_CHANNELS + len(ANOMALY_CLASSES)), dtype=np.float32)
         arr[:, :N_CHANNELS] = 1.0
         missed_col = ANOMALY_CLASSES.index("missed")

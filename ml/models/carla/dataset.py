@@ -11,7 +11,7 @@ is_normal = 1 for normal windows, 0 for anomaly windows.
 A window is anomalous if any of the 5 anomaly flags (columns 3-7 of the
 [T, 8] patient array) is 1 at any minute within the window.
 
-The SupCon loss handles triplet logic itself — it receives a full batch of
+The SupCon loss handles triplet logic itself - it receives a full batch of
 (window, label) pairs and constructs positive/negative sets from the labels.
 
 Batch composition
@@ -45,7 +45,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 
-# Lazy import to avoid circular dependency — dataset.py is in ml/
+# Lazy import to avoid circular dependency - dataset.py is in ml/
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -76,8 +76,8 @@ class ContrastiveDataset(Dataset):
 
         # Separate index pools so BatchSampler can address each independently.
         # Stored as parallel int32 numpy arrays (pid_idx into self._pids +
-        # window start row) — a Python list of (pid, start) tuples on the
-        # 12k-patient training split is ~16M tuples ≈ 2 GB.
+        # window start row) - a Python list of (pid, start) tuples on the
+        # 12k-patient training split is ~16M tuples ~ 2 GB.
         self._normal_pid_idx:  np.ndarray
         self._normal_starts:   np.ndarray
         self._anomaly_pid_idx: np.ndarray
@@ -115,7 +115,7 @@ class ContrastiveDataset(Dataset):
         self._anomaly_pid_idx = np.concatenate(a_pid)   if a_pid   else empty
         self._anomaly_starts  = np.concatenate(a_start) if a_start else empty
 
-    # ── flat indexing: normals first, then anomalies ──────────────────────────
+    # -- flat indexing: normals first, then anomalies --------------------------
 
     @property
     def n_normal(self) -> int:

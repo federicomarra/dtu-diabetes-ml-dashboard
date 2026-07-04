@@ -1,5 +1,5 @@
 #!/bin/sh
-### XCHANNEL EVAL-ONLY job — DTU HPC
+### XCHANNEL EVAL-ONLY job - DTU HPC
 ###
 ### Scores an EXISTING checkpoint (no retraining). Use after pretraining has
 ### produced ml/data/checkpoints/xchannel_best.pt.
@@ -13,7 +13,7 @@
 #BSUB -R "span[hosts=1]"
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -R "rusage[mem=16GB]"
-# stride-5 single-pass eval ≈ 5-10 min; 2 h is ample.
+# stride-5 single-pass eval ~ 5-10 min; 2 h is ample.
 #BSUB -W 2:00
 #BSUB -u furlanettoguido@gmail.com
 #BSUB -B

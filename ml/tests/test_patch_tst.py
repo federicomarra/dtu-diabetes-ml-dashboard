@@ -1,7 +1,7 @@
 """
 Unit tests for Week 2: PatchTST model, pretraining loss, and anomaly scoring.
 
-All tests run on CPU with tiny tensors — no checkpoint or Parquet required.
+All tests run on CPU with tiny tensors - no checkpoint or Parquet required.
 
 Run from repo root:
     .venv/bin/pytest ml/tests/test_patch_tst.py -v
@@ -29,14 +29,14 @@ from models.patch_tst.anomaly_score import (
     auprc_per_class,
 )
 
-# ── shared constants ──────��───────────────────────────────────────────────────
+# -- shared constants ---------------------------------------------------------
 
 B = 4        # batch size used in model tests
 T = 120      # context window length (WINDOW_LEN)
 C = 3        # number of input channels
 
 
-# ── fixtures ���─────────────────────────────────��────────────────────────���──────
+# -- fixtures ---------------------------------------------------------------
 
 @pytest.fixture
 def model() -> PatchTST:
@@ -50,12 +50,12 @@ def x() -> torch.Tensor:
     return torch.randn(B, T, C)
 
 
-# ── PositionalEncoding ────────────────────────────────────────────────────────
+# -- PositionalEncoding --------------------------------------------------------
 
 class TestPositionalEncoding:
 
     def test_output_shape_unchanged(self):
-        # PE adds a fixed vector to each token — shape must stay the same
+        # PE adds a fixed vector to each token - shape must stay the same
         pe = PositionalEncoding(D_MODEL, N_PATCHES)
         x = torch.randn(B, N_PATCHES, D_MODEL)
         out = pe(x)
@@ -75,7 +75,7 @@ class TestPositionalEncoding:
         torch.testing.assert_close(pe1.pe, pe2.pe)
 
 
-# ── PatchTST ──────────────────────────────────────────────────────────────────
+# -- PatchTST ------------------------------------------------------------------
 
 class TestPatchTST:
 
@@ -94,12 +94,12 @@ class TestPatchTST:
         assert mask.dtype == torch.bool
 
     def test_no_mask_when_ratio_zero(self, model, x):
-        # mask_ratio=0.0 → no patches hidden → mask is all False
+        # mask_ratio=0.0 -> no patches hidden -> mask is all False
         _, mask = model(x, mask_ratio=0.0)
         assert not mask.any(), "Expected no masked patches when mask_ratio=0.0"
 
     def test_mask_count_with_ratio(self, model, x):
-        # mask_ratio=0.4 on 6 patches → floor(6 * 0.4) = 2 patches masked per sample
+        # mask_ratio=0.4 on 6 patches -> floor(6 * 0.4) = 2 patches masked per sample
         torch.manual_seed(42)
         _, mask = model(x, mask_ratio=0.4)
         expected_n_masked = max(1, int(N_PATCHES * 0.4))  # = 2
@@ -120,7 +120,7 @@ class TestPatchTST:
             assert mask[b, :-1].sum().item() == 0
 
     def test_fixed_mask_changes_masked_patch_output(self, model, x):
-        # Hiding the last patch must change its reconstruction vs no masking —
+        # Hiding the last patch must change its reconstruction vs no masking -
         # proves the mask token actually replaces the patch (not dead code).
         torch.manual_seed(0)
         recon_open, _ = model(x, mask_ratio=0.0)
@@ -152,21 +152,21 @@ class TestPatchTST:
         # channel 0 reconstruction must be identical in both cases
         torch.testing.assert_close(
             recon_base[:, :, 0], recon_alt[:, :, 0],
-            msg="Channel 0 reconstruction changed when channel 1 was modified — "
+            msg="Channel 0 reconstruction changed when channel 1 was modified - "
                 "channel independence violated"
         )
 
     def test_reconstruction_differs_from_input(self, model, x):
-        # A randomly initialised model won't reconstruct perfectly — recon != x
+        # A randomly initialised model won't reconstruct perfectly - recon != x
         model.eval()
         with torch.no_grad():
             recon, _ = model(x, mask_ratio=0.0)
         assert not torch.allclose(recon, x), (
-            "Reconstruction equals input on random init — likely a passthrough bug"
+            "Reconstruction equals input on random init - likely a passthrough bug"
         )
 
 
-# ── masked_mse_loss ─────────��─────────────────────────────────────────────────
+# -- masked_mse_loss ----------------------------------------------------------
 
 class TestMaskedMSELoss:
 
@@ -185,7 +185,7 @@ class TestMaskedMSELoss:
         assert loss.item() == pytest.approx(0.0, abs=1e-6)
 
     def test_all_false_mask_returns_zero(self):
-        # No patches masked → nothing to score → loss = 0
+        # No patches masked -> nothing to score -> loss = 0
         recon  = torch.randn(B, T, C)
         target = torch.zeros(B, T, C)
         mask   = torch.zeros(B, N_PATCHES, dtype=torch.bool)   # all False
@@ -193,7 +193,7 @@ class TestMaskedMSELoss:
         assert loss.item() == pytest.approx(0.0, abs=1e-6)
 
     def test_all_true_mask_equals_standard_mse(self):
-        # Full mask → loss must equal nn.functional.mse_loss(recon, target)
+        # Full mask -> loss must equal nn.functional.mse_loss(recon, target)
         torch.manual_seed(7)
         recon  = torch.randn(B, T, C)
         target = torch.randn(B, T, C)
@@ -206,8 +206,8 @@ class TestMaskedMSELoss:
 
     def test_only_masked_patches_contribute(self):
         # Patch 0 differs from target; patch 0 is the ONLY masked patch.
-        # All other patches are identical to target → loss must be > 0.
-        # Then mask patch 1 instead → loss must be 0 (patch 0 diff is not masked).
+        # All other patches are identical to target -> loss must be > 0.
+        # Then mask patch 1 instead -> loss must be 0 (patch 0 diff is not masked).
         recon  = torch.zeros(B, T, C)
         target = torch.zeros(B, T, C)
 
@@ -236,7 +236,7 @@ class TestMaskedMSELoss:
         assert loss.item() >= 0.0
 
 
-# ── calibrate_threshold ───��───────────────────────────────────────────────────
+# -- calibrate_threshold ------------------------------------------------------
 
 class TestCalibrateThreshold:
 
@@ -246,7 +246,7 @@ class TestCalibrateThreshold:
         assert isinstance(result, float)
 
     def test_threshold_above_median(self):
-        # threshold = median + positive offset → always > median
+        # threshold = median + positive offset -> always > median
         rng = np.random.default_rng(0)
         scores = rng.normal(loc=1.0, scale=0.3, size=500).astype(np.float32)
         threshold = calibrate_threshold(scores, n_cal_windows=500)
@@ -265,7 +265,7 @@ class TestCalibrateThreshold:
         assert thresh_large > 50.0,  f"Expected high threshold from anomaly window, got {thresh_large}"
 
     def test_constant_scores_does_not_crash(self):
-        # std is 0 → clamped to 1e-6 → threshold = constant + 2e-6
+        # std is 0 -> clamped to 1e-6 -> threshold = constant + 2e-6
         scores = np.ones(100, dtype=np.float32)
         result = calibrate_threshold(scores, n_cal_windows=100)
         assert result == pytest.approx(1.0, abs=1e-4)
@@ -288,7 +288,7 @@ class TestCalibrateThreshold:
         )
 
 
-# ── any_anomaly_label ─────────────────────────────────────────────────────────
+# -- any_anomaly_label ---------------------------------------------------------
 
 class TestAnyAnomalyLabel:
     def test_or_of_classes(self):
@@ -310,7 +310,7 @@ class TestAnyAnomalyLabel:
         assert any_anomaly_label(labels).dtype == np.float32
 
 
-# ── calibrate_per_patient ─────────────────────────────────────────────────────
+# -- calibrate_per_patient -----------------------------------------------------
 
 class TestCalibratePerPatient:
 
@@ -331,7 +331,7 @@ class TestCalibratePerPatient:
         assert pct == pytest.approx(100 * 10 / 120, abs=1e-6)
 
     def test_short_patient_calibrates_on_all_windows(self):
-        # Patient has fewer windows than n_cal_windows → calibrate on all of them.
+        # Patient has fewer windows than n_cal_windows -> calibrate on all of them.
         scores = np.concatenate([np.ones(20, np.float32), np.full(5, 50.0, np.float32)])
         counts = [("short", 25)]
         flagged, _ = calibrate_per_patient(scores, counts, n_cal_windows=7200)
@@ -345,7 +345,7 @@ class TestCalibratePerPatient:
         assert flagged.shape == scores.shape
 
 
-# ─��� auroc_per_class / auprc_per_class ────��────────────────────────────────────
+# - auroc_per_class / auprc_per_class ----------------------------------------
 
 def _make_labels(n: int, positive_class: str, frac: float = 0.1, seed: int = 0) -> dict[str, np.ndarray]:
     """Binary label dict. Only `positive_class` has any 1s."""
@@ -360,7 +360,7 @@ def _make_labels(n: int, positive_class: str, frac: float = 0.1, seed: int = 0) 
 class TestAUROCAndAUPRC:
 
     def test_nan_when_no_positives(self):
-        # A class with zero positive windows → both metrics must return nan
+        # A class with zero positive windows -> both metrics must return nan
         n = 200
         scores = np.random.default_rng(0).random(n).astype(np.float32)
         labels = {cls: np.zeros(n, dtype=np.float32) for cls in ANOMALY_CLASSES}
@@ -384,7 +384,7 @@ class TestAUROCAndAUPRC:
         assert set(auprc.keys()) == set(ANOMALY_CLASSES)
 
     def test_perfect_separation_auroc(self):
-        # Anomalies always have higher score than normals → AUROC = 1.0
+        # Anomalies always have higher score than normals -> AUROC = 1.0
         n = 200
         labels   = _make_labels(n, positive_class="missed", frac=0.2)
         scores   = labels["missed"].copy()   # score = 1 for positives, 0 for normals
@@ -401,7 +401,7 @@ class TestAUROCAndAUPRC:
         assert auprc["large"] == pytest.approx(1.0, abs=1e-6)
 
     def test_random_scores_auroc_near_half(self):
-        # Random scores → AUROC should be near 0.5 (not strict: 0.3–0.7 range)
+        # Random scores -> AUROC should be near 0.5 (not strict: 0.3-0.7 range)
         rng    = np.random.default_rng(99)
         n      = 2000
         scores = rng.random(n).astype(np.float32)
@@ -413,7 +413,7 @@ class TestAUROCAndAUPRC:
         )
 
     def test_auprc_random_baseline_near_prevalence(self):
-        # Random scores → AUPRC ≈ prevalence, not 0.5
+        # Random scores -> AUPRC ~ prevalence, not 0.5
         rng        = np.random.default_rng(42)
         n          = 2000
         frac       = 0.05
@@ -422,7 +422,7 @@ class TestAUROCAndAUPRC:
         prevalence = labels["anaerobic"].mean()
 
         auprc = auprc_per_class(scores, labels)
-        # Allow generous tolerance — small n, but should be in the same ballpark
+        # Allow generous tolerance - small n, but should be in the same ballpark
         assert abs(auprc["anaerobic"] - prevalence) < 0.1, (
             f"AUPRC={auprc['anaerobic']:.4f} far from prevalence={prevalence:.4f}"
         )

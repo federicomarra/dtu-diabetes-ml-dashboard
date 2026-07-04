@@ -3,7 +3,7 @@ Unit tests for CARLA: ContrastiveDataset, ContrastiveBatchSampler,
 CARLAModel, SupCon loss, and anomaly scoring (fit_gmm, score_with_gmm,
 embed_dataset).
 
-All tests run on CPU with synthetic data — no checkpoint or Parquet required.
+All tests run on CPU with synthetic data - no checkpoint or Parquet required.
 
 Run from repo root:
     .venv/bin/pytest ml/tests/test_carla.py -v
@@ -27,12 +27,12 @@ from models.carla.dataset import ContrastiveDataset, ContrastiveBatchSampler
 from models.carla.model import CARLAModel, PROJ_DIM
 from models.carla.pretrain import supcon_loss
 
-# ── synthetic patient data ────────────────────────────────────────────────────
+# -- synthetic patient data ----------------------------------------------------
 
 def _make_patient_data(
     n_patients: int = 5,
     n_minutes:  int = 2880,   # 2 days
-    anomaly_frac: float = 0.02,   # low rate → many 120-min windows are all-zero (normal)
+    anomaly_frac: float = 0.02,   # low rate -> many 120-min windows are all-zero (normal)
     seed: int = 0,
 ) -> dict[str, np.ndarray]:
     """
@@ -44,7 +44,7 @@ def _make_patient_data(
     for i in range(n_patients):
         signals = rng.standard_normal((n_minutes, N_CHANNELS)).astype(np.float32)
         flags   = np.zeros((n_minutes, len(ANOMALY_CLASSES)), dtype=np.float32)
-        # Mark anomaly_frac of rows — keep low so 120-min windows can be all-zero
+        # Mark anomaly_frac of rows - keep low so 120-min windows can be all-zero
         n_anomaly = int(n_minutes * anomaly_frac)
         rows = rng.choice(n_minutes, n_anomaly, replace=False)
         cols = rng.integers(0, len(ANOMALY_CLASSES), n_anomaly)
@@ -53,7 +53,7 @@ def _make_patient_data(
     return data
 
 
-# ── ContrastiveDataset ────────────────────────────────────────────────────────
+# -- ContrastiveDataset --------------------------------------------------------
 
 class TestContrastiveDataset:
 
@@ -125,7 +125,7 @@ class TestContrastiveDataset:
         assert len(ds_s15) > len(ds_s60)
 
 
-# ── ContrastiveBatchSampler ───────────────────────────────────────────────────
+# -- ContrastiveBatchSampler ---------------------------------------------------
 
 class TestContrastiveBatchSampler:
 
@@ -174,7 +174,7 @@ class TestContrastiveBatchSampler:
         assert len(sampler) == expected_len
 
 
-# ── CARLAModel ────────────────────────────────────────────────────────────────
+# -- CARLAModel ----------------------------------------------------------------
 
 B = 4
 T = 120
@@ -215,7 +215,7 @@ class TestCARLAModel:
         assert z.shape == (B, D_MODEL)
 
     def test_encode_matches_forward_z(self, model, x):
-        # Must be in eval mode — dropout makes two separate passes differ in train mode
+        # Must be in eval mode - dropout makes two separate passes differ in train mode
         model.eval()
         with torch.no_grad():
             z_enc    = model.encode(x)
@@ -240,7 +240,7 @@ class TestCARLAModel:
         assert mask.shape  == (B, 6)
 
 
-# ── SupCon loss ───────────────────────────────────────────────────────────────
+# -- SupCon loss ---------------------------------------------------------------
 
 class TestSupConLoss:
 
@@ -268,7 +268,7 @@ class TestSupConLoss:
         assert loss.item() >= 0.0
 
     def test_loss_zero_when_no_normal_anchor(self):
-        # All anomaly windows — no anchor has positives, loss should be 0
+        # All anomaly windows - no anchor has positives, loss should be 0
         z_proj    = torch.nn.functional.normalize(torch.randn(8, PROJ_DIM), dim=-1)
         is_normal = torch.zeros(8, dtype=torch.long)
         loss = supcon_loss(z_proj, is_normal)
@@ -312,7 +312,7 @@ class TestSupConLoss:
         assert loss_good.item() < loss_random.item()
 
 
-# ── anomaly scoring ───────────────────────────────────────────────────────────
+# -- anomaly scoring -----------------------------------------------------------
 
 D_EMBED = 32   # small embedding dim for fast GMM tests
 
@@ -340,7 +340,7 @@ class TestFitGMM:
     def test_pca_reduces_dimension(self):
         emb = self._normal_embeddings(d=D_EMBED)
         pca, _ = fit_gmm(emb, k_grid=[2])
-        # 95% variance of standard normal in D_EMBED dims — PCA should reduce it
+        # 95% variance of standard normal in D_EMBED dims - PCA should reduce it
         assert pca.n_components_ <= D_EMBED
 
     def test_gmm_fitted(self):

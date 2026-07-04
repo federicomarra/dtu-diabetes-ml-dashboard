@@ -10,17 +10,17 @@ an OhioPatient directly. Run from repo root:
 import numpy as np
 import pytest
 
-from dataset import N_CHANNELS, ANOMALY_CLASSES
+from dataset import N_CHANNELS
 from ohio_eval.adapter import (
     load_ohio_patient, OhioPatient, Bolus, Meal,
-    MGDL_PER_MMOL, BOLUS_DURATION, ANNOUNCE_DURATION, MAX_GAP_MIN,
+    MGDL_PER_MMOL, BOLUS_DURATION, ANNOUNCE_DURATION,
 )
 from ohio_eval.eval_xchannel import inject, CLASS_IDX
 
 CLS_COL = {c: N_CHANNELS + i for c, i in CLASS_IDX.items()}   # flag column per class
 
 
-# ── synthetic XML for the parser ────────────────────────────────────────────────
+# -- synthetic XML for the parser ------------------------------------------------
 
 def _xml(glucose_events, boluses=(), basals=(), temp_basals=(), meals=()):
     def evs(items):
@@ -98,7 +98,7 @@ class TestAdapter:
         assert not p.valid.all()
 
 
-# ── injection ───────────────────────────────────────────────────────────────────
+# -- injection -------------------------------------------------------------------
 
 def _patient(T=400):
     """OhioPatient with one meal bolus (40g) at minute 100 + one correction (0g)."""
@@ -128,7 +128,7 @@ class TestInjection:
         arr = inject(p, "late", late_delay=30, carb_keep=0.7, min_carb_g=20)
         assert arr[100, CLS_COL["late"]] == 1.0                # flag at original minute
         assert arr[100, 2] == 0.0                              # carb gone from origin
-        assert arr[130, 2] > 0.0                               # …reappears 30 min later
+        assert arr[130, 2] > 0.0                               # ...reappears 30 min later
 
     def test_large_reduces_carb(self):
         p = _patient()
@@ -138,7 +138,7 @@ class TestInjection:
         np.testing.assert_allclose(arr[100, 2], 0.7 * base[100, 2], rtol=1e-4)
 
     def test_correction_bolus_not_perturbed(self):
-        # the 0-carb correction bolus (minute 250) is below min_carb_g → no flag there
+        # the 0-carb correction bolus (minute 250) is below min_carb_g -> no flag there
         p = _patient()
         arr = inject(p, "missed", late_delay=30, carb_keep=0.7, min_carb_g=20)
         assert arr[250, CLS_COL["missed"]] == 0.0

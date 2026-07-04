@@ -90,7 +90,7 @@ def test_determinism_same_seed():
 
 
 def test_safety_floor_and_no_nan():
-    g = np.full(2880, 2.0, dtype=np.float32)          # near floor → must clamp
+    g = np.full(2880, 2.0, dtype=np.float32)          # near floor -> must clamp
     valid = np.ones(len(g), dtype=bool)
     cfg = ArtifactConfig(jumps_per_14d=200.0, compressions_per_14d=200.0, jump_mmol=3.0)
     g2, v2, mask = apply_artifacts(g, valid, np.random.default_rng(9), cfg)

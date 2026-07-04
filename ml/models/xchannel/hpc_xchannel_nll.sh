@@ -1,8 +1,8 @@
 #!/bin/sh
-### XCHANNEL (probabilistic / NLL) pretraining + evaluation — DTU HPC
+### XCHANNEL (probabilistic / NLL) pretraining + evaluation - DTU HPC
 ###
 ### Quality-program Step 2: predict mean+variance, train with Gaussian NLL, score
-### anomalies by surprise-under-uncertainty (residual ÷ predicted σ). Targets the
+### anomalies by surprise-under-uncertainty (residual / predicted sigma). Targets the
 ### over-detection of the point-MSE score WITHOUT adding forecasting capacity
 ### (Step 1 showed capacity doesn't help). 3-token model (patching was dropped).
 ###
@@ -46,7 +46,7 @@ python ml/models/xchannel/pretrain.py \
     --val_patients  800 \
     --parquet       ml/data/sim_data/results_5000p_42d.parquet \
     --probabilistic \
-    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
+    || { echo "Pretraining failed - skipping evaluation"; exit 1; }
 
 echo ""
 echo "=== EVALUATION (simulator test set) ==="

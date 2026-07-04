@@ -5,7 +5,7 @@ What this script does
 ---------------------
 1. Loads the 500-patient dataset via build_datasets()
 2. Each epoch: forward pass with mask_ratio=0.4, MSE loss on hidden patches only
-3. Validates on val set every epoch (no masking → checks reconstruction quality)
+3. Validates on val set every epoch (no masking -> checks reconstruction quality)
 4. Saves the best checkpoint (lowest val loss) to ml/data/checkpoints/
 
 Loss
@@ -41,36 +41,36 @@ from torch.utils.data import DataLoader
 # make ml/ importable regardless of working directory
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dataset import build_datasets, set_seed, TRAIN_STRIDE, WINDOW_LEN, N_CHANNELS
+from dataset import build_datasets, set_seed, TRAIN_STRIDE
 from models.patch_tst.model import PatchTST, MASK_RATIO, PATCH_LEN, N_PATCHES
 
-# ── paths ─────────────────────────────────────────────────────────────────────
+# -- paths ---------------------------------------------------------------------
 
 CHECKPOINT_DIR = Path("ml/data/checkpoints")
 LOG_PATH       = Path("ml/data/checkpoints/pretrain_log.json")
 PARQUET        = Path("ml/data/sim_data/results_20000p_14d.parquet")
 
 
-# ── loss ──────────────────────────────────────────────────────────────────────
+# -- loss ----------------------------------------------------------------------
 
 def masked_mse_loss(
-    recon: torch.Tensor,   # [B, 120, C] — model reconstruction
-    target: torch.Tensor,  # [B, 120, C] — original (unmasked) signal
-    mask: torch.Tensor,    # [B, 6]      — True where patch was hidden
+    recon: torch.Tensor,   # [B, 120, C] - model reconstruction
+    target: torch.Tensor,  # [B, 120, C] - original (unmasked) signal
+    mask: torch.Tensor,    # [B, 6]      - True where patch was hidden
 ) -> torch.Tensor:
     """
     MSE computed only on the hidden patches.
 
     Steps:
-      1. Expand patch mask [B, 6] → minute mask [B, 120] using repeat_interleave
+      1. Expand patch mask [B, 6] -> minute mask [B, 120] using repeat_interleave
          (each patch flag is repeated PATCH_LEN=20 times along the time axis)
-      2. Expand minute mask [B, 120] → [B, 120, C] to cover all channels
+      2. Expand minute mask [B, 120] -> [B, 120, C] to cover all channels
       3. Compute MSE only where mask is True
     """
-    # [B, 6] → [B, 120]: each patch flag repeated 20 times
+    # [B, 6] -> [B, 120]: each patch flag repeated 20 times
     mask_min = mask.repeat_interleave(PATCH_LEN, dim=1)         # [B, 120]
 
-    # [B, 120] → [B, 120, C]: same mask applied to all channels
+    # [B, 120] -> [B, 120, C]: same mask applied to all channels
     mask_min = mask_min.unsqueeze(-1).expand_as(recon)          # [B, 120, C]
 
     # squared error everywhere, then zero-out visible patches
@@ -82,7 +82,7 @@ def masked_mse_loss(
     return (sq_err * mask_min).sum() / n_masked
 
 
-# ── train / eval loops ────────────────────────────────────────────────────────
+# -- train / eval loops --------------------------------------------------------
 
 def train_one_epoch(
     model: PatchTST,
@@ -132,11 +132,11 @@ def eval_one_epoch(
     device: torch.device,
 ) -> float:
     """
-    Validation pass — masked, matching the training objective.
+    Validation pass - masked, matching the training objective.
 
     Training optimises MSE on *hidden* patches only. Validating with no
-    masking would select the checkpoint on full reconstruction — an objective
-    the model never trains on — so we mask here too. We hide the last n_mask
+    masking would select the checkpoint on full reconstruction - an objective
+    the model never trains on - so we mask here too. We hide the last n_mask
     patches with a FIXED mask (not random): deterministic val loss is what
     checkpoint selection and ReduceLROnPlateau need, and hiding the tail
     mirrors the last-patch ("predict the next minutes") anomaly score.
@@ -158,7 +158,7 @@ def eval_one_epoch(
     return total_loss / len(loader)
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# -- main ----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PatchTST pretraining")
@@ -173,7 +173,7 @@ def main() -> None:
     parser.add_argument("--val_patients", type=int, default=800,
                         help="cap val to N patients for fast per-epoch checkpoint selection")
     parser.add_argument("--smoke_test", action="store_true",
-                        help="2 epochs, 10 patients — quick sanity check")
+                        help="2 epochs, 10 patients - quick sanity check")
     args = parser.parse_args()
     set_seed(args.seed)
 
@@ -183,15 +183,15 @@ def main() -> None:
         args.batch_size = 32
         args.num_workers = 0
 
-    # ── device ────────────────────────────────────────────────────────────────
+    # -- device ----------------------------------------------------------------
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── data ──────────────────────────────────────────────────────────────────
+    # -- data ------------------------------------------------------------------
     max_per_split = 10 if args.smoke_test else None
-    print("Building datasets…")
-    # eval_stride=TRAIN_STRIDE: per-epoch validation at 15-min stride — stride=1
-    # would mean 80M val windows per epoch (5× the training work) for no gain.
+    print("Building datasets...")
+    # eval_stride=TRAIN_STRIDE: per-epoch validation at 15-min stride - stride=1
+    # would mean 80M val windows per epoch (5x the training work) for no gain.
     # Stride-1 scoring stays where it belongs: anomaly_score.py on the test set.
     train_ds, val_ds, _ = build_datasets(
         parquet       = PARQUET,
@@ -201,41 +201,41 @@ def main() -> None:
         include_test  = False,   # test set is loaded by anomaly_score.py, not here
         norm          = args.norm,
     )
-    print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}")
+    print(f"  train windows: {len(train_ds):,}  |  val windows: {len(val_ds):,}")   #type: ignore
 
     train_loader = DataLoader(
-        train_ds,
+        train_ds,       # type: ignore
         batch_size  = args.batch_size,
         shuffle     = True,               # random order every epoch
         num_workers = args.num_workers,
         pin_memory  = device.type == "cuda",
     )
     val_loader = DataLoader(
-        val_ds,
-        batch_size  = args.batch_size * 2,  # no gradients → fit more on GPU
+        val_ds,       # type: ignore
+        batch_size  = args.batch_size * 2,  # no gradients -> fit more on GPU
         shuffle     = False,
         num_workers = args.num_workers,
         pin_memory  = device.type == "cuda",
     )
 
-    # ── model + optimiser ─────────────────────────────────────────────────────
+    # -- model + optimiser -----------------------------------------------------
     model = PatchTST().to(device)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     # ReduceLROnPlateau: halves lr whenever val loss doesn't improve for 3 epochs.
-    # More adaptive than cosine — no T_max to tune, scales naturally from 500 to 20k patients.
+    # More adaptive than cosine - no T_max to tune, scales naturally from 500 to 20k patients.
     scheduler = ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3, min_lr=1e-6
     )
 
-    # ── checkpointing ─────────────────────────────────────────────────────────
+    # -- checkpointing ---------------------------------------------------------
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     best_val_loss = float("inf")
-    log = []   # list of dicts, one per epoch — saved to JSON at the end
+    log = []   # list of dicts, one per epoch - saved to JSON at the end
 
-    # ── training loop ─────────────────────────────────────────────────────────
+    # -- training loop ---------------------------------------------------------
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
 
@@ -269,7 +269,7 @@ def main() -> None:
                 },
                 CHECKPOINT_DIR / "patchtst_best.pt",
             )
-            print(f"  ✓ saved best checkpoint (val={val_loss:.4f})")
+            print(f"  [ok] saved best checkpoint (val={val_loss:.4f})")
 
     # save final checkpoint regardless of val loss (useful for resuming)
     torch.save(
@@ -280,8 +280,8 @@ def main() -> None:
     # save loss log
     LOG_PATH.write_text(json.dumps(log, indent=2))
     print(f"\nDone. Best val loss: {best_val_loss:.4f}")
-    print(f"Checkpoints → {CHECKPOINT_DIR}")
-    print(f"Loss log    → {LOG_PATH}")
+    print(f"Checkpoints -> {CHECKPOINT_DIR}")
+    print(f"Loss log    -> {LOG_PATH}")
 
 
 if __name__ == "__main__":

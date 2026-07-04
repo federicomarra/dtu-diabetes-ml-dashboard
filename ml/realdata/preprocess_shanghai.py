@@ -1,7 +1,7 @@
 """
 Consolidate Shanghai_T1DM per patient-visit xlsx into one tidy CSV per patient
 (quick inspection only). NOTE: Shanghai carbs are FREE-TEXT food descriptions
-('Dietary intake', e.g. "Steamed bun 100 g") — grams of FOOD, not carbohydrate —
+('Dietary intake', e.g. "Steamed bun 100 g") - grams of FOOD, not carbohydrate -
 so Shanghai is NOT usable for the cross-channel model / rule labels. This is for
 inspection / glucose-level analysis, not for training XCHANNEL.
 
@@ -36,7 +36,7 @@ def main():
         if "Summary" in Path(f).name:
             continue
         files.setdefault(Path(f).name.split("_")[0], []).append(f)
-    print(f"{'pid':<14}{'rows':>7}{'days':>6}{'gluμ':>7}{'bolus':>7}{'meals':>7}")
+    print(f"{'pid':<14}{'rows':>7}{'days':>6}{'glumu':>7}{'bolus':>7}{'meals':>7}")
     for pid, fs in files.items():
         d = pd.concat([pd.read_excel(f, engine="calamine") for f in fs], ignore_index=True)
         t = pd.to_datetime(d["Date"], errors="coerce")
@@ -54,7 +54,7 @@ def main():
         days = (t.max() - t.min()).total_seconds() / 86400 if t.notna().any() else 0
         print(f"{pid:<14}{len(out):>7}{days:>6.0f}{np.nanmean(glu):>7.1f}"
               f"{int((out['bolus'] > 0).sum()):>7}{int((out['dietary_intake'] != '').sum()):>7}")
-    print(f"\n{len(files)} patients → {out_dir}  (quick-check only; free-text carbs → NOT cross-channel usable)")
+    print(f"\n{len(files)} patients -> {out_dir}  (quick-check only; free-text carbs -> NOT cross-channel usable)")
 
 
 if __name__ == "__main__":

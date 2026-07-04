@@ -1,12 +1,11 @@
-"""Sim-validation gate for glucose-derived label placement (Component 3 of
-ml/docs/EXCURSION_LABELS.md). The generator's per-minute label columns (cols 3-7,
-ANOMALY_CLASSES order) ARE the ground-truth windows. For each contiguous true-flag run
-of a class, the run is the true window and the meal minute ≈ run_start - 15
-(LABEL_WINDOW_BOLUS_START). We anchor excursion_window there and report IoU vs truth,
-and the placement recall (fraction of true runs where a rise was found).
+"""Sim-validation gate for glucose-derived label placement. The generator's per-minute
+label columns (cols 3-7, ANOMALY_CLASSES order) ARE the ground-truth windows. For each
+contiguous true-flag run of a class, the run is the true window and the meal minute 
+~ run_start - 15 (LABEL_WINDOW_BOLUS_START). We anchor excursion_window there and report
+IoU vs truth, and the placement recall (fraction of true runs where a rise was found).
 
 GATE: if excursion median IoU meaningfully beats the fixed-aligned-window IoU baseline,
-the rule recovers the true region → proceed to real data. Else stop and retune.
+the rule recovers the true region -> proceed to real data. Else stop and retune.
 
 Run: .venv/bin/python ml/realdata/validate_excursion_sim.py --n_patients 60
 """
@@ -75,12 +74,12 @@ def main():
                 truth = (s, e)
                 fixed = (meal, min(glu.size, meal + cap))  # current aligned window
                 iou_fix.append(_iou(fixed, truth))
-                w = excursion_window(glu, meal, cls)
+                w = excursion_window(glu, meal, cls)    #type: ignore
                 if w is not None:
                     n_found += 1
                     iou_exc.append(_iou(w, truth))
                 else:
-                    iou_exc.append(0.0)                    # no-rise → would fall back
+                    iou_exc.append(0.0)                    # no-rise -> would fall back
         rec = n_found / n_runs if n_runs else 0.0
         print(f"  {cls:<8} {n_runs:>10} {n_found:>7} {rec:>8.1%} "
               f"{np.median(iou_exc):>11.3f} {np.median(iou_fix):>11.3f}")

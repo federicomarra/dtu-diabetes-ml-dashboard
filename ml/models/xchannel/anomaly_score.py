@@ -2,13 +2,13 @@
 XCHANNEL anomaly scoring.
 
 Single score (decided 2026-06-11): the conditional forecast residual.
-  score(window) = mean_t ( glucose[t] − ŷ[t] )²   over the H-min horizon
-where ŷ is the model's glucose forecast given glucose history + insulin/carbs
+  score(window) = mean_t ( glucose[t] - y_hat[t] )^2   over the H-min horizon
+where y_hat is the model's glucose forecast given glucose history + insulin/carbs
 known through the horizon. A missed/late bolus makes the real glucose diverge
-from what the inputs imply → large residual.
+from what the inputs imply -> large residual.
 
-large_meal is expected to be WEAK here (announced carb → the model predicts the
-rise → small residual). We score it anyway and read the number off the
+large_meal is expected to be WEAK here (announced carb -> the model predicts the
+rise -> small residual). We score it anyway and read the number off the
 simulator before deciding whether a second (glucose-shape) score is worth it.
 
 Metrics, calibration, any-anomaly headline: reused verbatim from the PatchTST
@@ -35,10 +35,10 @@ from dataset import (  # noqa: E402
     make_patient_split, fit_scalers, load_patients, progress_log, ANOMALY_CLASSES,
 )
 from models.xchannel.model import (  # noqa: E402
-    XChannelForecaster, forecaster_from_ckpt, anomaly_score as compute_score,
+    forecaster_from_ckpt, anomaly_score as compute_score,
 )
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
-from models.patch_tst.anomaly_score import (  # noqa: E402  — reuse, don't duplicate
+from models.patch_tst.anomaly_score import (  # noqa: E402  - reuse, don't duplicate
     calibrate_per_patient, any_anomaly_label, auprc_per_class, auroc_per_class,
 )
 
@@ -76,7 +76,7 @@ def main():
     p.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
                    help="MUST match the pretrain run")
     p.add_argument("--test_stride", type=int, default=5,
-                   help="eval window stride (min). 5 ≈ same AUPRC at 5x less compute")
+                   help="eval window stride (min). 5 ~ same AUPRC at 5x less compute")
     p.add_argument("--parquet", type=Path, default=PARQUET)
     p.add_argument("--features", choices=["raw", "iob_cob"], default="raw",
                    help="MUST match the pretrain run")
@@ -94,7 +94,7 @@ def main():
     model = forecaster_from_ckpt(ckpt, device)
     print(f"Loaded checkpoint from epoch {ckpt['epoch']}  (val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
-    # ── test data: ALL windows (train_on='all') so anomalies are scored ───────
+    # -- test data: ALL windows (train_on='all') so anomalies are scored -------
     split = make_patient_split(args.parquet)
     test_ids = split["test"][:10] if args.smoke_test else split["test"]
     scalers = None
@@ -109,18 +109,18 @@ def main():
     loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=device.type == "cuda")
 
-    print("Scoring — conditional forecast residual…")
+    print("Scoring - conditional forecast residual...")
     scores, labels = score_dataset(model, loader, device, args.score)
     print(f"  range min={scores.min():.4f} max={scores.max():.4f} mean={scores.mean():.4f}")
 
     # per-patient robust threshold (informational)
     n_cal = N_CAL_DAYS * MINUTES_PER_DAY // args.test_stride
     _, flagged = calibrate_per_patient(scores, test_ds.patient_window_counts(), n_cal)
-    print(f"Threshold (per-patient median+2×IQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
+    print(f"Threshold (per-patient median+2xIQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
 
     # headline: any-anomaly
     any_lbl = any_anomaly_label(labels)
-    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_lbl.mean():.2%})")
+    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ~ {any_lbl.mean():.2%})")
     if any_lbl.sum() > 0:
         print(f"  AUPRC={average_precision_score(any_lbl, scores):.4f}  "
               f"AUROC={roc_auc_score(any_lbl, scores):.4f}")
@@ -129,7 +129,7 @@ def main():
     auprc = auprc_per_class(scores, labels)
     auroc = auroc_per_class(scores, labels)
     n_total = len(scores)
-    print("\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ≈ prevalence)")
+    print("\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ~ prevalence)")
     print(f"  {'class':<12} {'prev':>7} {'AUPRC':>9} {'AUROC':>9}")
     for cls in ANOMALY_CLASSES:
         prev = labels[cls].sum() / n_total if n_total else 0.0

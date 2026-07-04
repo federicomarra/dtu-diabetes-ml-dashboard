@@ -2,7 +2,7 @@
 Unit tests for XCHANNEL: the cross-channel conditional forecaster, its
 forecast-window dataset index, and the scoring path.
 
-All tests run on CPU with tiny tensors — no checkpoint or Parquet required.
+All tests run on CPU with tiny tensors - no checkpoint or Parquet required.
 
 Run from repo root:
     .venv/bin/pytest ml/tests/test_xchannel.py -v
@@ -21,16 +21,16 @@ from models.xchannel.model import (
 from models.xchannel.dataset import ForecastWindowDataset, _make_index, WIN
 from models.xchannel.anomaly_score import score_dataset
 
-# ── shared constants ────────────────────────────────────────────────────────────
+# -- shared constants ------------------------------------------------------------
 
 B = 4               # batch size
-L = CONTEXT_LEN     # 120 — glucose history length
-H = HORIZON         # 40  — forecast horizon
+L = CONTEXT_LEN     # 120 - glucose history length
+H = HORIZON         # 40  - forecast horizon
 N_FLAGS = len(ANOMALY_CLASSES)        # 5
-N_COLS = DS_NCHAN + N_FLAGS           # 8 — [glu, ins, carb, 5 flags]
+N_COLS = DS_NCHAN + N_FLAGS           # 8 - [glu, ins, carb, 5 flags]
 
 
-# ── fixtures ────────────────────────────────────────────────────────────────────
+# -- fixtures --------------------------------------------------------------------
 
 @pytest.fixture
 def model() -> XChannelForecaster:
@@ -58,7 +58,7 @@ def _make_patient(T: int, flag_rows: tuple[int, ...] = ()) -> np.ndarray:
     return arr
 
 
-# ── XChannelForecaster ──────────────────────────────────────────────────────────
+# -- XChannelForecaster ----------------------------------------------------------
 
 class TestXChannelForecaster:
 
@@ -77,7 +77,7 @@ class TestXChannelForecaster:
         assert torch.isfinite(model(*inputs)).all()
 
     def test_forecast_depends_on_insulin(self, model, inputs):
-        # THE defining property — opposite of PatchTST's channel independence.
+        # THE defining property - opposite of PatchTST's channel independence.
         # Changing insulin must change the glucose forecast (cross-channel mixing).
         glu, ins, carb = inputs
         model.eval()
@@ -85,7 +85,7 @@ class TestXChannelForecaster:
             base = model(glu, ins, carb)
             alt = model(glu, ins * 5.0, carb)
         assert not torch.allclose(base, alt), (
-            "Forecast unchanged when insulin changed — cross-channel attention is dead"
+            "Forecast unchanged when insulin changed - cross-channel attention is dead"
         )
 
     def test_forecast_depends_on_carbs(self, model, inputs):
@@ -121,7 +121,7 @@ class TestXChannelForecaster:
             assert p.grad is not None, f"no gradient reached {name}"
 
 
-# ── patched architecture (quality-program Step 1) ───────────────────────────────
+# -- patched architecture (quality-program Step 1) -------------------------------
 
 class TestPatching:
 
@@ -134,7 +134,7 @@ class TestPatching:
     def test_patched_has_more_params_than_default(self):
         small = sum(p.numel() for p in XChannelForecaster(patch_len=0).parameters())
         big = sum(p.numel() for p in XChannelForecaster(patch_len=20, n_layers=3).parameters())
-        assert big > small                       # more tokens/layers → more capacity
+        assert big > small                       # more tokens/layers -> more capacity
 
     def test_patch_len_must_divide_lengths(self):
         with pytest.raises(AssertionError):
@@ -163,7 +163,7 @@ class TestPatching:
         assert forecaster_from_ckpt(ckpt).patch_len == 0
 
 
-# ── probabilistic / NLL (quality-program Step 2) ────────────────────────────────
+# -- probabilistic / NLL (quality-program Step 2) --------------------------------
 
 class TestProbabilistic:
 
@@ -188,10 +188,10 @@ class TestProbabilistic:
         torch.testing.assert_close(anomaly_score(out, tgt), ((out - tgt) ** 2).mean(1))
 
     def test_nll_score_is_surprise_under_uncertainty(self):
-        # same residual, but higher predicted variance → LOWER anomaly score
+        # same residual, but higher predicted variance -> LOWER anomaly score
         tgt = torch.zeros(B, H); mean = torch.ones(B, H)            # residual = 1
-        confident = anomaly_score((mean, torch.full((B, H), -2.0)), tgt)   # small σ²
-        uncertain = anomaly_score((mean, torch.full((B, H),  2.0)), tgt)   # large σ²
+        confident = anomaly_score((mean, torch.full((B, H), -2.0)), tgt)   # small sigma^2
+        uncertain = anomaly_score((mean, torch.full((B, H),  2.0)), tgt)   # large sigma^2
         assert (uncertain < confident).all()
 
     def test_forecaster_from_ckpt_roundtrips_probabilistic(self):
@@ -205,12 +205,12 @@ class TestProbabilistic:
         torch.testing.assert_close(mean1, mean2); torch.testing.assert_close(lv1, lv2)
 
 
-# ── _make_index (window index + clean-window filter) ────────────────────────────
+# -- _make_index (window index + clean-window filter) ----------------------------
 
 class TestMakeIndex:
 
     def test_all_window_count(self):
-        # T=200, WIN=160, stride 5 → starts 0,5,...,40 = 9 windows
+        # T=200, WIN=160, stride 5 -> starts 0,5,...,40 = 9 windows
         T = WIN + 40
         data = {"p0": _make_patient(T)}
         _, pid_idx, starts = _make_index(data, stride=5, train_on="all")
@@ -253,7 +253,7 @@ class TestMakeIndex:
         assert len(all_s) == len(clean_s)
 
 
-# ── ForecastWindowDataset.__getitem__ (built without Parquet) ───────────────────
+# -- ForecastWindowDataset.__getitem__ (built without Parquet) -------------------
 
 def _dataset_from_arrays(data: dict[str, np.ndarray], stride: int, train_on: str):
     """Construct a ForecastWindowDataset bypassing the Parquet load."""
@@ -277,7 +277,7 @@ class TestGetItem:
         torch.testing.assert_close(target, torch.from_numpy(arr[L : L + H, GLU]))
 
     def test_label_reflects_horizon_flag(self):
-        # flag inside the horizon of the window starting at 0 → 'missed' label = 1
+        # flag inside the horizon of the window starting at 0 -> 'missed' label = 1
         arr = _make_patient(WIN + 20, flag_rows=(L + 5,))
         ds = _dataset_from_arrays({"p0": arr}, stride=5, train_on="all")
         *_, labels = ds[0]
@@ -285,7 +285,7 @@ class TestGetItem:
         assert labels["late"] == 0.0
 
     def test_label_zero_when_flag_outside_horizon(self):
-        # flag in the CONTEXT (before the horizon) → horizon label stays 0
+        # flag in the CONTEXT (before the horizon) -> horizon label stays 0
         arr = _make_patient(WIN + 20, flag_rows=(10,))
         ds = _dataset_from_arrays({"p0": arr}, stride=5, train_on="all")
         *_, labels = ds[0]
@@ -298,7 +298,7 @@ class TestGetItem:
         assert sum(n for _, n in counts) == len(ds)
 
 
-# ── scoring path ────────────────────────────────────────────────────────────────
+# -- scoring path ----------------------------------------------------------------
 
 class TestScoreDataset:
 
@@ -314,7 +314,7 @@ class TestScoreDataset:
             assert labels[c].shape == (len(ds),)
 
     def test_scores_are_nonnegative(self, model):
-        # score is a mean squared residual → must be >= 0
+        # score is a mean squared residual -> must be >= 0
         data = {"p0": _make_patient(WIN + 40)}
         ds = _dataset_from_arrays(data, stride=5, train_on="all")
         loader = DataLoader(ds, batch_size=8, shuffle=False)
