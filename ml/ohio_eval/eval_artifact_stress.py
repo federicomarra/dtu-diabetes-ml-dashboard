@@ -7,8 +7,8 @@ windows. Decision gate for the train-time augmentation (Step 2).
     .venv/bin/python ml/ohio_eval/eval_artifact_stress.py                 # sim-test
     .venv/bin/python ml/ohio_eval/eval_artifact_stress.py --data ohio     # real target
 
-Dropouts set valid=False → those windows stay skipped by the scorer (realistic
-deployment). Jumps/compression keep valid=True → those windows ARE scored, which
+Dropouts set valid=False -> those windows stay skipped by the scorer (realistic
+deployment). Jumps/compression keep valid=True -> those windows ARE scored, which
 is where false positives show. The int-coded artifact mask attributes each FP.
 """
 import argparse
@@ -22,44 +22,23 @@ from sklearn.metrics import roc_auc_score
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import load_patients, make_patient_split, N_CHANNELS  # noqa: E402
 from augment.sensor_artifacts import apply_artifacts, ArtifactConfig, CLEAN  # noqa: E402
-from models.xchannel.model import (  # noqa: E402
-    forecaster_from_ckpt, anomaly_score as compute_score, CONTEXT_LEN, HORIZON,
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
+from ohio_eval.scoring import (  # noqa: E402
+    zscore_stats as _zscore_stats, valid_starts, score_windows, robust_threshold, L, WIN,
 )
-
-L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
-
-
-def _zscore_stats(arr):
-    sig = arr[:, :N_CHANNELS]
-    return sig.mean(0), sig.std(0).clip(min=1e-8)
 
 
 @torch.no_grad()
 def score(model, device, arr, valid, amask, mean, std, stride, bs):
-    """Per-window (score, true_label, artifact_flag) for valid windows."""
-    T = arr.shape[0]
+    """Per-window (score, true_label, artifact_flag) for glucose-complete windows."""
     z = (arr[:, :N_CHANNELS] - mean) / std
-    starts = [s for s in range(0, T - WIN + 1, stride) if valid[s:s + WIN].all()]
+    starts = valid_starts(arr.shape[0], stride, valid)
     if not starts:
         return np.empty(0), np.empty(0), np.empty(0, dtype=bool)
-    sc, lab, art = [], [], []
-    for i in range(0, len(starts), bs):
-        chunk = starts[i:i + bs]
-        glu = torch.stack([torch.from_numpy(z[s:s + L, 0].copy()) for s in chunk]).to(device)
-        ins = torch.stack([torch.from_numpy(z[s:s + WIN, 1].copy()) for s in chunk]).to(device)
-        car = torch.stack([torch.from_numpy(z[s:s + WIN, 2].copy()) for s in chunk]).to(device)
-        tgt = torch.stack([torch.from_numpy(z[s + L:s + WIN, 0].copy()) for s in chunk]).to(device)
-        sc.append(compute_score(model(glu, ins, car), tgt).cpu().numpy())
-        lab.append(np.array([arr[s + L:s + WIN, N_CHANNELS:].max() for s in chunk], dtype=np.float32))
-        art.append(np.array([(amask[s + L:s + WIN] != CLEAN).any() for s in chunk], dtype=bool))
-    return np.concatenate(sc), np.concatenate(lab), np.concatenate(art)
-
-
-def threshold(scores, k=2.0):
-    """Per-cohort robust threshold: median + k·IQR/1.349 (matches diary default)."""
-    med = np.median(scores)
-    iqr = np.subtract(*np.percentile(scores, [75, 25]))
-    return med + k * (iqr / 1.349)
+    scores = score_windows(model, z, starts, device, bs)
+    labels = np.array([arr[s + L:s + WIN, N_CHANNELS:].max() for s in starts], dtype=np.float32)
+    art = np.array([(amask[s + L:s + WIN] != CLEAN).any() for s in starts], dtype=bool)
+    return scores, labels, art
 
 
 def run_pairs(model, device, patients, cfg, args, label):
@@ -73,9 +52,9 @@ def run_pairs(model, device, patients, cfg, args, label):
     for j, (pid, arr, valid) in enumerate(patients):
         T = arr.shape[0]
         mean, std = _zscore_stats(arr)
-        s, l, _ = score(model, device, arr, valid, np.zeros(T, np.int8),
+        s, lab, _ = score(model, device, arr, valid, np.zeros(T, np.int8),
                         mean, std, args.stride, args.batch_size)
-        clean_s.append(s); clean_l.append(l)
+        clean_s.append(s); clean_l.append(lab)
         rng = np.random.default_rng(args.seed + j)
         g2, v2, amask = apply_artifacts(arr[:, 0], valid, rng, cfg)
         arr2 = arr.copy(); arr2[:, 0] = g2
@@ -85,12 +64,12 @@ def run_pairs(model, device, patients, cfg, args, label):
 
     cs, cl = np.concatenate(clean_s), np.concatenate(clean_l)
     is_, il, ia = np.concatenate(inj_s), np.concatenate(inj_l), np.concatenate(inj_a)
-    thr = threshold(cs)
+    thr = robust_threshold(cs)
     artonly = ia & (il == 0)
     nonart = (~ia) & (il == 0)
 
     print(f"\n=== {label}  ({len(cs):,} clean / {len(is_):,} injected windows) ===")
-    print(f"Threshold (clean median+2·IQR/1.349) = {thr:.4f}")
+    print(f"Threshold (clean median+2*IQR/1.349) = {thr:.4f}")
     print(f"True-anomaly AUROC   clean={roc_auc_score(cl, cs):.4f}   injected={roc_auc_score(il, is_):.4f}")
     print(f"FP-rate @ artifact-only windows = {(is_[artonly] > thr).mean():.4%}  (n={int(artonly.sum())})")
     print(f"FP-rate @ clean-normal windows  = {(is_[nonart] > thr).mean():.4%}  (n={int(nonart.sum())})")
@@ -109,7 +88,7 @@ def _ohio_patients(args):
     cfg = RuleConfig()
     for p in load_ohio_cohort(args.ohio_root, year="both", split="test"):
         arr = p.render()
-        arr[:, N_CHANNELS:] = label_array(p, cfg)[:, N_CHANNELS:]   # rule anomaly flags
+        arr[:, N_CHANNELS:] = label_array(p, cfg, p.meals)[:, N_CHANNELS:]   # rule anomaly flags
         yield p.pid, arr, p.valid
 
 

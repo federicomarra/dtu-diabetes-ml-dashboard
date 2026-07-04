@@ -2,11 +2,11 @@
 Per-patient calibration + adaptation on WEEKS of real data (quality-program
 Step 3, retried at scale).
 
-Step 3 with 5 baseline days overfit a 464k net (over-detection 15%→29%). But
+Step 3 with 5 baseline days overfit a 464k net (over-detection 15%->29%). But
 OhioT1DM gives ~8 weeks per patient in the TRAIN split (temporally before the
 ~10-day TEST split). This uses the full train weeks to (a) calibrate the
 per-patient threshold/stats and (b) fine-tune the detector, then evaluates on the
-test split (rule-derived labels). Train/test are separate periods → no leakage.
+test split (rule-derived labels). Train/test are separate periods -> no leakage.
 
 Three arms, isolating the data-scarcity question:
   base + 5d   : un-adapted, threshold from the test split's first 5 days (old way)
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import N_CHANNELS, set_seed  # noqa: E402
@@ -93,7 +93,7 @@ def main():
         te_starts = _valid_starts(pte, args.eval_stride)
         if len(tr_starts) < 200 or not te_starts:
             continue
-        print(f"  [{k}/{len(pids)}] {pid}: adapt on {len(tr_starts):,} train windows…", flush=True)
+        print(f"  [{k}/{len(pids)}] {pid}: adapt on {len(tr_starts):,} train windows...", flush=True)
 
         adapted = adapt(base, ztr, tr_starts, device, args.adapt_epochs, args.adapt_lr, args.batch_size)
 
@@ -109,7 +109,7 @@ def main():
             S[arm].append(sc)
             flag[arm][0] += int((sc > thr).sum()); flag[arm][1] += len(sc)
 
-        flags = label_array(pte, cfg)
+        flags = label_array(pte, cfg, pte.meals)
         for c, j in CLASS_IDX.items():
             Lb[c].append(np.array([flags[st + L : st + WIN, N_CHANNELS + j].max() for st in te_starts]))
 
@@ -123,7 +123,7 @@ def main():
             print(f"  {c:<8}   n/a"); continue
         row = " ".join(f"{roc_auc_score(y, cat[a]):>9.3f}" for a in arms)
         print(f"  {c:<8} {int(y.sum()):>6} | {row}")
-    print(f"\n  over-detection (flagged test windows):  " +
+    print("\n  over-detection (flagged test windows):  " +
           "  ".join(f"{a}={flag[a][0]/flag[a][1]:.1%}" for a in arms))
 
 

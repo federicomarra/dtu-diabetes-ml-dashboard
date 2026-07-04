@@ -5,17 +5,17 @@ OhioT1DM has no anomaly labels, so we create them honestly by perturbing only
 the bolus (an INPUT), never fabricating glucose, then scoring with the
 sim-trained XCHANNEL checkpoint:
 
-  missed : drop a real meal bolus entirely (insulin AND its announced carb → 0)
+  missed : drop a real meal bolus entirely (insulin AND its announced carb -> 0)
   late   : shift the bolus later by --late_delay min (insulin + announcement)
   large  : keep only --carb_keep of the bolus's announced carbs (under-report)
 
-Real glucose stays; the model (which learned the normal carb→insulin coupling
+Real glucose stays; the model (which learned the normal carb->insulin coupling
 on the simulator) sees an anomalous input combination, its forecast diverges
-from real glucose → high residual. Labels are exact (the perturbed bolus minute).
+from real glucose -> high residual. Labels are exact (the perturbed bolus minute).
 
-This is the "A" half of the A→B plan: the adapter now matches the simulator's
+This is the "A" half of the A->B plan: the adapter now matches the simulator's
 raw-channel encoding (3-min bolus spread, bolus-time announced-carb box, missed
-→ carb 0). If transfer is still near-chance, that is the raw-channel
+-> carb 0). If transfer is still near-chance, that is the raw-channel
 generalization gap; "B" (IOB/COB features) is the encoding-robust fix.
 
 Per-patient z-scoring uses each patient's ORIGINAL (un-injected) render.
@@ -38,23 +38,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))   # put ml/ on the path
 from dataset import ANOMALY_CLASSES, N_CHANNELS  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort, OhioPatient, Bolus  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import (  # noqa: E402
-    forecaster_from_ckpt, anomaly_score as compute_score, CONTEXT_LEN, HORIZON,
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
+from ohio_eval.scoring import (  # noqa: E402
+    zscore_stats as _zscore_stats, valid_starts, score_windows, L, WIN,
 )
 
-L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 CLASS_IDX = {c: i for i, c in enumerate(ANOMALY_CLASSES)}   # missed=0 late=1 large=2
 
 
-# ── injection ───────────────────────────────────────────────────────────────────
+# -- injection -------------------------------------------------------------------
 
 def inject(p: OhioPatient, cls: str, late_delay: int, carb_keep: float,
            min_carb_g: float) -> np.ndarray:
     """Render a [T,8] array with `cls` injected at every eligible meal bolus."""
     fcol = N_CHANNELS + CLASS_IDX[cls]
-    new = [Bolus(b.minute, b.units, b.carb_g) for b in p.boluses]   # copies
+    made = [Bolus(b.minute, b.units, b.carb_g) for b in p.boluses]   # copies
+    new: list[Bolus | None] = list(made)                # same objects; entries None'd out below
     flag_minutes = []
-    for i, b in enumerate(new):
+    for i, b in enumerate(made):
         if b.carb_g < min_carb_g:                       # only meal boluses
             continue
         if cls == "missed":
@@ -75,30 +76,17 @@ def inject(p: OhioPatient, cls: str, late_delay: int, carb_keep: float,
     return arr
 
 
-# ── scoring ─────────────────────────────────────────────────────────────────────
+# -- scoring ---------------------------------------------------------------------
 
-def _zscore_stats(arr):
-    sig = arr[:, :N_CHANNELS]
-    return sig.mean(0), sig.std(0).clip(min=1e-8)
-
-
-@torch.no_grad()
 def score_patient(model, device, arr, valid, mean, std, fcol, stride, batch_size, score_mode="sym"):
-    T = arr.shape[0]
+    """Per-window (score, label) over glucose-complete windows; label = flag `fcol`."""
     z = (arr[:, :N_CHANNELS] - mean) / std
-    starts = [s for s in range(0, T - WIN + 1, stride) if valid[s : s + WIN].all()]
+    starts = valid_starts(arr.shape[0], stride, valid)
     if not starts:
         return np.empty(0), np.empty(0)
-    scores, labels = [], []
-    for i in range(0, len(starts), batch_size):
-        chunk = starts[i : i + batch_size]
-        glu = torch.stack([torch.from_numpy(z[s : s + L, 0].copy()) for s in chunk]).to(device)
-        ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in chunk]).to(device)
-        car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in chunk]).to(device)
-        tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in chunk]).to(device)
-        scores.append(compute_score(model(glu, ins, car), tgt, score_mode).cpu().numpy())
-        labels.append(np.array([arr[s + L : s + WIN, fcol].max() for s in chunk], dtype=np.float32))
-    return np.concatenate(scores), np.concatenate(labels)
+    scores = score_windows(model, z, starts, device, batch_size, score_mode)
+    labels = np.array([arr[s + L : s + WIN, fcol].max() for s in starts], dtype=np.float32)
+    return scores, labels
 
 
 def eval_class(model, device, cohort, cls, args):
@@ -108,9 +96,9 @@ def eval_class(model, device, cohort, cls, args):
     for p in cohort:
         arr = xf(inject(p, cls, args.late_delay, args.carb_keep, args.min_carb_g))
         mean, std = _zscore_stats(xf(p.render()))       # ORIGINAL stats, same transform
-        s, l = score_patient(model, device, arr, p.valid, mean, std, fcol,
-                             args.stride, args.batch_size)
-        all_s.append(s); all_l.append(l)
+        s, lab = score_patient(model, device, arr, p.valid, mean, std, fcol,
+                               args.stride, args.batch_size)
+        all_s.append(s); all_l.append(lab)
     return np.concatenate(all_s), np.concatenate(all_l)
 
 
@@ -145,7 +133,7 @@ def main():
     n_meal_bolus = sum(sum(1 for b in p.boluses if b.carb_g >= args.min_carb_g) for p in cohort)
     print(f"OhioT1DM: {len(cohort)} patients ({args.year}/{args.split}), "
           f"{sum(p.T for p in cohort):,} minutes, "
-          f"{sum(len(p.boluses) for p in cohort)} boluses ({n_meal_bolus} meal-boluses ≥{args.min_carb_g:g}g)")
+          f"{sum(len(p.boluses) for p in cohort)} boluses ({n_meal_bolus} meal-boluses >={args.min_carb_g:g}g)")
 
     print("\nSynthetic-injection generalization (real glucose, perturbed bolus)")
     print(f"  {'class':<8} {'prev':>7} {'pos':>7} {'AUPRC':>9} {'AUROC':>9}")
