@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { uploadCsv, uploadGlookoZip } from "@/models/api";
 import styles from "./DataUploader.module.css";
 
@@ -27,7 +27,6 @@ function detectFileType(file: File): FileType {
 }
 
 export default function DataUploader({ patientId, onUploadSuccess }: DataUploaderProps) {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -90,7 +89,6 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
       setFileType(null);
       if (inputRef.current) inputRef.current.value = "";
       setTimeout(() => {
-        router.refresh();
         if (onUploadSuccess) onUploadSuccess();
       }, 1500);
     } catch (err: unknown) {
@@ -253,13 +251,13 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
                 </div>
                 {(result.dateFrom || result.dateTo) && (
                   <div style={{ marginTop: "0.3rem", opacity: 0.8 }}>
-                    📅&nbsp;
+                    {"from "}
                     {result.dateFrom
-                      ? new Date(result.dateFrom).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                      ? format(new Date(result.dateFrom), "EEE, MMM d yyyy")
                       : "–"}
-                    {" → "}
+                    {" to "}
                     {result.dateTo
-                      ? new Date(result.dateTo).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                      ? format(new Date(result.dateTo), "EEE, MMM d yyyy")
                       : "–"}
                   </div>
                 )}

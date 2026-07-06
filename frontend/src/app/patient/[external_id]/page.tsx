@@ -123,7 +123,31 @@ export default function PatientDashboard() {
   return (
     <div className={styles.dashboard}>
       <div className={styles.titleRow}>
-        <h2 className={styles.pageTitle}>Patient Dashboard</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <h2 className={styles.pageTitle}>Patient Dashboard</h2>
+          {ctrl.isRefreshing && (
+            <span style={{
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "var(--text-secondary)",
+              background: "var(--border)",
+              padding: "0.25rem 0.6rem",
+              borderRadius: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}>
+              <span style={{
+                display: "inline-block",
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "var(--primary)",
+              }} />
+              Updating...
+            </span>
+          )}
+        </div>
         <div className={styles.controls}>
           <div className={styles.timeRangeSelector}>
             <span className={styles.selectorLabel}>Last</span>
@@ -197,7 +221,7 @@ export default function PatientDashboard() {
       {/* Row 1: Glucose + TIR side-by-side when both charts present, else glucose full width */}
       <div className={allChartsPresent ? styles.chartsGrid : styles.chartsGridFull}>
         <GlucoseChart
-          key="glucose"
+          key={`glucose-${ctrl.refreshKey}`}
           readings={readings}
           patientId={patient!.id}
           onOffsetChange={handleGlucoseOffsetChange}
@@ -217,14 +241,14 @@ export default function PatientDashboard() {
         /* Both insulin & carbo → half-half */
         <div className={styles.chartsGridHalf}>
           <InsulinDailyChart
-            key="insulin"
+            key={`insulin-${ctrl.refreshKey}`}
             patientId={patient!.id}
             syncOffset={dailyOffset}
             syncLatestDay={glucoseLatestDay}
             onDataPresence={handleInsulinPresence}
           />
           <CarboDailyChart
-            key="carbo"
+            key={`carbo-${ctrl.refreshKey}`}
             patientId={patient!.id}
             syncOffset={dailyOffset}
             syncLatestDay={glucoseLatestDay}
@@ -243,7 +267,7 @@ export default function PatientDashboard() {
           )}
           {hasInsulin && (
             <InsulinDailyChart
-              key="insulin"
+              key={`insulin-${ctrl.refreshKey}`}
               patientId={patient!.id}
               syncOffset={dailyOffset}
               syncLatestDay={glucoseLatestDay}
@@ -252,7 +276,7 @@ export default function PatientDashboard() {
           )}
           {hasCarbo && (
             <CarboDailyChart
-              key="carbo"
+              key={`carbo-${ctrl.refreshKey}`}
               patientId={patient!.id}
               syncOffset={dailyOffset}
               syncLatestDay={glucoseLatestDay}
@@ -275,14 +299,14 @@ export default function PatientDashboard() {
           {/* Hidden mounting points so onDataPresence callbacks still fire */}
           <div style={{ display: "none" }}>
             <InsulinDailyChart
-              key="insulin"
+              key={`insulin-${ctrl.refreshKey}`}
               patientId={patient!.id}
               syncOffset={dailyOffset}
               syncLatestDay={glucoseLatestDay}
               onDataPresence={handleInsulinPresence}
             />
             <CarboDailyChart
-              key="carbo"
+              key={`carbo-${ctrl.refreshKey}`}
               patientId={patient!.id}
               syncOffset={dailyOffset}
               syncLatestDay={glucoseLatestDay}

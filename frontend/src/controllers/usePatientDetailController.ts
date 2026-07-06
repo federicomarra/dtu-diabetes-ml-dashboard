@@ -72,6 +72,7 @@ export function usePatientDetailController(externalId: string) {
   // only re-filters locally — it never triggers a refetch or a detection pass.
   const lastDetectKey = useRef<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refresh = useCallback(() => {
     setRefreshKey((prev) => prev + 1);
@@ -82,7 +83,12 @@ export function usePatientDetailController(externalId: string) {
 
     async function load() {
       try {
-        setStateAndRef({ status: "loading" });
+        const isSamePatient = stateRef.current.status === "ready" && stateRef.current.patient.external_id === externalId;
+        if (!isSamePatient) {
+          setStateAndRef({ status: "loading" });
+        } else {
+          setIsRefreshing(true);
+        }
         if (!inferenceEnabled) lastDetectKey.current = null; // re-enabling later re-detects
 
         // 1. Resolve external_id → patient object via dedicated endpoint
@@ -168,6 +174,10 @@ export function usePatientDetailController(externalId: string) {
               err instanceof Error ? err.message : "Failed to load patient data",
           });
         }
+      } finally {
+        if (!cancelled) {
+          setIsRefreshing(false);
+        }
       }
     }
 
@@ -205,6 +215,7 @@ export function usePatientDetailController(externalId: string) {
     return {
       notFound: false as const,
       loading: true as const,
+      isRefreshing: false,
       error: null,
       patient: null,
       readings: [],
@@ -219,17 +230,19 @@ export function usePatientDetailController(externalId: string) {
       unacknowledgedCount: 0,
       handleAcknowledge,
       refresh,
+      refreshKey: 0,
     };
   }
 
   if (state.status === "not_found") {
-    return { notFound: true as const, loading: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, hba1c: null, gmi: null, scatterplotData: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge, refresh };
+    return { notFound: true as const, loading: false, isRefreshing: false, error: null, patient: null, readings: [], multiWeekReadings: [] as GlucoseReading[], tir: null, anomalies: [], averageGlucose: null, hba1c: null, gmi: null, scatterplotData: null, latestReading: undefined, unacknowledgedCount: 0, handleAcknowledge, refresh, refreshKey: 0 };
   }
 
   if (state.status === "error") {
     return {
       notFound: false as const,
       loading: false as const,
+      isRefreshing: false,
       error: state.message,
       patient: null,
       readings: [],
@@ -244,6 +257,7 @@ export function usePatientDetailController(externalId: string) {
       unacknowledgedCount: 0,
       handleAcknowledge,
       refresh,
+      refreshKey: 0,
     };
   }
 
@@ -252,6 +266,7 @@ export function usePatientDetailController(externalId: string) {
   return {
     notFound: false as const,
     loading: false as const,
+    isRefreshing,
     error: null,
     patient,
     tir,
@@ -266,5 +281,6 @@ export function usePatientDetailController(externalId: string) {
     unacknowledgedCount: anomalies.filter((a) => !a.is_acknowledged).length,
     handleAcknowledge,
     refresh,
+    refreshKey,
   };
 }
