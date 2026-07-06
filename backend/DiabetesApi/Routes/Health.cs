@@ -15,10 +15,12 @@ public class Health(AppDbContext db, MlInferenceService ml) : ControllerBase
     /// </summary>
     /// <remarks>
     /// Probes each component independently:
-    /// - **backend**: always healthy if this endpoint responds.
-    /// - **database**: calls <c>CanConnectAsync</c> to verify Postgres is reachable.
-    /// - **ml_service**: calls the ML container's `/health` endpoint and surfaces
-    ///   the model name and compute device it reports.
+    /// 
+    /// **backend**: always healthy if this endpoint responds.
+    /// 
+    /// **database**: calls CanConnectAsync to verify Postgres is reachable.
+    /// 
+    /// **ml**: calls the ML container's /health endpoint and surfaces the model name and compute device it reports.
     ///
     /// Returns **200 OK** when all components are healthy, **503 Service Unavailable**
     /// when at least one component is degraded.
@@ -67,7 +69,7 @@ public class Health(AppDbContext db, MlInferenceService ml) : ControllerBase
             Components: new Components(
                 Backend:   new ComponentStatus("healthy"),
                 Database:  new ComponentStatus(dbStatus),
-                MlService: new MlComponentStatus(mlStatus, mlDetector, mlDevice)
+                Ml: new MlComponentStatus(mlStatus, mlDetector, mlDevice)
             )
         );
 
@@ -76,7 +78,7 @@ public class Health(AppDbContext db, MlInferenceService ml) : ControllerBase
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
     private record HealthResponse(string Status, Components Components);
-    private record Components(ComponentStatus Backend, ComponentStatus Database, MlComponentStatus MlService);
+    private record Components(ComponentStatus Backend, ComponentStatus Database, MlComponentStatus Ml);
     private record ComponentStatus(string Status);
     private record MlComponentStatus(string Status, string? Detector, string? Device) : ComponentStatus(Status);
 }
