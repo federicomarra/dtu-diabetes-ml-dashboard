@@ -82,7 +82,7 @@ class InferRequestSchema(ma.Schema):
     patient_id    = ma.fields.Int(required=True, metadata={"description": "Patient identifier echoed back in the response"})
     threshold_k   = ma.fields.Float(load_default=3.0, metadata={"description": "Anomaly threshold in σ above baseline"})
     min_event_min = ma.fields.Int(load_default=30, metadata={"description": "Minimum event duration in minutes"})
-    max_events    = ma.fields.Int(load_default=50, metadata={"description": "Maximum number of anomalies returned"})
+    max_events    = ma.fields.Int(load_default=0, metadata={"description": "Maximum number of anomalies returned (0 = no cap)"})
     histories     = ma.fields.List(ma.fields.Nested(HistoryPointSchema), required=True, metadata={"description": "CGM + bolus + carb time-series"})
     meals         = ma.fields.List(ma.fields.Nested(MealEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged meal events (optional rule input)"})
     boluses       = ma.fields.List(ma.fields.Nested(BolusEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged bolus events (optional rule input)"})
@@ -142,7 +142,6 @@ def _load_model() -> dict:
 # ─── Blueprints ───────────────────────────────────────────────────────────────
 
 blp = Blueprint("ml", __name__, description="Inference endpoints")
-
 
 @blp.route("/health")
 class Health(MethodView):
@@ -246,63 +245,6 @@ class Infer(MethodView):
             out = out[:max_events]
         return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
                        anomalies=out), 200
-
-            rows          = body.get("histories") or []
-            patient_id    = body.get("patient_id")
-            threshold_k   = float(body.get("threshold_k", 3.0))
-            min_event_min = int(body.get("min_event_min", 30))
-            max_events    = int(body.get("max_events", 50))
-
-            arr, valid, t0 = histories_to_array(rows)
-            if arr.shape[0] == 0 or valid.sum() == 0 or t0 is None:
-                return jsonify(patient_id=patient_id, n_windows=0, anomalies=[]), 200
-            assert t0 is not None  # narrowed by the guard above
-
-            def _to_min(ts):
-                return int(round((_parse_ts(ts) - t0).total_seconds() / 60.0))
-
-            body_meals   = body.get("meals")
-            body_boluses = body.get("boluses")
-            if body_meals is not None or body_boluses is not None:
-                meals   = [_Meal(_to_min(m["timestamp"]), float(m["carb_g"])) for m in (body_meals or [])]
-                boluses = [_Bolus(_to_min(b["timestamp"]), float(b["units"])) for b in (body_boluses or [])]
-            else:
-                meals, boluses = derive_events(arr)
-
-            z = zscore_channels(arr)
-            events, _ = detect(
-                z, valid, detector=_MODEL["detector"], device=_MODEL["device"],
-                meals=meals, boluses=boluses, threshold_k=threshold_k, min_event_min=min_event_min,
-            )
-
-            sev_max = max((e.severity for e in events), default=1.0) or 1.0
-
-            def strength(sev: float) -> float:
-                return round(100.0 * sev / sev_max, 1)
-
-            out = []
-            for e in events:
-                if e.rule_label == "late":
-                    atype, desc = "late_bolus", "delayed bolus after a logged meal (rule-confirmed)"
-                elif e.rule_label == "missed":
-                    atype, desc = "missed_bolus", "logged meal with no bolus (rule-confirmed)"
-                else:
-                    atype, desc = "missed_bolus", "model-detected excursion; no logged cause (unconfirmed)"
-                out.append({
-                    "start":            (t0 + timedelta(minutes=e.start_min)).isoformat(),
-                    "end":              (t0 + timedelta(minutes=e.start_min + e.duration_min)).isoformat(),
-                    "start_minute":     int(e.start_min),
-                    "duration_min":     int(e.duration_min),
-                    "anomaly_type":     atype,
-                    "description":      desc,
-                    "rule_confirmed":   e.rule_label is not None,
-                    "severity":         round(float(e.severity), 2),
-                    "anomaly_strength": strength(e.severity),
-                    "score":            round(float(e.anomaly_score), 4),
-                })
-            out.sort(key=lambda a: a["severity"], reverse=True)
-            return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
-                           anomalies=out[:max_events]), 200
 
 
 api.register_blueprint(blp)
