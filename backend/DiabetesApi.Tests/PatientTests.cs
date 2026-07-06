@@ -83,7 +83,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     {
         var patient = await SeedPatientAsync("P_GET_TEST", "Get Test Patient");
 
-        var resp = await Client.GetAsync($"/api/patient/{patient.Id}");
+        var resp = await Client.GetAsync($"/api/patient?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -94,7 +94,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     [Fact]
     public async Task GetPatient_NotFound_Returns404()
     {
-        var resp = await Client.GetAsync("/api/patient/99999");
+        var resp = await Client.GetAsync("/api/patient?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -103,7 +103,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     {
         var patient = await SeedPatientAsync("P_BY_EXT_TEST", "External Test Patient");
 
-        var resp = await Client.GetAsync($"/api/patient/by-external/{patient.ExternalId}");
+        var resp = await Client.GetAsync($"/api/patient?ext_id={patient.ExternalId}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -114,8 +114,15 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     [Fact]
     public async Task GetPatientByExternalId_NotFound_Returns404()
     {
-        var resp = await Client.GetAsync("/api/patient/by-external/NONEXISTENT");
+        var resp = await Client.GetAsync("/api/patient?ext_id=NONEXISTENT");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetPatient_MissingParams_Returns400()
+    {
+        var resp = await Client.GetAsync("/api/patient");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
@@ -135,7 +142,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
         content.Add(fileContent, "file", "test.csv");
 
-        var resp = await Client.PostAsync($"/api/patient/{patient.Id}/upload-csv", content);
+        var resp = await Client.PostAsync($"/api/patient/upload-libre-csv?id={patient.Id}", content);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -155,7 +162,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
         content.Add(fileContent, "file", "empty.csv");
 
-        var resp = await Client.PostAsync($"/api/patient/{patient.Id}/upload-csv", content);
+        var resp = await Client.PostAsync($"/api/patient/upload-libre-csv?id={patient.Id}", content);
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -167,7 +174,7 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
         content.Add(fileContent, "file", "test.csv");
 
-        var resp = await Client.PostAsync("/api/patient/99999/upload-csv", content);
+        var resp = await Client.PostAsync("/api/patient/upload-libre-csv?id=99999", content);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 }

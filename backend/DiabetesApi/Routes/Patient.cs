@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
 using DiabetesApi.Models;
@@ -40,24 +41,32 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
         ));
     }
 
-    /// <summary>Get a single patient by external_id string.</summary>
-    [HttpGet("by-external/{externalId}")]
+    /// <summary>Get a single patient by ID or external ID.</summary>
+    /// <param name="id">Internal patient database ID.</param>
+    /// <param name="ext_id">External patient identifier string.</param>
+    [HttpGet]
     [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetPatientByExternalId(string externalId)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetPatient(
+        [FromQuery] int? id = null,
+        [FromQuery(Name = "ext_id")] string? ext_id = null)
     {
-        var patient = await db.Patients.FirstOrDefaultAsync(p => p.ExternalId == externalId);
-        if (patient is null) return NotFound();
-        return Ok(ToDto(patient));
-    }
+        if (id is null && string.IsNullOrWhiteSpace(ext_id))
+        {
+            return BadRequest(new { error = "Either id or ext_id query parameter must be provided." });
+        }
 
-    /// <summary>Get a single patient by ID.</summary>
-    [HttpGet("{patientId:int}")]
-    [ProducesResponseType(typeof(PatientDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetPatient(int patientId)
-    {
-        var patient = await db.Patients.FindAsync(patientId);
+        Models.Patient? patient = null;
+        if (id is not null)
+        {
+            patient = await db.Patients.FindAsync(id.Value);
+        }
+        else
+        {
+            patient = await db.Patients.FirstOrDefaultAsync(p => p.ExternalId == ext_id);
+        }
+
         if (patient is null) return NotFound();
         return Ok(ToDto(patient));
     }
@@ -81,16 +90,21 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
         db.Patients.Add(patient);
         await db.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetPatient), new { patientId = patient.Id }, ToDto(patient));
+        return CreatedAtAction(nameof(GetPatient), new { id = patient.Id }, ToDto(patient));
     }
 
     /// <summary>Upload glucose, insulin, and carb data from LibreView CSV.</summary>
-    [HttpPost("{patientId:int}/upload-csv")]
+    /// <param name="id">Patient database ID.</param>
+    /// <param name="file">Libre CSV file to upload.</param>
+    [HttpPost("upload-libre-csv")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> UploadCsv(int patientId, IFormFile file)
+    public async Task<IActionResult> UploadCsv(
+        [BindRequired, FromQuery] int id,
+        IFormFile file)
     {
+        int patientId = id;
         if (file == null || file.Length == 0)
             return BadRequest(new { error = "No file uploaded or file is empty" });
 

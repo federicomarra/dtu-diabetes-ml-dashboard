@@ -4,7 +4,7 @@
  *
  * Route mapping (from backend/DiabetesApi/Routes/):
  *   GET  api/patient/list              → getPatients()
- *   GET  api/patient/{id}              → getPatient()
+ *   GET  api/patient?id={id}&ext_id={ext_id} → getPatient() / getPatientByExternalId()
  *   POST api/patient/create            → createPatient()
  *   GET  api/glucose?id={id}           → getGlucoseReadings()
  *   GET  api/glucose/latest?id={id}    → getLatestReading()
@@ -52,12 +52,12 @@ export async function getPatients(
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
-  const { data } = await api.get(`/patient/${patientId}`);
+  const { data } = await api.get("/patient", { params: { id: patientId } });
   return data;
 }
 
 export async function getPatientByExternalId(externalId: string): Promise<Patient> {
-  const { data } = await api.get(`/patient/by-external/${encodeURIComponent(externalId)}`);
+  const { data } = await api.get("/patient", { params: { ext_id: externalId } });
   return data;
 }
 
@@ -74,7 +74,8 @@ export async function uploadCsv(
 ): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
   const formData = new FormData();
   formData.append("file", file);
-  const { data } = await api.post(`/patient/${patientId}/upload-csv`, formData, {
+  const { data } = await api.post("/patient/upload-libre-csv", formData, {
+    params: { id: patientId },
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
