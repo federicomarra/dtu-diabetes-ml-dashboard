@@ -34,6 +34,10 @@ interface InsulinDailyChartProps {
    * (only relevant in uncontrolled mode).
    */
   onLatestDayResolved?: (day: Date) => void;
+  /**
+   * Called when the chart resolves whether it has data for the initial load.
+   */
+  onDataPresence?: (hasData: boolean) => void;
 }
 
 // ─── Random demo data generator ──────────────────────────────────────────────
@@ -92,6 +96,7 @@ export default function InsulinDailyChart({
   syncOffset,
   syncLatestDay,
   onLatestDayResolved,
+  onDataPresence,
 }: InsulinDailyChartProps) {
   const isControlled = syncOffset !== undefined && syncLatestDay !== undefined;
 
@@ -100,7 +105,7 @@ export default function InsulinDailyChart({
   const [ownOffset, setOwnOffset] = useState(0);
 
   const latestDay = isControlled ? syncLatestDay : ownLatestDay;
-  const offset    = isControlled ? syncOffset    : ownOffset;
+  const offset = isControlled ? syncOffset : ownOffset;
 
   const [fetchedEvents, setFetchedEvents] = useState<InsulinEvent[] | null>(null);
   // true once initial (latest-day) fetch is done and had data
@@ -116,7 +121,7 @@ export default function InsulinDailyChart({
         const base = subDays(anchor, offsetDays);
         const resp = await getInsulins(patientId, {
           start: startOfDay(base).toISOString(),
-          end:   endOfDay(base).toISOString(),
+          end: endOfDay(base).toISOString(),
         });
         setFetchedEvents(resp.insulins);
       } catch {
@@ -146,12 +151,14 @@ export default function InsulinDailyChart({
           setOwnLatestDay(day);
           setHasDataOnLatestDay(true);
           onLatestDayResolved?.(day);
+          onDataPresence?.(true);
         } else {
           setHasDataOnLatestDay(false);
+          onDataPresence?.(false);
         }
       })
       .catch(() => {
-        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); }
+        if (!cancelled) { setFetchedEvents([]); setInitialised(true); setHasDataOnLatestDay(false); onDataPresence?.(false); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

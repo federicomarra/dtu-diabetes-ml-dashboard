@@ -144,6 +144,12 @@ public record MlInferResponse(
     IEnumerable<MlAnomaly> Anomalies
 );
 
+public record MlHealthDetail(
+    string Status,              // "ok" | "loading"
+    string? Detector,           // checkpoint filename (e.g. "xchannel_nll_pooled_best.pt")
+    string? Device              // compute device ("cpu", "cuda", "mps")
+);
+
 // ── Histories ─────────────────────────────────────────────────────────────────
 
 public record HistoryDto(

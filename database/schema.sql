@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS glucoses (
     patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     timestamp       TIMESTAMP NOT NULL,
     glucose_mmoll   REAL NOT NULL,                      -- stored in mmol/L
-    source          VARCHAR(20) NOT NULL DEFAULT 'simulated'  -- simulated, dexcom, libre
-                        CHECK (source IN ('simulated', 'dexcom', 'libre')),
+    source          VARCHAR(20) NOT NULL DEFAULT 'simulated'  -- simulated, dexcom, libre, glooko_cgm, glooko_manual
+                        CHECK (source IN ('simulated', 'dexcom', 'libre', 'glooko_cgm', 'glooko_manual')),
     status          VARCHAR(20) NOT NULL             -- very_low, low, in_range, high, very_high
                         CHECK (status IN ('very_low', 'low', 'in_range', 'high', 'very_high'))
     --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP

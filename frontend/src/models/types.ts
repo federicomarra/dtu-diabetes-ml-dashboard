@@ -40,16 +40,6 @@ export interface MealEvent {
   meal_type: "breakfast" | "lunch" | "dinner" | "snack" | null;
 }
 
-/** Maps to HistoryDto from DiabetesApi/Routes/History.cs */
-export interface HistoryEntry {
-  id: number;
-  patient_id: number;
-  timestamp: string;
-  glucose: number | null;
-  insulin: number | null;
-  meal: number | null;
-}
-
 export interface AnomalyDetection {
   id: number;
   patient_id: number;
