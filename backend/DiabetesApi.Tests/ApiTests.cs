@@ -1079,18 +1079,19 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetScatterplot_WithStartEndFilter_FiltersCorrectly()
     {
         var patient = await SeedPatientAsync("P_SCATTER_SE", "Scatter StartEnd Patient");
-        var now = DateTime.UtcNow;
+        // Base off noon UTC to guarantee all generated offsets fall on the same calendar day
+        var noon = DateTime.UtcNow.Date.AddHours(12);
 
         await using var db = CreateDb();
         db.Glucoses.AddRange(
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-5), GlucoseMmoll = 12.0 }, // excluded
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-2), GlucoseMmoll = 5.0  }, // included
-            new Glucose { PatientId = patient.Id, Timestamp = now.AddHours(-1), GlucoseMmoll = 7.0  }  // included
+            new Glucose { PatientId = patient.Id, Timestamp = noon.AddHours(-5), GlucoseMmoll = 12.0 }, // excluded
+            new Glucose { PatientId = patient.Id, Timestamp = noon.AddHours(-2), GlucoseMmoll = 5.0  }, // included
+            new Glucose { PatientId = patient.Id, Timestamp = noon.AddHours(-1), GlucoseMmoll = 7.0  }  // included
         );
         await db.SaveChangesAsync();
 
-        var startStr = now.AddHours(-3).ToString("O");
-        var endStr   = now.ToString("O");
+        var startStr = noon.AddHours(-3).ToString("O");
+        var endStr   = noon.ToString("O");
         var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
@@ -1115,5 +1116,82 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         var patient = await SeedPatientAsync("P_SCATTER_BAD", "Scatter Bad Param Patient");
         var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=5x");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // ── Anomaly Detect ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Detect_PatientNotFound_Returns404()
+    {
+        var resp = await _client.PostAsync("/api/anomaly/detect?id=99999", null);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Detect_WithNoData_ReturnsEmpty()
+    {
+        var patient = await SeedPatientAsync("P_DETECT_EMPTY", "Detect Empty Patient");
+        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}", null);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(0, body.GetProperty("count").GetInt32());
+        Assert.Empty(body.GetProperty("anomalies").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Detect_InvalidLastParam_Returns400()
+    {
+        var patient = await SeedPatientAsync("P_DETECT_BAD", "Detect Bad Param Patient");
+        // Seed at least one glucose reading so we don't return early on "no data"
+        await using (var db = CreateDb())
+        {
+            db.Glucoses.Add(new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow, GlucoseMmoll = 6.0 });
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}&last=invalid", null);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Detect_RunsInferenceSuccessfully()
+    {
+        var patient = await SeedPatientAsync("P_DETECT_OK", "Detect OK Patient");
+        var now = DateTime.UtcNow;
+
+        // Seed data to populate build channel rows
+        await using (var db = CreateDb())
+        {
+            db.Glucoses.AddRange(
+                new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-30), GlucoseMmoll = 6.5 },
+                new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-15), GlucoseMmoll = 7.0 }
+            );
+            db.Insulins.Add(new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-20), Units = 2.0f, EventType = "bolus" });
+            db.Meals.Add(new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-25), Carbs = 45.0f });
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}", null);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(1, body.GetProperty("count").GetInt32());
+
+        var anomaly = body.GetProperty("anomalies")[0];
+        Assert.Equal("missed_bolus", anomaly.GetProperty("anomaly_type").GetString());
+        Assert.Equal("Mocked anomaly description", anomaly.GetProperty("description").GetString());
+        Assert.Equal(3.5, anomaly.GetProperty("severity").GetDouble(), precision: 1);
+        Assert.Equal(0.75, anomaly.GetProperty("confidence").GetDouble(), precision: 2); // 75.0 / 100.0
+
+        // Verify it was saved to the database
+        await using (var db = CreateDb())
+        {
+            var dbAnomaly = await db.Anomalies.SingleAsync(a => a.PatientId == patient.Id);
+            Assert.Equal("missed_bolus", dbAnomaly.AnomalyType);
+            Assert.Equal(3.5, dbAnomaly.Severity);
+            Assert.Equal(0.75, dbAnomaly.Confidence);
+            Assert.Equal("Mocked anomaly description", dbAnomaly.Description);
+        }
     }
 }
