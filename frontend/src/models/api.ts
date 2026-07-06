@@ -81,6 +81,19 @@ export async function uploadCsv(
   return data;
 }
 
+export async function uploadGlookoZip(
+  patientId: number,
+  file: File
+): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post("/patient/upload-glooko-zip", formData, {
+    params: { id: patientId },
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 
 // ─── Glucose ─────────────────────────────────────────────
 
