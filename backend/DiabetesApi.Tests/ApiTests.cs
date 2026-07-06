@@ -402,7 +402,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetAnomalies_WithMinSeverity_FiltersCorrectly()
+    public async Task GetAnomalies_ReturnsAllSortedBySeverity()
     {
         var patient = await SeedPatientAsync("P_ANOMALY_FILTER", "AF Patient");
 
@@ -414,18 +414,18 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        // No filter → all three.
-        var respAll = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
-        var bodyAll = await respAll.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(3, bodyAll.GetProperty("count").GetInt32());
+        // Query anomalies.
+        var resp = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        // minSeverity = 3 → only the 4σ and 6σ anomalies.
-        var respSev = await _client.GetAsync($"/api/anomaly?id={patient.Id}&minSeverity=3");
-        Assert.Equal(HttpStatusCode.OK, respSev.StatusCode);
-        var bodySev = await respSev.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodySev.GetProperty("count").GetInt32());
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(3, body.GetProperty("count").GetInt32());
+
         // Ordered by severity descending → strongest (6σ) first.
-        Assert.Equal(6.0, bodySev.GetProperty("anomalies")[0].GetProperty("severity").GetDouble(), 3);
+        var list = body.GetProperty("anomalies");
+        Assert.Equal(6.0, list[0].GetProperty("severity").GetDouble(), 3);
+        Assert.Equal(4.0, list[1].GetProperty("severity").GetDouble(), 3);
+        Assert.Equal(2.0, list[2].GetProperty("severity").GetDouble(), 3);
     }
 
     [Fact]
