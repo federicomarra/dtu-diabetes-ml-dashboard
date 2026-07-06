@@ -66,7 +66,7 @@ DETECTOR_CKPT = Path(os.environ.get("DETECTOR_CKPT", CKPT_DIR / "xchannel_nll_po
 
 class HistoryPointSchema(ma.Schema):
     timestamp  = ma.fields.Str(required=True, metadata={"description": "ISO-8601 timestamp"})
-    glucose_mmoll = ma.fields.Float(load_default=None, required=True)
+    glucose_mmoll = ma.fields.Float(required=True, allow_none=True)
     insulin_u  = ma.fields.Float(load_default=0.0, allow_none=True)
     cho_grams  = ma.fields.Float(load_default=0.0, allow_none=True)
 
@@ -79,7 +79,7 @@ class BolusEventSchema(ma.Schema):
     units     = ma.fields.Float(required=True, metadata={"description": "Bolus units"})
 
 class InferRequestSchema(ma.Schema):
-    patient_id    = ma.fields.Int(load_default=None, required=True, metadata={"description": "Patient identifier echoed back in the response"})
+    patient_id    = ma.fields.Int(required=True, metadata={"description": "Patient identifier echoed back in the response"})
     threshold_k   = ma.fields.Float(load_default=3.0, metadata={"description": "Anomaly threshold in σ above baseline"})
     min_event_min = ma.fields.Int(load_default=30, metadata={"description": "Minimum event duration in minutes"})
     max_events    = ma.fields.Int(load_default=50, metadata={"description": "Maximum number of anomalies returned"})
