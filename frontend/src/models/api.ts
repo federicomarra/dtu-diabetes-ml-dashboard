@@ -71,7 +71,7 @@ export async function createPatient(
 export async function uploadCsv(
   patientId: number,
   file: File
-): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
+): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number; date_from: string | null; date_to: string | null }> {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post("/patient/upload-libre-csv", formData, {
@@ -84,7 +84,7 @@ export async function uploadCsv(
 export async function uploadGlookoZip(
   patientId: number,
   file: File
-): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
+): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number; date_from: string | null; date_to: string | null }> {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post("/patient/upload-glooko-zip", formData, {

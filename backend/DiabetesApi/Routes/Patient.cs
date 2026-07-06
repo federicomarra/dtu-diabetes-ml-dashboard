@@ -286,11 +286,18 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
 
             await db.SaveChangesAsync();
 
+            var allTimestampsCsv = glucosesToInsert.Select(g => g.Timestamp)
+                .Concat(mealsToInsert.Select(m => m.Timestamp))
+                .Concat(insulinsToInsert.Select(i => i.Timestamp))
+                .ToList();
+
             return Ok(new {
                 message = "CSV imported successfully",
                 glucose_count = glucosesToInsert.Count,
                 meal_count = mealsToInsert.Count,
-                insulin_count = insulinsToInsert.Count
+                insulin_count = insulinsToInsert.Count,
+                date_from = allTimestampsCsv.Count > 0 ? allTimestampsCsv.Min().ToString("yyyy-MM-ddTHH:mm:ssZ") : (string?)null,
+                date_to   = allTimestampsCsv.Count > 0 ? allTimestampsCsv.Max().ToString("yyyy-MM-ddTHH:mm:ssZ") : (string?)null
             });
         }
         catch (Exception ex)
@@ -535,12 +542,19 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
 
             await db.SaveChangesAsync();
 
+            var allTimestampsZip = glucosesToInsert.Select(g => g.Timestamp)
+                .Concat(mealsToInsert.Select(m => m.Timestamp))
+                .Concat(insulinsToInsert.Select(i => i.Timestamp))
+                .ToList();
+
             return Ok(new
             {
                 message = "Glooko ZIP imported successfully",
                 glucose_count = glucosesToInsert.Count,
                 meal_count = mealsToInsert.Count,
-                insulin_count = insulinsToInsert.Count
+                insulin_count = insulinsToInsert.Count,
+                date_from = allTimestampsZip.Count > 0 ? allTimestampsZip.Min().ToString("yyyy-MM-ddTHH:mm:ssZ") : (string?)null,
+                date_to   = allTimestampsZip.Count > 0 ? allTimestampsZip.Max().ToString("yyyy-MM-ddTHH:mm:ssZ") : (string?)null
             });
         }
         catch (Exception ex)

@@ -1,52 +1,81 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { uploadCsv, uploadGlookoZip } from "@/models/api";
+import styles from "./DataUploader.module.css";
 
 interface DataUploaderProps {
   patientId: number;
   onUploadSuccess?: () => void;
 }
 
+type UploadResult = {
+  success: boolean;
+  message: string;
+  stats?: { glucose: number; meal: number; insulin: number };
+  dateFrom?: string | null;
+  dateTo?: string | null;
+} | null;
+
+type FileType = "csv" | "zip" | null;
+
+function detectFileType(file: File): FileType {
+  if (file.name.endsWith(".csv")) return "csv";
+  if (file.name.endsWith(".zip")) return "zip";
+  return null;
+}
+
 export default function DataUploader({ patientId, onUploadSuccess }: DataUploaderProps) {
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // CSV Upload states
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileType, setFileType] = useState<FileType>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<{
-    success: boolean;
-    message: string;
-    stats?: { glucose: number; meal: number; insulin: number };
-  } | null>(null);
+  const [result, setResult] = useState<UploadResult>(null);
 
-  // Glooko ZIP upload states
-  const [glookoFile, setGlookoFile] = useState<File | null>(null);
-  const [glookoUploading, setGlookoUploading] = useState(false);
-  const [glookoResult, setGlookoResult] = useState<{
-    success: boolean;
-    message: string;
-    stats?: { glucose: number; meal: number; insulin: number };
-  } | null>(null);
+  const acceptFile = useCallback((f: File) => {
+    const type = detectFileType(f);
+    setFile(f);
+    setFileType(type);
+    setResult(null);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setCsvFile(e.target.files[0]);
-      setUploadResult(null);
+      acceptFile(e.target.files[0]);
     }
   };
 
-  const handleCsvUpload = async (e: React.FormEvent) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!csvFile || !patientId) return;
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => setIsDragOver(false);
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) acceptFile(dropped);
+  };
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || !fileType || !patientId) return;
 
     setUploading(true);
-    setUploadResult(null);
+    setResult(null);
 
     try {
-      const res = await uploadCsv(patientId, csvFile);
-      setUploadResult({
+      const res = fileType === "csv"
+        ? await uploadCsv(patientId, file)
+        : await uploadGlookoZip(patientId, file);
+
+      setResult({
         success: true,
         message: res.message,
         stats: {
@@ -54,217 +83,186 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
           meal: res.meal_count,
           insulin: res.insulin_count,
         },
+        dateFrom: res.date_from,
+        dateTo: res.date_to,
       });
-      setCsvFile(null);
-      setTimeout(() => {
-        router.refresh();
-        if (onUploadSuccess) {
-          onUploadSuccess();
-        }
-      }, 1500);
-    } catch (err: unknown) {
-      console.error(err);
-      const errMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to upload CSV file";
-      setUploadResult({
-        success: false,
-        message: errMsg,
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleGlookoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setGlookoFile(e.target.files[0]);
-      setGlookoResult(null);
-    }
-  };
-
-  const handleGlookoUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!glookoFile || !patientId) return;
-
-    setGlookoUploading(true);
-    setGlookoResult(null);
-
-    try {
-      const res = await uploadGlookoZip(patientId, glookoFile);
-      setGlookoResult({
-        success: true,
-        message: res.message,
-        stats: {
-          glucose: res.glucose_count,
-          meal: res.meal_count,
-          insulin: res.insulin_count,
-        },
-      });
-      setGlookoFile(null);
+      setFile(null);
+      setFileType(null);
+      if (inputRef.current) inputRef.current.value = "";
       setTimeout(() => {
         router.refresh();
         if (onUploadSuccess) onUploadSuccess();
       }, 1500);
     } catch (err: unknown) {
       console.error(err);
-      const errMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to upload Glooko ZIP";
-      setGlookoResult({ success: false, message: errMsg });
+      const errMsg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        `Failed to upload ${fileType === "csv" ? "CSV" : "ZIP"} file`;
+      setResult({ success: false, message: errMsg });
     } finally {
-      setGlookoUploading(false);
+      setUploading(false);
     }
   };
 
+  const reset = () => {
+    setFile(null);
+    setFileType(null);
+    setResult(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const badgeLabel =
+    fileType === "csv" ? "CSV \u2014 LibreView" : fileType === "zip" ? "ZIP \u2014 Glooko" : null;
+
+  const badgeColor =
+    fileType === "csv" ? "var(--primary)" : fileType === "zip" ? "#8b5cf6" : "var(--border)";
+
   return (
     <>
-      {/* CSV Upload Section */}
-      <div style={{
-        background: "var(--card-bg)",
-        border: "1px solid var(--border)",
-        borderRadius: "16px",
-        padding: "1.5rem",
-        marginBottom: "1.5rem",
-        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
-      }}>
-        <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem", color: "var(--text-primary)" }}>
-          Upload LibreView Data (CSV)
+      <div className={styles.uploaderCard}>
+        <h3 style={{
+          fontSize: "1.05rem",
+          fontWeight: 700,
+          marginBottom: "0.75rem",
+          color: "var(--text-primary)",
+          letterSpacing: "0.01em",
+          position: "relative",
+          zIndex: 1,
+        }}>
+          Upload your patient data
         </h3>
-        <form onSubmit={handleCsvUpload} style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center" }}>
-          <div style={{ flex: 1, minWidth: "250px" }}>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileChange}
-              id="csv-file-input"
-              style={{ display: "none" }}
-            />
-            <label
-              htmlFor="csv-file-input"
-              style={{
-                display: "block",
-                padding: "0.75rem 1rem",
-                border: "2px dashed var(--border)",
-                borderRadius: "8px",
-                textAlign: "center",
-                cursor: "pointer",
-                color: "var(--text-secondary)",
-                background: "var(--bg)",
-                transition: "all 0.2s"
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
-              onMouseOut={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+
+        <form onSubmit={handleUpload} style={{ position: "relative", zIndex: 1 }}>
+          {/* Hidden file input */}
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,.zip"
+            onChange={handleFileChange}
+            id="unified-file-input"
+            style={{ display: "none" }}
+          />
+
+          {/* 2/3 drop zone + 1/3 button panel */}
+          <div className={styles.uploaderRow}>
+            {/* Drop zone — 2/3 */}
+            <div
+              className={[
+                styles.dropZone,
+                isDragOver ? styles.dragOver : "",
+                file ? styles.hasFile : "",
+                fileType === "csv" ? styles.csvType : "",
+                fileType === "zip" ? styles.zipType : "",
+              ].filter(Boolean).join(" ")}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => inputRef.current?.click()}
             >
-              {csvFile ? `Selected: ${csvFile.name}` : "Click to select a LibreView CSV file"}
-            </label>
+              {file ? (
+                <>
+                  {/* Clear button */}
+                  <button
+                    type="button"
+                    className={styles.clearBtn}
+                    onClick={(e) => { e.stopPropagation(); reset(); }}
+                    title="Remove file"
+                  >
+                    ✕
+                  </button>
+
+                  {/* Badge */}
+                  {badgeLabel && (
+                    <div>
+                      <span
+                        className={styles.fileBadge}
+                        style={{
+                          background: `${badgeColor}20`,
+                          color: badgeColor,
+                          border: `1px solid ${badgeColor}55`,
+                        }}
+                      >
+                        {fileType === "csv" ? "📄" : "🗜️"}&nbsp;{badgeLabel}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Filename */}
+                  <div className={styles.fileName} title={file.name}>
+                    {file.name}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.3rem", opacity: 0.7 }}>
+                    {(file.size / (1024 * 1024)).toFixed(2)} MB &middot; click to change
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className={styles.fileIcon}>
+                    {isDragOver ? "📂" : "☁️"}
+                  </span>
+                  <div className={styles.dropHint}>
+                    {isDragOver ? "Drop it here!" : "Drag & drop or click to browse"}
+                  </div>
+                  <div className={styles.dropSub}>Accepts .csv (LibreView) and .zip (Glooko)</div>
+                </>
+              )}
+            </div>
+
+            {/* Button panel — 1/3, always mounted, animated via CSS */}
+            <div className={`${styles.uploadPanel} ${file && fileType ? styles.uploadPanelVisible : ""}`}>
+              <button
+                type="submit"
+                disabled={!file || !fileType || uploading}
+                className={`${styles.uploadBtn} ${fileType === "csv" ? styles.csvBtn : styles.zipBtn}`}
+              >
+                {uploading ? (
+                  <><span className={styles.spinner} /> Importing&hellip;</>
+                ) : (
+                  <>{fileType === "csv" ? "📤" : "📦"} Upload &amp; Parse</>
+                )}
+              </button>
+              <span className={styles.uploadHint}>
+                {fileType === "csv"
+                  ? "Will parse LibreView CSV and import readings"
+                  : "Will extract and import Glooko ZIP archive"}
+              </span>
+            </div>
           </div>
-          <button
-            type="submit"
-            disabled={!csvFile || uploading}
-            style={{
-              background: !csvFile ? "var(--border)" : "var(--primary)",
-              color: "white",
-              border: "none",
-              padding: "0.75rem 1.5rem",
-              borderRadius: "8px",
-              fontWeight: 600,
-              cursor: !csvFile ? "not-allowed" : "pointer",
-              transition: "opacity 0.2s"
-            }}
-          >
-            {uploading ? "Importing..." : "Upload & Parse"}
-          </button>
         </form>
 
-        {uploadResult && (
-          <div style={{
-            marginTop: "1rem",
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            fontSize: "0.9rem",
-            background: uploadResult.success ? "rgba(39, 174, 96, 0.1)" : "rgba(231, 76, 60, 0.1)",
-            border: `1px solid ${uploadResult.success ? "var(--success)" : "var(--danger)"}`,
-            color: uploadResult.success ? "var(--success)" : "var(--danger)"
-          }}>
-            <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{uploadResult.message}</div>
-            {uploadResult.success && uploadResult.stats && (
-              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                Imported: {uploadResult.stats.glucose} glucose readings, {uploadResult.stats.meal} carb entries, {uploadResult.stats.insulin} insulin doses.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Glooko ZIP Upload Section */}
-      <div style={{
-        background: "var(--card-bg)",
-        border: "1px solid var(--border)",
-        borderRadius: "16px",
-        padding: "1.5rem",
-        marginBottom: "1.5rem",
-        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
-      }}>
-        <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem", color: "var(--text-primary)" }}>
-          Upload Glooko Data (ZIP)
-        </h3>
-        <form onSubmit={handleGlookoUpload} style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center" }}>
-          <div style={{ flex: 1, minWidth: "250px" }}>
-            <input
-              type="file"
-              accept=".zip"
-              onChange={handleGlookoFileChange}
-              id="glooko-zip-input"
-              style={{ display: "none" }}
-            />
-            <label
-              htmlFor="glooko-zip-input"
-              style={{
-                display: "block",
-                padding: "0.75rem 1rem",
-                border: "2px dashed var(--border)",
-                borderRadius: "8px",
-                textAlign: "center",
-                cursor: "pointer",
-                color: "var(--text-secondary)",
-                background: "var(--bg)",
-                transition: "all 0.2s"
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
-              onMouseOut={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+        {/* Result banner */}
+        {result && (
+          <div className={`${styles.resultBanner} ${result.success ? styles.successBanner : styles.errorBanner}`}>
+            <button
+              className={styles.bannerCloseBtn}
+              type="button"
+              onClick={() => setResult(null)}
+              aria-label="Dismiss"
             >
-              {glookoFile ? `Selected: ${glookoFile.name}` : "Click to select a Glooko ZIP file"}
-            </label>
-          </div>
-          <button
-            type="submit"
-            disabled={!glookoFile || glookoUploading}
-            style={{
-              background: !glookoFile ? "var(--border)" : "var(--primary)",
-              color: "white",
-              border: "none",
-              padding: "0.75rem 1.5rem",
-              borderRadius: "8px",
-              fontWeight: 600,
-              cursor: !glookoFile ? "not-allowed" : "pointer",
-              transition: "opacity 0.2s"
-            }}
-          >
-            {glookoUploading ? "Importing..." : "Upload & Parse"}
-          </button>
-        </form>
-
-        {glookoResult && (
-          <div style={{
-            marginTop: "1rem",
-            padding: "0.75rem 1rem",
-            borderRadius: "8px",
-            fontSize: "0.9rem",
-            background: glookoResult.success ? "rgba(39, 174, 96, 0.1)" : "rgba(231, 76, 60, 0.1)",
-            border: `1px solid ${glookoResult.success ? "var(--success)" : "var(--danger)"}`,
-            color: glookoResult.success ? "var(--success)" : "var(--danger)"
-          }}>
-            <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{glookoResult.message}</div>
-            {glookoResult.success && glookoResult.stats && (
-              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                Imported: {glookoResult.stats.glucose} glucose readings, {glookoResult.stats.meal} carb entries, {glookoResult.stats.insulin} insulin doses.
+              ✕
+            </button>
+            <div style={{ fontWeight: 700, marginBottom: result.stats ? "0.35rem" : 0 }}>
+              {result.success ? "✓ " : "✕ "}{result.message}
+            </div>
+            {result.success && result.stats && (
+              <div style={{ fontSize: "0.85rem", opacity: 0.85 }}>
+                <div>
+                  Imported <strong>{result.stats.glucose}</strong> glucose readings,{" "}
+                  <strong>{result.stats.meal}</strong> carb entries,{" "}
+                  <strong>{result.stats.insulin}</strong> insulin doses.
+                </div>
+                {(result.dateFrom || result.dateTo) && (
+                  <div style={{ marginTop: "0.3rem", opacity: 0.8 }}>
+                    📅&nbsp;
+                    {result.dateFrom
+                      ? new Date(result.dateFrom).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                      : "–"}
+                    {" → "}
+                    {result.dateTo
+                      ? new Date(result.dateTo).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                      : "–"}
+                  </div>
+                )}
               </div>
             )}
           </div>
