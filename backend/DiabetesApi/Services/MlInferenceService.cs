@@ -40,4 +40,19 @@ public class MlInferenceService(HttpClient http)
             return false;
         }
     }
+
+    /// <summary>GET /health — returns the full detail (model name, device) reported by the ML service.</summary>
+    public async Task<MlHealthDetail?> GetHealthDetailAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var resp = await http.GetAsync("/health", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadFromJsonAsync<MlHealthDetail>(Json, ct);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
 }

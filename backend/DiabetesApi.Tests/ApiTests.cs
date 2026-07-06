@@ -53,13 +53,24 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     // ── Health ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task HealthEndpoint_Returns200()
+    public async Task HealthEndpoint_ReturnsStructuredResponse()
     {
         var resp = await _client.GetAsync("/api/health");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        // The status code is either 200 (all healthy) or 503 (partial — ML is
+        // unreachable in the test environment). Both are acceptable here; we only
+        // verify that the response has the expected structure and that backend +
+        // database are reported as healthy.
+        Assert.True(
+            resp.StatusCode == HttpStatusCode.OK ||
+            resp.StatusCode == HttpStatusCode.ServiceUnavailable,
+            $"Unexpected status {resp.StatusCode}");
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal("healthy", body.GetProperty("status").GetString());
+        Assert.True(body.TryGetProperty("status", out _),       "Missing 'status' field");
+        Assert.True(body.TryGetProperty("components", out var components), "Missing 'components' field");
+        Assert.Equal("healthy", components.GetProperty("backend").GetProperty("status").GetString());
+        Assert.Equal("healthy", components.GetProperty("database").GetProperty("status").GetString());
     }
 
     // ── Patients ──────────────────────────────────────────────────────────────
