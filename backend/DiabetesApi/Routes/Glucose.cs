@@ -31,48 +31,33 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     {
         var query = db.Glucoses.Where(r => r.PatientId == id);
 
-        if (start is not null) {
-            query = query.Where(r => r.Timestamp >= DateTime.Parse(start).ToUniversalTime());
-        }
-        if (end is not null) {
-            query = query.Where(r => r.Timestamp <= DateTime.Parse(end).ToUniversalTime());
-        }
+        DateTime s, e;
 
-        if (start is null && end is null && last is null) {
-            last = "2w";
+        // Short-circuit: both anchors explicit — apply directly and skip range resolution.
+        if (start is not null && end is not null)
+        {
+            s = DateTime.Parse(start).ToUniversalTime();
+            e = DateTime.Parse(end).ToUniversalTime();
         }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
 
-        if (last is not null) {
-            var latestTimestamp = await db.Glucoses
-                .Where(r => r.PatientId == id)
-                .Select(r => (DateTime?)r.Timestamp)
-                .MaxAsync();
-            
-            var baseTime = latestTimestamp.HasValue
-                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
-                : DateTime.UtcNow;
-
-            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
-            }
-            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
-            }
-            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
-            }
-            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
-            }
-            else
-            {
+            if (range is null)
                 return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
-            }
+
+            s = range.Value.start;
+            e = range.Value.end;
         }
+
+        query = query.Where(r => r.Timestamp >= s && r.Timestamp <= e);
 
         var readings = await query
             .OrderByDescending(r => r.Timestamp)
@@ -101,14 +86,34 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
     {
-        if (last is not null && !System.Text.RegularExpressions.Regex.IsMatch(last, @"^\d+(h|d|w|m)$")) {
-            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+        DateTime? startDt = null;
+        DateTime? endDt = null;
+
+        // Short-circuit: both anchors explicit.
+        if (start is not null && end is not null)
+        {
+            startDt = DateTime.Parse(start).ToUniversalTime();
+            endDt = DateTime.Parse(end).ToUniversalTime();
+        }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
+
+            if (range is null)
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+            startDt = range.Value.start;
+            endDt = range.Value.end;
         }
 
-        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
-        DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
-
-        var tir = await glucoseService.CalculateTimeInRangeAsync(id, glucoseRanges, startDt, endDt, last);
+        var tir = await glucoseService.CalculateTimeInRangeAsync(id, glucoseRanges, startDt, endDt);
         return Ok(tir);
     }
 
@@ -158,48 +163,33 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     {
         var query = db.Glucoses.Where(r => r.PatientId == id);
 
-        if (start is not null) {
-            query = query.Where(r => r.Timestamp >= DateTime.Parse(start).ToUniversalTime());
-        }
-        if (end is not null) {
-            query = query.Where(r => r.Timestamp <= DateTime.Parse(end).ToUniversalTime());
-        }
+        DateTime s, e;
 
-        if (start is null && end is null && last is null) {
-            last = "2w";
+        // Short-circuit: both anchors explicit.
+        if (start is not null && end is not null)
+        {
+            s = DateTime.Parse(start).ToUniversalTime();
+            e = DateTime.Parse(end).ToUniversalTime();
         }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
 
-        if (last is not null) {
-            var latestTimestamp = await db.Glucoses
-                .Where(r => r.PatientId == id)
-                .Select(r => (DateTime?)r.Timestamp)
-                .MaxAsync();
-            
-            var baseTime = latestTimestamp.HasValue
-                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
-                : DateTime.UtcNow;
-
-            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
-            }
-            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
-            }
-            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
-            }
-            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
-            }
-            else
-            {
+            if (range is null)
                 return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
-            }
+
+            s = range.Value.start;
+            e = range.Value.end;
         }
+
+        query = query.Where(r => r.Timestamp >= s && r.Timestamp <= e);
 
         var average = await query
             .Select(r => (double?)r.GlucoseMmoll)
@@ -229,13 +219,34 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
     {
-        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m"))
-            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+        DateTime? startDt = null;
+        DateTime? endDt = null;
 
-        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
-        DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
+        // Short-circuit: both anchors explicit.
+        if (start is not null && end is not null)
+        {
+            startDt = DateTime.Parse(start).ToUniversalTime();
+            endDt = DateTime.Parse(end).ToUniversalTime();
+        }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
 
-        var result = await glucoseService.CalculateHbA1cAsync(id, startDt, endDt, last);
+            if (range is null)
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+            startDt = range.Value.start;
+            endDt = range.Value.end;
+        }
+
+        var result = await glucoseService.CalculateHbA1cAsync(id, startDt, endDt);
         if (result is null)
             return NotFound(new { error = "No readings found for the specified patient and time window." });
 
@@ -259,13 +270,34 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
     {
-        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m"))
-            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+        DateTime? startDt = null;
+        DateTime? endDt = null;
 
-        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
-        DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
+        // Short-circuit: both anchors explicit.
+        if (start is not null && end is not null)
+        {
+            startDt = DateTime.Parse(start).ToUniversalTime();
+            endDt = DateTime.Parse(end).ToUniversalTime();
+        }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
 
-        var result = await glucoseService.CalculateGmiAsync(id, startDt, endDt, last);
+            if (range is null)
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+            startDt = range.Value.start;
+            endDt = range.Value.end;
+        }
+
+        var result = await glucoseService.CalculateGmiAsync(id, startDt, endDt);
         if (result is null)
             return NotFound(new { error = "No readings found for the specified patient and time window." });
 
@@ -289,13 +321,34 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
     {
-        if (last is not null && !last.EndsWith("h") && !last.EndsWith("d") && !last.EndsWith("w") && !last.EndsWith("m"))
-            return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+        DateTime? startDt = null;
+        DateTime? endDt = null;
 
-        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
-        DateTime? endDt   = end   is not null ? DateTime.Parse(end).ToUniversalTime()   : null;
+        // Short-circuit: both anchors explicit.
+        if (start is not null && end is not null)
+        {
+            startDt = DateTime.Parse(start).ToUniversalTime();
+            endDt = DateTime.Parse(end).ToUniversalTime();
+        }
+        else
+        {
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(r => r.PatientId == id)
+                    .Select(r => (DateTime?)r.Timestamp)
+                    .MaxAsync());
 
-        var result = await glucoseService.CalculateScatterplotAsync(id, startDt, endDt, last);
+            if (range is null)
+                return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+            startDt = range.Value.start;
+            endDt = range.Value.end;
+        }
+
+        var result = await glucoseService.CalculateScatterplotAsync(id, startDt, endDt);
         if (result is null)
             return NotFound(new { error = "No readings found for the specified patient and time window." });
 

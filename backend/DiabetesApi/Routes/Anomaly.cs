@@ -36,23 +36,32 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     {
         var query = db.Anomalies.Where(a => a.PatientId == id);
 
-        if (start is not null)
+        // No temporal parameters means no filtering.
+        if (start is null && end is null && last is null)
         {
-            var startDt = DateTime.Parse(start).ToUniversalTime();
-            query = query.Where(a => a.DetectedAt >= startDt);
+            // Do not filter temporally.
         }
-        if (end is not null)
+        else if (start is not null && end is not null)
         {
-            var endDt = DateTime.Parse(end).ToUniversalTime();
-            query = query.Where(a => a.DetectedAt <= endDt);
+            var s = DateTime.Parse(start).ToUniversalTime();
+            var e = DateTime.Parse(end).ToUniversalTime();
+            query = query.Where(a => a.DetectedAt >= s && a.DetectedAt <= e);
         }
-        if (last is not null)
+        else
         {
-            var baseTime = await LatestGlucoseTime(id);
-            var cutoff = LastCutoff(baseTime, last);
-            if (cutoff is null)
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last:  last,
+                start: start,
+                end:   end,
+                getLatestTimestamp: () => db.Glucoses
+                    .Where(g => g.PatientId == id)
+                    .Select(g => (DateTime?)g.Timestamp)
+                    .MaxAsync());
+
+            if (range is null)
                 return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
-            query = query.Where(a => a.DetectedAt >= cutoff.Value);
+
+            query = query.Where(a => a.DetectedAt >= range.Value.start && a.DetectedAt <= range.Value.end);
         }
 
         var anomalies = await query
@@ -89,30 +98,39 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         if (!await db.Patients.AnyAsync(p => p.Id == id))
             return NotFound(new { error = "Patient not found" });
 
-        // Resolve the window. end defaults to the latest glucose reading; start comes from
-        // an explicit start, else `last` back from end, else a 2-week default.
-        DateTime? endDt = end is not null ? DateTime.Parse(end).ToUniversalTime() : null;
-        DateTime? startDt = start is not null ? DateTime.Parse(start).ToUniversalTime() : null;
-        if (endDt is null)
+        DateTime startDt, endDt;
+
+        if (start is not null && end is not null)
+        {
+            startDt = DateTime.Parse(start).ToUniversalTime();
+            endDt = DateTime.Parse(end).ToUniversalTime();
+        }
+        else
         {
             var latest = await db.Glucoses.Where(g => g.PatientId == id)
                 .Select(g => (DateTime?)g.Timestamp).MaxAsync();
-            if (latest is null) return Ok(new AnomaliesResponse(id, [], 0));   // no data → nothing to detect
-            endDt = DateTime.SpecifyKind(latest.Value, DateTimeKind.Utc);
-        }
-        if (startDt is null && last is not null)
-        {
-            startDt = LastCutoff(endDt.Value, last);
-            if (startDt is null)
+            
+            if (latest is null && end is null)
+                return Ok(new AnomaliesResponse(id, [], 0));
+
+            var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                last: last,
+                start: start,
+                end: end,
+                getLatestTimestamp: () => Task.FromResult(latest));
+
+            if (range is null)
                 return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+
+            startDt = range.Value.start;
+            endDt = range.Value.end;
         }
-        startDt ??= endDt.Value.AddDays(-14);
 
         if (!await ml.IsHealthyAsync())
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 new { error = "ML service not ready (model still loading). Try again shortly." });
 
-        var rows = await BuildChannelRows(id, startDt.Value, endDt.Value);
+        var rows = await BuildChannelRows(id, startDt, endDt);
         if (rows.Count == 0) return Ok(new AnomaliesResponse(id, [], 0));
 
         var result = await ml.InferAsync(new MlInferRequest(id, DetectThresholdK, rows));
@@ -121,7 +139,7 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         // Overwrite this window: delete AFTER a successful ML call (so a failure never loses
         // the old rows), then insert everything returned (no pre-filter — store all).
         var stale = db.Anomalies.Where(a =>
-            a.PatientId == id && a.DetectedAt >= startDt.Value && a.DetectedAt <= endDt.Value);
+            a.PatientId == id && a.DetectedAt >= startDt && a.DetectedAt <= endDt);
         db.Anomalies.RemoveRange(stale);
 
         var inserted = returned.Select(a => new Models.Anomaly
@@ -218,27 +236,6 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
             kv.Key.ToString("yyyy-MM-ddTHH:mm:ss"), kv.Value.glu, kv.Value.ins, kv.Value.cho)).ToList();
     }
 
-    /// <summary>Latest glucose timestamp for the patient (the data's "now"), or UtcNow if none.</summary>
-    private async Task<DateTime> LatestGlucoseTime(int patientId)
-    {
-        var latest = await db.Glucoses.Where(g => g.PatientId == patientId)
-            .Select(g => (DateTime?)g.Timestamp).MaxAsync();
-        return latest.HasValue ? DateTime.SpecifyKind(latest.Value, DateTimeKind.Utc) : DateTime.UtcNow;
-    }
-
-    /// <summary>Parse a "24h"/"7d"/"2w"/"1m" period and subtract it from baseTime. Null if malformed.</summary>
-    private static DateTime? LastCutoff(DateTime baseTime, string last)
-    {
-        if (last.Length < 2 || !int.TryParse(last[..^1], out int n)) return null;
-        return last[^1] switch
-        {
-            'h' => baseTime.AddHours(-n),
-            'd' => baseTime.AddDays(-n),
-            'w' => baseTime.AddDays(-n * 7),
-            'm' => baseTime.AddMonths(-n),
-            _   => null,
-        };
-    }
 
     private static AnomalyDetectionDto ToDto(Models.Anomaly a) => new(
         a.Id,

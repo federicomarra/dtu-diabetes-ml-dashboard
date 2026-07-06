@@ -72,8 +72,7 @@ public class GlucoseService(AppDbContext db)
         int patientId,
         GlucoseRanges? glucoseRanges = null,
         DateTime? start = null,
-        DateTime? end = null,
-        string? last = null)
+        DateTime? end = null)
     {
         var (defaultVl, defaultL, defaultH, defaultVh) = GetThresholds();
         var thresholds = (
@@ -91,38 +90,6 @@ public class GlucoseService(AppDbContext db)
         }
         if (end.HasValue) {
             query = query.Where(r => r.Timestamp <= end.Value);
-        }
-
-        if (!start.HasValue && !end.HasValue && last is null) {
-            last = "2w";
-        }
-
-        if (last is not null) {
-            var latestTimestamp = await db.Glucoses
-                .Where(r => r.PatientId == patientId)
-                .Select(r => (DateTime?)r.Timestamp)
-                .MaxAsync();
-            
-            var baseTime = latestTimestamp.HasValue
-                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
-                : DateTime.UtcNow;
-
-            if (last.EndsWith("h") && int.TryParse(last.Substring(0, last.Length - 1), out int hours))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
-            }
-            else if (last.EndsWith("d") && int.TryParse(last.Substring(0, last.Length - 1), out int days))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
-            }
-            else if (last.EndsWith("w") && int.TryParse(last.Substring(0, last.Length - 1), out int weeks))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
-            }
-            else if (last.EndsWith("m") && int.TryParse(last.Substring(0, last.Length - 1), out int months))
-            {
-                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
-            }
         }
 
         // Project both the glucose value and the timestamp so we can compute
@@ -169,10 +136,9 @@ public class GlucoseService(AppDbContext db)
     public async Task<HbA1cResponse?> CalculateHbA1cAsync(
         int patientId,
         DateTime? start = null,
-        DateTime? end = null,
-        string? last = null)
+        DateTime? end = null)
     {
-        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end, last);
+        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end);
         if (avgMmoll is null) return null;
 
         double avgMgDl = avgMmoll.Value * 18.018;
@@ -190,10 +156,9 @@ public class GlucoseService(AppDbContext db)
     public async Task<GmiResponse?> CalculateGmiAsync(
         int patientId,
         DateTime? start = null,
-        DateTime? end = null,
-        string? last = null)
+        DateTime? end = null)
     {
-        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end, last);
+        var avgMmoll = await GetAverageGlucoseAsync(patientId, start, end);
         if (avgMmoll is null) return null;
 
         double avgMgDl = avgMmoll.Value * 18.018;
@@ -210,8 +175,7 @@ public class GlucoseService(AppDbContext db)
     public async Task<ScatterplotResponse?> CalculateScatterplotAsync(
         int patientId,
         DateTime? start = null,
-        DateTime? end = null,
-        string? last = null)
+        DateTime? end = null)
     {
         var query = db.Glucoses.Where(r => r.PatientId == patientId);
 
@@ -219,32 +183,6 @@ public class GlucoseService(AppDbContext db)
             query = query.Where(r => r.Timestamp >= start.Value);
         if (end.HasValue)
             query = query.Where(r => r.Timestamp <= end.Value);
-
-        if (!start.HasValue && !end.HasValue && last is null)
-            last = "2w";
-
-        if (last is not null)
-        {
-            var latestTimestamp = await db.Glucoses
-                .Where(r => r.PatientId == patientId)
-                .Select(r => (DateTime?)r.Timestamp)
-                .MaxAsync();
-
-            var baseTime = latestTimestamp.HasValue
-                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
-                : DateTime.UtcNow;
-
-            if (last.EndsWith("h") && int.TryParse(last[..^1], out int hours))
-                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
-            else if (last.EndsWith("d") && int.TryParse(last[..^1], out int days))
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
-            else if (last.EndsWith("w") && int.TryParse(last[..^1], out int weeks))
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
-            else if (last.EndsWith("m") && int.TryParse(last[..^1], out int months))
-                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
-            else
-                return null; // invalid format → treated as no data (caller returns 400)
-        }
 
         // Materialise so we can group in-memory by UTC date
         var rows = await query
@@ -277,8 +215,7 @@ public class GlucoseService(AppDbContext db)
     private async Task<double?> GetAverageGlucoseAsync(
         int patientId,
         DateTime? start,
-        DateTime? end,
-        string? last)
+        DateTime? end)
     {
         var query = db.Glucoses.Where(r => r.PatientId == patientId);
 
@@ -286,32 +223,6 @@ public class GlucoseService(AppDbContext db)
             query = query.Where(r => r.Timestamp >= start.Value);
         if (end.HasValue)
             query = query.Where(r => r.Timestamp <= end.Value);
-
-        if (!start.HasValue && !end.HasValue && last is null)
-            last = "2w";
-
-        if (last is not null)
-        {
-            var latestTimestamp = await db.Glucoses
-                .Where(r => r.PatientId == patientId)
-                .Select(r => (DateTime?)r.Timestamp)
-                .MaxAsync();
-
-            var baseTime = latestTimestamp.HasValue
-                ? DateTime.SpecifyKind(latestTimestamp.Value, DateTimeKind.Utc)
-                : DateTime.UtcNow;
-
-            if (last.EndsWith("h") && int.TryParse(last[..^1], out int hours))
-                query = query.Where(r => r.Timestamp >= baseTime.AddHours(-hours));
-            else if (last.EndsWith("d") && int.TryParse(last[..^1], out int days))
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-days));
-            else if (last.EndsWith("w") && int.TryParse(last[..^1], out int weeks))
-                query = query.Where(r => r.Timestamp >= baseTime.AddDays(-weeks * 7));
-            else if (last.EndsWith("m") && int.TryParse(last[..^1], out int months))
-                query = query.Where(r => r.Timestamp >= baseTime.AddMonths(-months));
-            else
-                return null; // invalid format → treat as no data
-        }
 
         return await query
             .Select(r => (double?)r.GlucoseMmoll)
