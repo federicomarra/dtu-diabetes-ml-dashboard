@@ -408,8 +408,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         var bodyAll = await respAll.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(3, bodyAll.GetProperty("count").GetInt32());
 
-        // min_severity = 3 → only the 4σ and 6σ anomalies.
-        var respSev = await _client.GetAsync($"/api/anomaly?id={patient.Id}&min_severity=3");
+        // minSeverity = 3 → only the 4σ and 6σ anomalies.
+        var respSev = await _client.GetAsync($"/api/anomaly?id={patient.Id}&minSeverity=3");
         Assert.Equal(HttpStatusCode.OK, respSev.StatusCode);
         var bodySev = await respSev.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodySev.GetProperty("count").GetInt32());
@@ -432,7 +432,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         db.Anomalies.Add(anomaly);
         await db.SaveChangesAsync();
 
-        var resp = await _client.PostAsync($"/api/anomaly/{anomaly.Id}/acknowledge", null);
+        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient.Id}&anomalyId={anomaly.Id}", null);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -442,7 +442,29 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task AcknowledgeAnomaly_NotFound_Returns404()
     {
-        var resp = await _client.PostAsync("/api/anomaly/99999/acknowledge", null);
+        var patient = await SeedPatientAsync("P_ACK_NF", "ACK NF Patient");
+        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient.Id}&anomalyId=99999", null);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task AcknowledgeAnomaly_WrongPatient_Returns404()
+    {
+        var patient1 = await SeedPatientAsync("P_ACK_WP1", "ACK WP Patient 1");
+        var patient2 = await SeedPatientAsync("P_ACK_WP2", "ACK WP Patient 2");
+
+        await using var db = CreateDb();
+        var anomaly = new Anomaly
+        {
+            PatientId = patient1.Id,
+            AnomalyType = "missed_bolus",
+            Confidence = 0.9
+        };
+        db.Anomalies.Add(anomaly);
+        await db.SaveChangesAsync();
+
+        // Trying to acknowledge patient1's anomaly as patient2 → must return 404.
+        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient2.Id}&anomalyId={anomaly.Id}", null);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 

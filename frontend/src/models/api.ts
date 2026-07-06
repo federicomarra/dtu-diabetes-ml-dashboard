@@ -12,9 +12,9 @@
  *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/glucose/hba1c?id={id}     → getHbA1c()
  *   GET  api/glucose/gmi?id={id}       → getGmi()
- *   GET  api/anomaly?id&min_severity&start&end&last → getAnomalies()
+ *   GET  api/anomaly?id&minSeverity&start&end&last → getAnomalies()
  *   POST api/anomaly/detect?id&start&end&last        → runDetection()
- *   POST api/anomaly/{id}/acknowledge                → acknowledgeAnomaly()
+ *   POST api/anomaly/acknowledge?patientId={patientId}&anomalyId={anomalyId} → acknowledgeAnomaly()
  *   GET  api/insulin?id={id}            → getInsulins()
  *   GET  api/meal?id={id}               → getMeals()
  *   GET  api/health                    → healthCheck()
@@ -149,7 +149,7 @@ export async function getAnomalies(
   const { data } = await api.get(`/anomaly`, {
     params: {
       id: patientId,
-      min_severity: params?.minSeverity,
+      minSeverity: params?.minSeverity,
       start: params?.start,
       end: params?.end,
       last: params?.last,
@@ -168,9 +168,10 @@ export async function runDetection(
 }
 
 export async function acknowledgeAnomaly(
+  patientId: number,
   anomalyId: number
 ): Promise<AnomalyDetection> {
-  const { data } = await api.post(`/anomaly/${anomalyId}/acknowledge`);
+  const { data } = await api.post(`/anomaly/acknowledge`, null, { params: { patientId: patientId, anomalyId } });
   return data;
 }
 

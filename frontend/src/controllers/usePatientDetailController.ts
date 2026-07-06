@@ -14,7 +14,7 @@
  *   GET api/glucose/gmi?id={patientId}       → GMI
  *   GET api/glucose/scatterplot?id={patientId} → daily scatterplot averages
  *   GET api/anomaly/{patientId}              → anomaly list
- *   POST api/anomaly/{anomalyId}/acknowledge → acknowledge anomaly
+ *   POST api/anomaly/acknowledge?id={anomalyId} → acknowledge anomaly
  */
 "use client";
 
@@ -55,6 +55,16 @@ type State =
 
 export function usePatientDetailController(externalId: string) {
   const [state, setState] = useState<State>({ status: "loading" });
+  // Stable ref so handleAcknowledge can read the current patient ID without
+  // adding `state` as a useCallback dependency (which would recreate the function on every render).
+  const stateRef = useRef<State>({ status: "loading" });
+  const setStateAndRef = useCallback((s: State | ((prev: State) => State)) => {
+    setState((prev) => {
+      const next = typeof s === "function" ? s(prev) : s;
+      stateRef.current = next;
+      return next;
+    });
+  }, []);
   const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges } = useGlucoseRanges();
   const { inferenceEnabled, minSeverity } = useSeverityInference();
@@ -72,7 +82,7 @@ export function usePatientDetailController(externalId: string) {
 
     async function load() {
       try {
-        setState({ status: "loading" });
+        setStateAndRef({ status: "loading" });
         if (!inferenceEnabled) lastDetectKey.current = null; // re-enabling later re-detects
 
         // 1. Resolve external_id → patient object via dedicated endpoint
@@ -84,9 +94,9 @@ export function usePatientDetailController(externalId: string) {
           // axios 404 → not_found; anything else → error
           const status = (err as { response?: { status?: number } })?.response?.status;
           if (status === 404) {
-            setState({ status: "not_found" });
+            setStateAndRef({ status: "not_found" });
           } else {
-            setState({ status: "error", message: err instanceof Error ? err.message : "Failed to load patient" });
+            setStateAndRef({ status: "error", message: err instanceof Error ? err.message : "Failed to load patient" });
           }
           return;
         }
@@ -133,7 +143,7 @@ export function usePatientDetailController(externalId: string) {
             ? readingsResult.value.readings
             : [];
 
-        setState({
+        setStateAndRef({
           status: "ready",
           patient,
           readings: fetchedReadings,
@@ -152,7 +162,7 @@ export function usePatientDetailController(externalId: string) {
         });
       } catch (err) {
         if (!cancelled) {
-          setState({
+          setStateAndRef({
             status: "error",
             message:
               err instanceof Error ? err.message : "Failed to load patient data",
@@ -163,14 +173,18 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalId, timeRange, glucoseRanges, inferenceEnabled, minSeverity, refreshKey]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {
+      const currentState = stateRef.current;
+      if (currentState.status !== "ready") return;
+      const patientId = currentState.patient.id;
       try {
-        await acknowledgeAnomaly(anomalyId);
+        await acknowledgeAnomaly(patientId, anomalyId);
         // Optimistically update local state
-        setState((prev) => {
+        setStateAndRef((prev) => {
           if (prev.status !== "ready") return prev;
           return {
             ...prev,
@@ -183,7 +197,7 @@ export function usePatientDetailController(externalId: string) {
         console.error("Failed to acknowledge anomaly:", anomalyId, err);
       }
     },
-    []
+    [setStateAndRef]
   );
 
   // ── Return shape ─────────────────────────────────────────

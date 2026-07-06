@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
 using DiabetesApi.Models;
@@ -13,14 +14,14 @@ namespace DiabetesApi.Routes;
 public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
 {
     // Sent to ML so nothing is pre-filtered — we store ALL returned anomalies and let the
-    // frontend's threshold slider decide what to show at read time (see GET min_severity).
+    // frontend's threshold slider decide what to show at read time (see GET minSeverity).
     private const float DetectThresholdK = 2.0f;
 
     /// <summary>
     /// Get detected anomalies for a patient, optionally filtered by severity and time window.
     /// </summary>
     /// <param name="id">Patient ID.</param>
-    /// <param name="min_severity">Only return anomalies with severity ≥ this (σ; the frontend threshold). At slider minimum → all.</param>
+    /// <param name="minSeverity">Only return anomalies with severity ≥ this (σ; the frontend threshold). At slider minimum → all.</param>
     /// <param name="start">ISO datetime — only anomalies whose detected_at ≥ start (optional).</param>
     /// <param name="end">ISO datetime — only anomalies whose detected_at ≤ end (optional).</param>
     /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m"), measured back from the latest glucose reading (optional).</param>
@@ -28,8 +29,8 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     [ProducesResponseType(typeof(AnomaliesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAnomalies(
-        [FromQuery] int id,
-        [FromQuery(Name = "min_severity")] float? minSeverity = null,
+        [FromQuery, BindRequired] int id,
+        [FromQuery] float? minSeverity = null,
         [FromQuery] string? start = null,
         [FromQuery] string? end = null,
         [FromQuery] string? last = null)
@@ -70,22 +71,21 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     }
 
     /// <summary>
-    /// Run ML detection for a patient over a window and store the results (inference=true path).
-    /// Assembles the 3 model channels from glucoses+insulins+meals, POSTs to the ML service,
-    /// then overwrites this window's anomalies (delete-after-success → insert all returned).
-    /// The frontend reads them back via GET with its chosen min_severity.
+    /// Run ML detection for a patient over a window and store the results.
+    /// Assembles the 3 glucoses+insulins+meals and POSTs to the ML service,
+    /// then gets anomalies and updates the database.
     /// </summary>
-    /// <param name="id">Patient ID.</param>
+    /// <param name="id">Patient ID</param>
     /// <param name="start">ISO datetime window start (optional).</param>
-    /// <param name="end">ISO datetime window end (optional; defaults to the latest glucose reading).</param>
-    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") back from end (optional; defaults to 2w if no start).</param>
+    /// <param name="end">ISO datetime window end (optional; defaults to the latest glucose reading)</param>
+    /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") back from end (optional; defaults to 2w if no start)</param>
     [HttpPost("detect")]
     [ProducesResponseType(typeof(AnomaliesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Detect(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end = null,
         [FromQuery] string? last = null,
@@ -145,14 +145,19 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         return Ok(new AnomaliesResponse(id, inserted.Select(ToDto), inserted.Count));
     }
 
-    /// <summary>Mark an anomaly as acknowledged by a clinician.</summary>
-    [HttpPost("{anomalyId:int}/acknowledge")]
+    /// <summary>Mark an anomaly as acknowledged by a clinician</summary>
+    /// <param name="patientId">Patient ID — the anomaly must belong to this patient</param>
+    /// <param name="anomalyId">Anomaly ID to acknowledge.</param>
+    [HttpPost("acknowledge")]
     [ProducesResponseType(typeof(AnomalyDetectionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> AcknowledgeAnomaly(int anomalyId)
+    public async Task<IActionResult> AcknowledgeAnomaly(
+        [FromQuery, BindRequired] int patientId,
+        [FromQuery, BindRequired] int anomalyId)
     {
         var anomaly = await db.Anomalies.FindAsync(anomalyId);
-        if (anomaly is null) return NotFound();
+        if (anomaly is null || anomaly.PatientId != patientId) return NotFound();
 
         anomaly.IsAcknowledged = true;
         await db.SaveChangesAsync();

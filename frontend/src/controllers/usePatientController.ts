@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Patient, GlucoseReading, TimeInRange, AnomalyDetection, HbA1c, Gmi, ScatterplotData } from "@/models/types";
 import {
   getPatientByExternalId,
@@ -41,6 +41,14 @@ type State =
 
 export function usePatientController() {
   const [state, setState] = useState<State>({ status: "loading" });
+  const stateRef = useRef<State>({ status: "loading" });
+  const setStateAndRef = useCallback((s: State | ((prev: State) => State)) => {
+    setState((prev) => {
+      const next = typeof s === "function" ? s(prev) : s;
+      stateRef.current = next;
+      return next;
+    });
+  }, []);
   const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges } = useGlucoseRanges();
 
@@ -49,7 +57,7 @@ export function usePatientController() {
 
     async function load() {
       try {
-        setState({ status: "loading" });
+        setStateAndRef({ status: "loading" });
 
         // Resolve patient SIM_000001
         let patient;
@@ -57,7 +65,7 @@ export function usePatientController() {
           patient = await getPatientByExternalId("SIM_000001");
         } catch (err: unknown) {
           if (cancelled) return;
-          setState({
+          setStateAndRef({
             status: "error",
             message: err instanceof Error ? err.message : "Failed to load patient",
           });
@@ -91,7 +99,7 @@ export function usePatientController() {
             ? readingsResult.value.readings
             : [];
 
-        setState({
+        setStateAndRef({
           status: "ready",
           patient,
           readings: fetchedReadings,
@@ -109,7 +117,7 @@ export function usePatientController() {
         });
       } catch (err) {
         if (!cancelled) {
-          setState({
+          setStateAndRef({
             status: "error",
             message: err instanceof Error ? err.message : "Failed to load data",
           });
@@ -124,9 +132,12 @@ export function usePatientController() {
   }, [timeRange, glucoseRanges]);
 
   const handleAcknowledge = useCallback(async (anomalyId: number) => {
+    const currentState = stateRef.current;
+    if (currentState.status !== "ready") return;
+    const patientId = currentState.patient.id;
     try {
-      await acknowledgeAnomaly(anomalyId);
-      setState((prev) => {
+      await acknowledgeAnomaly(patientId, anomalyId);
+      setStateAndRef((prev) => {
         if (prev.status !== "ready") return prev;
         return {
           ...prev,
@@ -138,7 +149,7 @@ export function usePatientController() {
     } catch (err) {
       console.error("Failed to acknowledge anomaly:", anomalyId, err);
     }
-  }, []);
+  }, [setStateAndRef]);
 
   if (state.status === "loading") {
     return {
