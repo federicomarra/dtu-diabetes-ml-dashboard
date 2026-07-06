@@ -118,7 +118,7 @@ class PatchTST(nn.Module):
             batch_first    = True,          # input shape: [batch, seq, dim]
             norm_first     = True,          # pre-norm: more stable early in training
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers, enable_nested_tensor=False)
 
         # maps each 128-dim output token back to 20 raw values
         self.head = nn.Linear(d_model, patch_len)

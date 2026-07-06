@@ -94,7 +94,7 @@ class XChannelForecaster(nn.Module):
             dim_feedforward=4 * d_model, dropout=dropout,
             batch_first=True,                    # input is [B, tokens, D]
         )
-        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)
         self.head = nn.Linear(d_model, horizon)                # mean
         if probabilistic:
             self.head_logvar = nn.Linear(d_model, horizon)     # log-variance

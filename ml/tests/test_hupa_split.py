@@ -24,11 +24,26 @@ def test_eval_proxy_filter_selects_split():
 
 
 def test_labelled_render_excludes_anomaly_windows():
+    import numpy as np
     from hupa_eval.train_on_real import labelled_render
     from characterization.rules import RuleConfig
     from models.xchannel.dataset import ForecastWindowDataset
-    from hupa_eval.adapter import load_hupa_cohort
-    p = load_hupa_cohort()[0]
+    from hupa_eval.adapter import HupaPatient, load_hupa_cohort
+    
+    cohort = load_hupa_cohort()
+    if cohort:
+        p = cohort[0]
+    else:
+        T = 300
+        p = HupaPatient(
+            pid="dummy",
+            T=T,
+            glucose=np.full(T, 6.0, dtype=np.float32),
+            valid=np.ones(T, dtype=bool),
+            basal_mU_min=np.ones(T, dtype=np.float32),
+            boluses=[],
+            meals=[]
+        )
     arr = labelled_render(p, RuleConfig(), 30.0, 30)
     assert arr.shape[1] == 8
     n_all = len(ForecastWindowDataset([p.pid], _preloaded={p.pid: arr.copy()},
