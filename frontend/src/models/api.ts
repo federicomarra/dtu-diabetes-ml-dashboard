@@ -15,9 +15,8 @@
  *   GET  api/anomaly?id&min_severity&start&end&last → getAnomalies()
  *   POST api/anomaly/detect?id&start&end&last        → runDetection()
  *   POST api/anomaly/{id}/acknowledge                → acknowledgeAnomaly()
- *   GET  api/insulin/{id}              → getInsulins()
- *   GET  api/meal/{id}                 → getMeals()
- *   GET  api/history/{id}              → getHistory()
+ *   GET  api/insulin?id={id}            → getInsulins()
+ *   GET  api/meal?id={id}               → getMeals()
  *   GET  api/health                    → healthCheck()
  */
 import axios from "axios";
@@ -181,7 +180,7 @@ export async function getInsulins(
   patientId: number,
   params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; insulins: InsulinEvent[]; count: number }> {
-  const { data } = await api.get(`/insulin/${patientId}`, { params });
+  const { data } = await api.get(`/insulin`, { params: { id: patientId, ...params } });
   return data;
 }
 
@@ -191,19 +190,7 @@ export async function getMeals(
   patientId: number,
   params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; meals: MealEvent[]; count: number }> {
-  const { data } = await api.get(`/meal/${patientId}`, { params });
-  return data;
-}
-
-// ─── History ─────────────────────────────────────────────
-
-export async function getHistory(
-  patientId: number,
-  limit = 100
-): Promise<{ patient_id: number; histories: HistoryEntry[]; count: number }> {
-  const { data } = await api.get(`/history/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/meal`, { params: { id: patientId, ...params } });
   return data;
 }
 

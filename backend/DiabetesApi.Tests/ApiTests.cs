@@ -464,7 +464,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/history/{patient.Id}");
+        var resp = await _client.GetAsync($"/api/history?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -490,7 +490,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // 1. Test last
-        var respLast = await _client.GetAsync($"/api/history/{patient.Id}?last=2h");
+        var respLast = await _client.GetAsync($"/api/history?id={patient.Id}&last=2h");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
@@ -501,7 +501,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         // 2. Test start and end filter
         var startStr = now.AddHours(-2.5).ToString("O");
         var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/history/{patient.Id}?start={startStr}&end={endStr}");
+        var respFilter = await _client.GetAsync($"/api/history?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
@@ -524,7 +524,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/insulin/{patient.Id}");
+        var resp = await _client.GetAsync($"/api/insulin?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -549,7 +549,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // 1. Test last
-        var respLast = await _client.GetAsync($"/api/insulin/{patient.Id}?last=2h");
+        var respLast = await _client.GetAsync($"/api/insulin?id={patient.Id}&last=2h");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
@@ -560,7 +560,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         // 2. Test start and end filter
         var startStr = now.AddHours(-2.5).ToString("O");
         var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/insulin/{patient.Id}?start={startStr}&end={endStr}");
+        var respFilter = await _client.GetAsync($"/api/insulin?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
@@ -583,7 +583,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/meal/{patient.Id}");
+        var resp = await _client.GetAsync($"/api/meal?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -608,7 +608,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // 1. Test last
-        var respLast = await _client.GetAsync($"/api/meal/{patient.Id}?last=2h");
+        var respLast = await _client.GetAsync($"/api/meal?id={patient.Id}&last=2h");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
@@ -619,7 +619,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         // 2. Test start and end filter
         var startStr = now.AddHours(-2.5).ToString("O");
         var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/meal/{patient.Id}?start={startStr}&end={endStr}");
+        var respFilter = await _client.GetAsync($"/api/meal?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());

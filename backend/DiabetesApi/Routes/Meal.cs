@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
 using DiabetesApi.Models;
@@ -14,20 +15,20 @@ public class Meal(AppDbContext db) : ControllerBase
     /// <summary>
     /// Get meal events for a patient within an optional time range or duration.
     /// </summary>
-    /// <param name="patientId">Patient ID</param>
+    /// <param name="id">Patient ID</param>
     /// <param name="start">ISO datetime string (optional)</param>
     /// <param name="end">ISO datetime string (optional)</param>
     /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m") (optional, default '2w' if no start/end specified)</param>
-    [HttpGet("{patientId:int}")]
+    [HttpGet]
     [ProducesResponseType(typeof(MealsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetMeals(
-        int patientId,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last  = null)
     {
-        var query = db.Meals.Where(m => m.PatientId == patientId);
+        var query = db.Meals.Where(m => m.PatientId == id);
 
         if (start is not null) {
             query = query.Where(m => m.Timestamp >= DateTime.Parse(start).ToUniversalTime());
@@ -42,7 +43,7 @@ public class Meal(AppDbContext db) : ControllerBase
 
         if (last is not null) {
             var latestTimestamp = await db.Meals
-                .Where(m => m.PatientId == patientId)
+                .Where(m => m.PatientId == id)
                 .Select(m => (DateTime?)m.Timestamp)
                 .MaxAsync();
 
@@ -77,7 +78,7 @@ public class Meal(AppDbContext db) : ControllerBase
             .ToListAsync();
 
         return Ok(new MealsResponse(
-            patientId,
+            id,
             items.Select(ToDto),
             items.Count
         ));
