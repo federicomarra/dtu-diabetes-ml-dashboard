@@ -84,10 +84,9 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end = null,
-        [FromQuery] string? last = null,
-        CancellationToken ct = default)
+        [FromQuery] string? last = null)
     {
-        if (!await db.Patients.AnyAsync(p => p.Id == id, ct))
+        if (!await db.Patients.AnyAsync(p => p.Id == id))
             return NotFound(new { error = "Patient not found" });
 
         // Resolve the window. end defaults to the latest glucose reading; start comes from
@@ -97,7 +96,7 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         if (endDt is null)
         {
             var latest = await db.Glucoses.Where(g => g.PatientId == id)
-                .Select(g => (DateTime?)g.Timestamp).MaxAsync(ct);
+                .Select(g => (DateTime?)g.Timestamp).MaxAsync();
             if (latest is null) return Ok(new AnomaliesResponse(id, [], 0));   // no data → nothing to detect
             endDt = DateTime.SpecifyKind(latest.Value, DateTimeKind.Utc);
         }
@@ -109,14 +108,14 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         }
         startDt ??= endDt.Value.AddDays(-14);
 
-        if (!await ml.IsHealthyAsync(ct))
+        if (!await ml.IsHealthyAsync())
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 new { error = "ML service not ready (model still loading). Try again shortly." });
 
-        var rows = await BuildChannelRows(id, startDt.Value, endDt.Value, ct);
+        var rows = await BuildChannelRows(id, startDt.Value, endDt.Value);
         if (rows.Count == 0) return Ok(new AnomaliesResponse(id, [], 0));
 
-        var result = await ml.InferAsync(new MlInferRequest(id, DetectThresholdK, rows), ct);
+        var result = await ml.InferAsync(new MlInferRequest(id, DetectThresholdK, rows));
         var returned = result?.Anomalies?.ToList() ?? [];
 
         // Overwrite this window: delete AFTER a successful ML call (so a failure never loses
@@ -136,7 +135,7 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
             IsAcknowledged = false,
         }).ToList();
         db.Anomalies.AddRange(inserted);
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync();
 
         return Ok(new AnomaliesResponse(id, inserted.Select(ToDto), inserted.Count));
     }
@@ -173,17 +172,17 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     /// (glucoses), insulin RATE (insulins, reconstructed per-minute), and announced carbs
     /// (meals). The ML service builds a 1-minute grid and tolerates sparse/missing channels.
     /// </summary>
-    private async Task<List<MlChannelRow>> BuildChannelRows(int id, DateTime startDt, DateTime endDt, CancellationToken ct)
+    private async Task<List<MlChannelRow>> BuildChannelRows(int id, DateTime startDt, DateTime endDt)
     {
         var glucoses = await db.Glucoses
             .Where(g => g.PatientId == id && g.Timestamp >= startDt && g.Timestamp <= endDt)
-            .Select(g => new { g.Timestamp, g.GlucoseMmoll }).ToListAsync(ct);
+            .Select(g => new { g.Timestamp, g.GlucoseMmoll }).ToListAsync();
         var insulins = await db.Insulins
             .Where(i => i.PatientId == id && i.Timestamp >= startDt && i.Timestamp <= endDt)
-            .Select(i => new { i.Timestamp, i.Units, i.EventType }).ToListAsync(ct);
+            .Select(i => new { i.Timestamp, i.Units, i.EventType }).ToListAsync();
         var meals = await db.Meals
             .Where(m => m.PatientId == id && m.Timestamp >= startDt && m.Timestamp <= endDt)
-            .Select(m => new { m.Timestamp, m.Carbs }).ToListAsync(ct);
+            .Select(m => new { m.Timestamp, m.Carbs }).ToListAsync();
 
         // Merge by minute. Multiple events on the same minute are summed (insulin/carbs).
         var byTime = new SortedDictionary<DateTime, (float? glu, float? ins, float? cho)>();
