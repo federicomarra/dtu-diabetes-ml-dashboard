@@ -173,8 +173,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalId, timeRange, glucoseRanges, inferenceEnabled, minSeverity, refreshKey]);
+  }, [externalId, timeRange, glucoseRanges, inferenceEnabled, minSeverity, refreshKey, setStateAndRef]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {

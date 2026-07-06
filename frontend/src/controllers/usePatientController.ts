@@ -129,7 +129,7 @@ export function usePatientController() {
     return () => {
       cancelled = true;
     };
-  }, [timeRange, glucoseRanges]);
+  }, [timeRange, glucoseRanges, setStateAndRef]);
 
   const handleAcknowledge = useCallback(async (anomalyId: number) => {
     const currentState = stateRef.current;

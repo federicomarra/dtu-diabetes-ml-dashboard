@@ -30,7 +30,6 @@ import type {
   ScatterplotData,
   InsulinEvent,
   MealEvent,
-  HistoryEntry,
   PaginatedResponse,
 } from "@/models/types";
 
