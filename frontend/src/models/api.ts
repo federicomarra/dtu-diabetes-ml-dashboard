@@ -4,7 +4,7 @@
  *
  * Route mapping (from backend/DiabetesApi/Routes/):
  *   GET  api/patient/list              → getPatients()
- *   GET  api/patient/{id}              → getPatient()
+ *   GET  api/patient?id={id}&ext_id={ext_id} → getPatient() / getPatientByExternalId()
  *   POST api/patient/create            → createPatient()
  *   GET  api/glucose?id={id}           → getGlucoseReadings()
  *   GET  api/glucose/latest?id={id}    → getLatestReading()
@@ -12,12 +12,11 @@
  *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/glucose/hba1c?id={id}     → getHbA1c()
  *   GET  api/glucose/gmi?id={id}       → getGmi()
- *   GET  api/anomaly?id&min_severity&start&end&last → getAnomalies()
+ *   GET  api/anomaly?id&start&end&last → getAnomalies()
  *   POST api/anomaly/detect?id&start&end&last        → runDetection()
- *   POST api/anomaly/{id}/acknowledge                → acknowledgeAnomaly()
- *   GET  api/insulin/{id}              → getInsulins()
- *   GET  api/meal/{id}                 → getMeals()
- *   GET  api/history/{id}              → getHistory()
+ *   POST api/anomaly/acknowledge?patientId={patientId}&anomalyId={anomalyId} → acknowledgeAnomaly()
+ *   GET  api/insulin?id={id}            → getInsulins()
+ *   GET  api/meal?id={id}               → getMeals()
  *   GET  api/health                    → healthCheck()
  */
 import axios from "axios";
@@ -31,7 +30,6 @@ import type {
   ScatterplotData,
   InsulinEvent,
   MealEvent,
-  HistoryEntry,
   PaginatedResponse,
 } from "@/models/types";
 
@@ -54,12 +52,12 @@ export async function getPatients(
 }
 
 export async function getPatient(patientId: number): Promise<Patient> {
-  const { data } = await api.get(`/patient/${patientId}`);
+  const { data } = await api.get("/patient", { params: { id: patientId } });
   return data;
 }
 
 export async function getPatientByExternalId(externalId: string): Promise<Patient> {
-  const { data } = await api.get(`/patient/by-external/${encodeURIComponent(externalId)}`);
+  const { data } = await api.get("/patient", { params: { ext_id: externalId } });
   return data;
 }
 
@@ -76,7 +74,21 @@ export async function uploadCsv(
 ): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
   const formData = new FormData();
   formData.append("file", file);
-  const { data } = await api.post(`/patient/${patientId}/upload-csv`, formData, {
+  const { data } = await api.post("/patient/upload-libre-csv", formData, {
+    params: { id: patientId },
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function uploadGlookoZip(
+  patientId: number,
+  file: File
+): Promise<{ message: string; glucose_count: number; meal_count: number; insulin_count: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post("/patient/upload-glooko-zip", formData, {
+    params: { id: patientId },
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
@@ -142,15 +154,14 @@ export async function getScatterplot(
 
 // ─── Anomalies ───────────────────────────────────────────
 
-/** Read stored anomalies, filtered by the severity threshold + window (inference=false path). */
+/** Read stored anomalies, filtered by time window only. Severity filtering is done client-side. */
 export async function getAnomalies(
   patientId: number,
-  params?: { minSeverity?: number; start?: string; end?: string; last?: string }
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; anomalies: AnomalyDetection[]; count: number }> {
   const { data } = await api.get(`/anomaly`, {
     params: {
       id: patientId,
-      min_severity: params?.minSeverity,
       start: params?.start,
       end: params?.end,
       last: params?.last,
@@ -169,9 +180,10 @@ export async function runDetection(
 }
 
 export async function acknowledgeAnomaly(
+  patientId: number,
   anomalyId: number
 ): Promise<AnomalyDetection> {
-  const { data } = await api.post(`/anomaly/${anomalyId}/acknowledge`);
+  const { data } = await api.post(`/anomaly/acknowledge`, null, { params: { patientId: patientId, anomalyId } });
   return data;
 }
 
@@ -181,7 +193,7 @@ export async function getInsulins(
   patientId: number,
   params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; insulins: InsulinEvent[]; count: number }> {
-  const { data } = await api.get(`/insulin/${patientId}`, { params });
+  const { data } = await api.get(`/insulin`, { params: { id: patientId, ...params } });
   return data;
 }
 
@@ -191,19 +203,7 @@ export async function getMeals(
   patientId: number,
   params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; meals: MealEvent[]; count: number }> {
-  const { data } = await api.get(`/meal/${patientId}`, { params });
-  return data;
-}
-
-// ─── History ─────────────────────────────────────────────
-
-export async function getHistory(
-  patientId: number,
-  limit = 100
-): Promise<{ patient_id: number; histories: HistoryEntry[]; count: number }> {
-  const { data } = await api.get(`/history/${patientId}`, {
-    params: { limit },
-  });
+  const { data } = await api.get(`/meal`, { params: { id: patientId, ...params } });
   return data;
 }
 
