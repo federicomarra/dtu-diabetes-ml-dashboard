@@ -1,173 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using DiabetesApi.Data;
 using DiabetesApi.Models;
 using Xunit;
 
 namespace DiabetesApi.Tests;
 
-/// <summary>
-/// Integration tests using WebApplicationFactory + EF Core in-memory database.
-/// Mirrors the original pytest test suite.
-/// </summary>
-public class ApiTests : IClassFixture<CustomWebApplicationFactory>
+public class GlucoseTests(CustomWebApplicationFactory factory) : TestBase(factory)
 {
-    private readonly HttpClient _client;
-    private readonly IServiceProvider _services;
-
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
-
-    public ApiTests(CustomWebApplicationFactory factory)
-    {
-        _services = factory.Services;
-        _client   = factory.CreateClient();
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private AppDbContext CreateDb()
-    {
-        var scope = _services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    }
-
-    private async Task<Patient> SeedPatientAsync(string externalId, string name)
-    {
-        await using var db = CreateDb();
-        var existing = await db.Patients.FirstOrDefaultAsync(p => p.ExternalId == externalId);
-        if (existing is not null) return existing;
-
-        var patient = new Patient { ExternalId = externalId, Name = name };
-        db.Patients.Add(patient);
-        await db.SaveChangesAsync();
-        return patient;
-    }
-
-    // ── Health ────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task HealthEndpoint_ReturnsStructuredResponse()
-    {
-        var resp = await _client.GetAsync("/api/health");
-
-        // The status code is either 200 (all healthy) or 503 (partial — ML is
-        // unreachable in the test environment). Both are acceptable here; we only
-        // verify that the response has the expected structure and that backend +
-        // database are reported as healthy.
-        Assert.True(
-            resp.StatusCode == HttpStatusCode.OK ||
-            resp.StatusCode == HttpStatusCode.ServiceUnavailable,
-            $"Unexpected status {resp.StatusCode}");
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.TryGetProperty("status", out _),       "Missing 'status' field");
-        Assert.True(body.TryGetProperty("components", out var components), "Missing 'components' field");
-        Assert.Equal("healthy", components.GetProperty("backend").GetProperty("status").GetString());
-        Assert.Equal("healthy", components.GetProperty("database").GetProperty("status").GetString());
-    }
-
-    // ── Patients ──────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task ListPatients_ReturnsEmpty()
-    {
-        var resp = await _client.GetAsync("/api/patient/list");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        // Total may be ≥ 0 (other tests might have seeded data); just check the key exists
-        Assert.True(body.TryGetProperty("total", out _));
-    }
-
-    [Fact]
-    public async Task ListPatients_WithPagination_ReturnsCorrectItems()
-    {
-        var p1 = await SeedPatientAsync("P_LIST_PAG_1", "Patient 1");
-        var p2 = await SeedPatientAsync("P_LIST_PAG_2", "Patient 2");
-        var p3 = await SeedPatientAsync("P_LIST_PAG_3", "Patient 3");
-
-        var resp = await _client.GetAsync("/api/patient/list?page=1&perPage=2");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, body.GetProperty("patients").GetArrayLength());
-        
-        var respPage2 = await _client.GetAsync("/api/patient/list?page=2&perPage=2");
-        Assert.Equal(HttpStatusCode.OK, respPage2.StatusCode);
-        
-        var body2 = await respPage2.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body2.GetProperty("patients").GetArrayLength() >= 1);
-    }
-
-    [Fact]
-    public async Task CreatePatient_Returns201()
-    {
-        var resp = await _client.PostAsJsonAsync("/api/patient/create", new
-        {
-            external_id = "P001_CREATE",
-            name = "Test Patient"
-        });
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal("P001_CREATE", body.GetProperty("external_id").GetString());
-        Assert.Equal("Test Patient", body.GetProperty("name").GetString());
-    }
-
-    [Fact]
-    public async Task CreatePatient_WithDateOfBirth_ReturnsAge()
-    {
-        var birthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30);
-        var resp = await _client.PostAsJsonAsync("/api/patient/create", new
-        {
-            external_id = "P002_AGE_TEST",
-            name = "Age Test Patient",
-            date_of_birth = birthDate.ToString("yyyy-MM-dd")
-        });
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal("P002_AGE_TEST", body.GetProperty("external_id").GetString());
-        Assert.Equal(30, body.GetProperty("age").GetInt32());
-        Assert.False(body.TryGetProperty("date_of_birth", out _));
-    }
-
-    [Fact]
-    public async Task CreatePatient_MissingFields_Returns400()
-    {
-        var resp = await _client.PostAsJsonAsync("/api/patient/create", new { });
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task GetPatient_ReturnsPatient()
-    {
-        var patient = await SeedPatientAsync("P_GET_TEST", "Get Test Patient");
-
-        var resp = await _client.GetAsync($"/api/patient/{patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal("P_GET_TEST", body.GetProperty("external_id").GetString());
-        Assert.Equal("Get Test Patient", body.GetProperty("name").GetString());
-    }
-
-    [Fact]
-    public async Task GetPatient_NotFound_Returns404()
-    {
-        var resp = await _client.GetAsync("/api/patient/99999");
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    // ── Glucose ───────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetGlucoseReadings_ReturnsCount()
     {
@@ -182,7 +22,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -205,7 +45,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // 1. Test last
-        var respLast = await _client.GetAsync($"/api/glucose?id={patient.Id}&last=2h");
+        var respLast = await Client.GetAsync($"/api/glucose?id={patient.Id}&last=2h");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
@@ -216,7 +56,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         // 2. Test start and end filter
         var startStr = now.AddHours(-2.5).ToString("O");
         var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/glucose?id={patient.Id}&start={startStr}&end={endStr}");
+        var respFilter = await Client.GetAsync($"/api/glucose?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
         var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32()); // 6.0 and 7.0
@@ -235,7 +75,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/latest?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/latest?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -245,7 +85,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetLatestReading_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/latest?id=99999");
+        var resp = await Client.GetAsync("/api/glucose/latest?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -262,7 +102,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/tir?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -285,7 +125,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         // Query with start filter that excludes the high reading at -3 hours
         var startStr = now.AddHours(-2.5).ToString("O");
-        var resp = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}&start={startStr}");
+        var resp = await Client.GetAsync($"/api/glucose/tir?id={patient.Id}&start={startStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -309,20 +149,18 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         // 1. Default (uses default '2w' filtering relative to latest available reading) -> The 12.0 reading at -20d is excluded.
         // Remaining are 6.0 and 6.5, which are both in-range -> 100%
-        var respDefault = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}");
+        var respDefault = await Client.GetAsync($"/api/glucose/tir?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
         var bodyDefault = await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(100.0, bodyDefault.GetProperty("in_range_pct").GetDouble());
 
         // 2. Querying with last=3w -> Includes the 12.0 reading.
         // Readings: 12.0, 6.0, 6.5 -> 2 out of 3 in-range -> 66.7%
-        var respLast = await _client.GetAsync($"/api/glucose/tir?id={patient.Id}&last=3w");
+        var respLast = await Client.GetAsync($"/api/glucose/tir?id={patient.Id}&last=3w");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(66.7, bodyLast.GetProperty("in_range_pct").GetDouble());
     }
-
-    // ── Average Glucose ───────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAverageReading_ReturnsCorrectAverage()
@@ -336,7 +174,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/average?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var val = await resp.Content.ReadFromJsonAsync<double>(JsonOpts);
@@ -358,13 +196,13 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // 1. Default (uses default '2w' filtering relative to latest available reading at now) -> Average of 5.0 and 7.0 = 6.0
-        var respDefault = await _client.GetAsync($"/api/glucose/average?id={patient.Id}");
+        var respDefault = await Client.GetAsync($"/api/glucose/average?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
         var valDefault = await respDefault.Content.ReadFromJsonAsync<double>(JsonOpts);
         Assert.Equal(6.0, valDefault);
 
         // 2. Querying with last=3w -> Average of all three (10.0 + 5.0 + 7.0) / 3 = 7.333333333333333
-        var respLast = await _client.GetAsync($"/api/glucose/average?id={patient.Id}&last=3w");
+        var respLast = await Client.GetAsync($"/api/glucose/average?id={patient.Id}&last=3w");
         Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
         var valLast = await respLast.Content.ReadFromJsonAsync<double>(JsonOpts);
         Assert.Equal(7.33, Math.Round(valLast, 2));
@@ -373,291 +211,9 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetAverageReading_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/average?id=99999");
+        var resp = await Client.GetAsync("/api/glucose/average?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
-
-    // ── Anomalies ─────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetAnomalies_ReturnsCount()
-    {
-        var patient = await SeedPatientAsync("P_ANOMALY", "A Patient");
-
-        await using var db = CreateDb();
-        db.Anomalies.Add(new Anomaly
-        {
-            PatientId = patient.Id,
-            AnomalyType = "missed_bolus",
-            Confidence = 0.9
-        });
-        await db.SaveChangesAsync();
-
-        var resp = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.GetProperty("count").GetInt32() >= 1);
-        Assert.Equal("missed_bolus", body.GetProperty("anomalies")[0].GetProperty("anomaly_type").GetString());
-    }
-
-    [Fact]
-    public async Task GetAnomalies_ReturnsAllSortedBySeverity()
-    {
-        var patient = await SeedPatientAsync("P_ANOMALY_FILTER", "AF Patient");
-
-        await using var db = CreateDb();
-        db.Anomalies.AddRange(
-            new Anomaly { PatientId = patient.Id, AnomalyType = "missed_bolus", Confidence = 0.9, Severity = 2.0 },
-            new Anomaly { PatientId = patient.Id, AnomalyType = "late_bolus",   Confidence = 0.8, Severity = 4.0 },
-            new Anomaly { PatientId = patient.Id, AnomalyType = "missed_bolus", Confidence = 0.95, Severity = 6.0 }
-        );
-        await db.SaveChangesAsync();
-
-        // Query anomalies.
-        var resp = await _client.GetAsync($"/api/anomaly?id={patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(3, body.GetProperty("count").GetInt32());
-
-        // Ordered by severity descending → strongest (6σ) first.
-        var list = body.GetProperty("anomalies");
-        Assert.Equal(6.0, list[0].GetProperty("severity").GetDouble(), 3);
-        Assert.Equal(4.0, list[1].GetProperty("severity").GetDouble(), 3);
-        Assert.Equal(2.0, list[2].GetProperty("severity").GetDouble(), 3);
-    }
-
-    [Fact]
-    public async Task AcknowledgeAnomaly_SetsFlag()
-    {
-        var patient = await SeedPatientAsync("P_ACK_UNIQUE", "ACK Patient");
-
-        await using var db = CreateDb();
-        var anomaly = new Anomaly
-        {
-            PatientId = patient.Id,
-            AnomalyType = "late_bolus",
-            Confidence = 0.8
-        };
-        db.Anomalies.Add(anomaly);
-        await db.SaveChangesAsync();
-
-        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient.Id}&anomalyId={anomaly.Id}", null);
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.GetProperty("is_acknowledged").GetBoolean());
-    }
-
-    [Fact]
-    public async Task AcknowledgeAnomaly_NotFound_Returns404()
-    {
-        var patient = await SeedPatientAsync("P_ACK_NF", "ACK NF Patient");
-        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient.Id}&anomalyId=99999", null);
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task AcknowledgeAnomaly_WrongPatient_Returns404()
-    {
-        var patient1 = await SeedPatientAsync("P_ACK_WP1", "ACK WP Patient 1");
-        var patient2 = await SeedPatientAsync("P_ACK_WP2", "ACK WP Patient 2");
-
-        await using var db = CreateDb();
-        var anomaly = new Anomaly
-        {
-            PatientId = patient1.Id,
-            AnomalyType = "missed_bolus",
-            Confidence = 0.9
-        };
-        db.Anomalies.Add(anomaly);
-        await db.SaveChangesAsync();
-
-        // Trying to acknowledge patient1's anomaly as patient2 → must return 404.
-        var resp = await _client.PostAsync($"/api/anomaly/acknowledge?patientId={patient2.Id}&anomalyId={anomaly.Id}", null);
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    // ── History ───────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetHistory_ReturnsCount()
-    {
-        var patient = await SeedPatientAsync("P_HISTORY", "History Patient");
-
-        await using var db = CreateDb();
-        db.Histories.Add(new History
-        {
-            PatientId = patient.Id,
-            Timestamp = DateTime.UtcNow,
-            Glucose = 5.5f,
-            Insulin = 2.0f,
-            Meal = 45.0f
-        });
-        await db.SaveChangesAsync();
-
-        var resp = await _client.GetAsync($"/api/history?id={patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.GetProperty("count").GetInt32() >= 1);
-        var hist = body.GetProperty("histories")[0];
-        Assert.Equal(5.5f, hist.GetProperty("glucose").GetSingle());
-        Assert.Equal(2.0f, hist.GetProperty("insulin").GetSingle());
-        Assert.Equal(45.0f, hist.GetProperty("meal").GetSingle());
-    }
-
-    [Fact]
-    public async Task GetHistory_WithTimeRangeAndLast_FiltersCorrectly()
-    {
-        var patient = await SeedPatientAsync("P_HISTORY_FILTER", "History Filter Patient");
-        var now = DateTime.UtcNow;
-
-        await using var db = CreateDb();
-        db.Histories.AddRange(
-            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Glucose = 5.0f }, // ~2.2h before latest (Excluded by last=2h)
-            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Glucose = 6.0f }, // ~1.0h before latest (Included)
-            new History { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Glucose = 7.0f }  // latest (Included)
-        );
-        await db.SaveChangesAsync();
-
-        // 1. Test last
-        var respLast = await _client.GetAsync($"/api/history?id={patient.Id}&last=2h");
-        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
-        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
-        var listLast = bodyLast.GetProperty("histories");
-        Assert.Equal(7.0f, listLast[0].GetProperty("glucose").GetSingle());
-        Assert.Equal(6.0f, listLast[1].GetProperty("glucose").GetSingle());
-
-        // 2. Test start and end filter
-        var startStr = now.AddHours(-2.5).ToString("O");
-        var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/history?id={patient.Id}&start={startStr}&end={endStr}");
-        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
-        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
-    }
-
-    // ── Insulin ───────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetInsulins_ReturnsCount()
-    {
-        var patient = await SeedPatientAsync("P_INSULIN_T", "Insulin Patient");
-
-        await using var db = CreateDb();
-        db.Insulins.Add(new Insulin
-        {
-            PatientId = patient.Id,
-            Timestamp = DateTime.UtcNow,
-            Units = 3.5f,
-            EventType = "bolus"
-        });
-        await db.SaveChangesAsync();
-
-        var resp = await _client.GetAsync($"/api/insulin?id={patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.GetProperty("count").GetInt32() >= 1);
-        var ins = body.GetProperty("insulins")[0];
-        Assert.Equal(3.5f, ins.GetProperty("units").GetSingle());
-        Assert.Equal("bolus", ins.GetProperty("event_type").GetString());
-    }
-
-    [Fact]
-    public async Task GetInsulins_WithTimeRangeAndLast_FiltersCorrectly()
-    {
-        var patient = await SeedPatientAsync("P_INSULIN_FILTER", "Insulin Filter Patient");
-        var now = DateTime.UtcNow;
-
-        await using var db = CreateDb();
-        db.Insulins.AddRange(
-            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Units = 1.0f, EventType = "basal" }, // ~2.2h before latest (Excluded by last=2h)
-            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Units = 2.0f, EventType = "bolus" }, // ~1.0h before latest (Included)
-            new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Units = 3.0f, EventType = "bolus" }  // latest (Included)
-        );
-        await db.SaveChangesAsync();
-
-        // 1. Test last
-        var respLast = await _client.GetAsync($"/api/insulin?id={patient.Id}&last=2h");
-        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
-        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
-        var listLast = bodyLast.GetProperty("insulins");
-        Assert.Equal(3.0f, listLast[0].GetProperty("units").GetSingle());
-        Assert.Equal(2.0f, listLast[1].GetProperty("units").GetSingle());
-
-        // 2. Test start and end filter
-        var startStr = now.AddHours(-2.5).ToString("O");
-        var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/insulin?id={patient.Id}&start={startStr}&end={endStr}");
-        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
-        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
-    }
-
-    // ── Meal ──────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetMeals_ReturnsCount()
-    {
-        var patient = await SeedPatientAsync("P_MEAL_T", "Meal Patient");
-
-        await using var db = CreateDb();
-        db.Meals.Add(new Meal
-        {
-            PatientId = patient.Id,
-            Timestamp = DateTime.UtcNow,
-            Carbs = 60.0f,
-            MealType = "lunch"
-        });
-        await db.SaveChangesAsync();
-
-        var resp = await _client.GetAsync($"/api/meal?id={patient.Id}");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.True(body.GetProperty("count").GetInt32() >= 1);
-        var meal = body.GetProperty("meals")[0];
-        Assert.Equal(60.0f, meal.GetProperty("carbs").GetSingle());
-        Assert.Equal("lunch", meal.GetProperty("meal_type").GetString());
-    }
-
-    [Fact]
-    public async Task GetMeals_WithTimeRangeAndLast_FiltersCorrectly()
-    {
-        var patient = await SeedPatientAsync("P_MEAL_FILTER", "Meal Filter Patient");
-        var now = DateTime.UtcNow;
-
-        await using var db = CreateDb();
-        db.Meals.AddRange(
-            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-180), Carbs = 10.0f, MealType = "snack" }, // ~2.2h before latest (Excluded by last=2h)
-            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-110), Carbs = 20.0f, MealType = "lunch" }, // ~1.0h before latest (Included)
-            new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-50),  Carbs = 30.0f, MealType = "dinner" } // latest (Included)
-        );
-        await db.SaveChangesAsync();
-
-        // 1. Test last
-        var respLast = await _client.GetAsync($"/api/meal?id={patient.Id}&last=2h");
-        Assert.Equal(HttpStatusCode.OK, respLast.StatusCode);
-        var bodyLast = await respLast.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyLast.GetProperty("count").GetInt32());
-        var listLast = bodyLast.GetProperty("meals");
-        Assert.Equal(30.0f, listLast[0].GetProperty("carbs").GetSingle());
-        Assert.Equal(20.0f, listLast[1].GetProperty("carbs").GetSingle());
-
-        // 2. Test start and end filter
-        var startStr = now.AddHours(-2.5).ToString("O");
-        var endStr = now.AddHours(-0.5).ToString("O");
-        var respFilter = await _client.GetAsync($"/api/meal?id={patient.Id}&start={startStr}&end={endStr}");
-        Assert.Equal(HttpStatusCode.OK, respFilter.StatusCode);
-        var bodyFilter = await respFilter.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(2, bodyFilter.GetProperty("count").GetInt32());
-    }
-    // ── HbA1c ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetHbA1c_Returns200WithCorrectFields()
@@ -673,7 +229,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -701,7 +257,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body   = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -716,7 +272,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetHbA1c_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/hba1c?id=99999");
+        var resp = await Client.GetAsync("/api/glucose/hba1c?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -725,7 +281,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         var patient = await SeedPatientAsync("P_HBA1C_BAD", "HbA1c Bad Patient");
         // "5x" ends in 'x', which is not a recognised suffix → route guard returns 400
-        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=5x");
+        var resp = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=5x");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -746,13 +302,13 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         // Default (last=2w from latest → excludes the 20-day-old reading)
         // avg = 5.0 mmol/L → lower HbA1c
-        var respDefault = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
+        var respDefault = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
         var pctDefault = (await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
                             .GetProperty("percent").GetDouble();
 
         // last=3w → includes the 12.0 reading → higher average → higher HbA1c
-        var respWide = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=3w");
+        var respWide = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&last=3w");
         Assert.Equal(HttpStatusCode.OK, respWide.StatusCode);
         var pctWide = (await respWide.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
                          .GetProperty("percent").GetDouble();
@@ -776,7 +332,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         var startStr = now.AddHours(-3).ToString("O");
         var endStr   = now.ToString("O");
-        var resp = await _client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&start={startStr}&end={endStr}");
+        var resp = await Client.GetAsync($"/api/glucose/hba1c?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -784,8 +340,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         double pct = body.GetProperty("percent").GetDouble();
         Assert.True(pct < 6.0, $"Expected HbA1c < 6.0 when high reading excluded, got {pct}");
     }
-
-    // ── GMI ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetGmi_Returns200WithCorrectFields()
@@ -801,7 +355,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -825,7 +379,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         });
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var gmi = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
@@ -838,7 +392,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetGmi_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/gmi?id=99999");
+        var resp = await Client.GetAsync("/api/glucose/gmi?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -847,7 +401,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         var patient = await SeedPatientAsync("P_GMI_BAD", "GMI Bad Patient");
         // "5x" ends in 'x', which is not a recognised suffix → route guard returns 400
-        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=5x");
+        var resp = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=5x");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -865,13 +419,13 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         await db.SaveChangesAsync();
 
         // Default last=2w → only 5.0 → lower GMI
-        var respDefault = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
+        var respDefault = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, respDefault.StatusCode);
         var gmiDefault = (await respDefault.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
                              .GetProperty("gmi").GetDouble();
 
         // last=3w → includes 12.0 → higher average → higher GMI
-        var respWide = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=3w");
+        var respWide = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}&last=3w");
         Assert.Equal(HttpStatusCode.OK, respWide.StatusCode);
         var gmiWide = (await respWide.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
                           .GetProperty("gmi").GetDouble();
@@ -895,7 +449,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         var startStr = now.AddHours(-3).ToString("O");
         var endStr   = now.ToString("O");
-        var resp = await _client.GetAsync($"/api/glucose/gmi?id={patient.Id}&start={startStr}&end={endStr}");
+        var resp = await Client.GetAsync($"/api/glucose/gmi?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var gmi = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
@@ -920,8 +474,8 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var rLow  = await _client.GetAsync($"/api/glucose/gmi?id={pLow.Id}");
-        var rHigh = await _client.GetAsync($"/api/glucose/gmi?id={pHigh.Id}");
+        var rLow  = await Client.GetAsync($"/api/glucose/gmi?id={pLow.Id}");
+        var rHigh = await Client.GetAsync($"/api/glucose/gmi?id={pHigh.Id}");
         Assert.Equal(HttpStatusCode.OK, rLow.StatusCode);
         Assert.Equal(HttpStatusCode.OK, rHigh.StatusCode);
 
@@ -930,8 +484,6 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.True(gmiHigh > gmiLow, $"Expected gmiHigh ({gmiHigh}) > gmiLow ({gmiLow})");
     }
-
-    // ── Scatterplot ───────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetScatterplot_Returns200WithCorrectShape()
@@ -947,7 +499,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -977,7 +529,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -1006,7 +558,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -1044,7 +596,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -1067,7 +619,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
         );
         await db.SaveChangesAsync();
 
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=3d");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=3d");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -1092,7 +644,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
 
         var startStr = noon.AddHours(-3).ToString("O");
         var endStr   = noon.ToString("O");
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&start={startStr}&end={endStr}");
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&start={startStr}&end={endStr}");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -1106,7 +658,7 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task GetScatterplot_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/api/glucose/scatterplot?id=99999");
+        var resp = await Client.GetAsync("/api/glucose/scatterplot?id=99999");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
@@ -1114,84 +666,23 @@ public class ApiTests : IClassFixture<CustomWebApplicationFactory>
     public async Task GetScatterplot_InvalidLastParam_Returns400()
     {
         var patient = await SeedPatientAsync("P_SCATTER_BAD", "Scatter Bad Param Patient");
-        var resp = await _client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=5x");
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-    }
-
-    // ── Anomaly Detect ────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Detect_PatientNotFound_Returns404()
-    {
-        var resp = await _client.PostAsync("/api/anomaly/detect?id=99999", null);
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task Detect_WithNoData_ReturnsEmpty()
-    {
-        var patient = await SeedPatientAsync("P_DETECT_EMPTY", "Detect Empty Patient");
-        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}", null);
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(0, body.GetProperty("count").GetInt32());
-        Assert.Empty(body.GetProperty("anomalies").EnumerateArray());
-    }
-
-    [Fact]
-    public async Task Detect_InvalidLastParam_Returns400()
-    {
-        var patient = await SeedPatientAsync("P_DETECT_BAD", "Detect Bad Param Patient");
-        // Seed at least one glucose reading so we don't return early on "no data"
-        await using (var db = CreateDb())
-        {
-            db.Glucoses.Add(new Glucose { PatientId = patient.Id, Timestamp = DateTime.UtcNow, GlucoseMmoll = 6.0 });
-            await db.SaveChangesAsync();
-        }
-
-        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}&last=invalid", null);
+        var resp = await Client.GetAsync($"/api/glucose/scatterplot?id={patient.Id}&last=5x");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
-    public async Task Detect_RunsInferenceSuccessfully()
+    public async Task GetGlucoseReadings_InvalidLastParam_Returns400()
     {
-        var patient = await SeedPatientAsync("P_DETECT_OK", "Detect OK Patient");
-        var now = DateTime.UtcNow;
+        var patient = await SeedPatientAsync("P_GLUCOSE_BAD", "Glucose Bad Param Patient");
+        var resp = await Client.GetAsync($"/api/glucose?id={patient.Id}&last=5x");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 
-        // Seed data to populate build channel rows
-        await using (var db = CreateDb())
-        {
-            db.Glucoses.AddRange(
-                new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-30), GlucoseMmoll = 6.5 },
-                new Glucose { PatientId = patient.Id, Timestamp = now.AddMinutes(-15), GlucoseMmoll = 7.0 }
-            );
-            db.Insulins.Add(new Insulin { PatientId = patient.Id, Timestamp = now.AddMinutes(-20), Units = 2.0f, EventType = "bolus" });
-            db.Meals.Add(new Meal { PatientId = patient.Id, Timestamp = now.AddMinutes(-25), Carbs = 45.0f });
-            await db.SaveChangesAsync();
-        }
-
-        var resp = await _client.PostAsync($"/api/anomaly/detect?id={patient.Id}", null);
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
-        Assert.Equal(1, body.GetProperty("count").GetInt32());
-
-        var anomaly = body.GetProperty("anomalies")[0];
-        Assert.Equal("missed_bolus", anomaly.GetProperty("anomaly_type").GetString());
-        Assert.Equal("Mocked anomaly description", anomaly.GetProperty("description").GetString());
-        Assert.Equal(3.5, anomaly.GetProperty("severity").GetDouble(), precision: 1);
-        Assert.Equal(0.75, anomaly.GetProperty("confidence").GetDouble(), precision: 2); // 75.0 / 100.0
-
-        // Verify it was saved to the database
-        await using (var db = CreateDb())
-        {
-            var dbAnomaly = await db.Anomalies.SingleAsync(a => a.PatientId == patient.Id);
-            Assert.Equal("missed_bolus", dbAnomaly.AnomalyType);
-            Assert.Equal(3.5, dbAnomaly.Severity);
-            Assert.Equal(0.75, dbAnomaly.Confidence);
-            Assert.Equal("Mocked anomaly description", dbAnomaly.Description);
-        }
+    [Fact]
+    public async Task GetAverageReading_InvalidLastParam_Returns400()
+    {
+        var patient = await SeedPatientAsync("P_AVG_BAD", "Average Bad Param Patient");
+        var resp = await Client.GetAsync($"/api/glucose/average?id={patient.Id}&last=5x");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 }
