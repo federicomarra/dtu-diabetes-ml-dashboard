@@ -284,6 +284,8 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
             if (mealsToInsert.Count > 0) db.Meals.AddRange(mealsToInsert.OrderBy(m => m.Timestamp));
             if (insulinsToInsert.Count > 0) db.Insulins.AddRange(insulinsToInsert.OrderBy(i => i.Timestamp));
 
+            await patientService.SyncHistoriesAsync(patientId, glucosesToInsert, mealsToInsert, insulinsToInsert);
+
             await db.SaveChangesAsync();
 
             var allTimestampsCsv = glucosesToInsert.Select(g => g.Timestamp)
@@ -539,6 +541,8 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
             if (glucosesToInsert.Count > 0) db.Glucoses.AddRange(glucosesToInsert.OrderBy(g => g.Timestamp));
             if (mealsToInsert.Count > 0) db.Meals.AddRange(mealsToInsert.OrderBy(m => m.Timestamp));
             if (insulinsToInsert.Count > 0) db.Insulins.AddRange(insulinsToInsert.OrderBy(i => i.Timestamp));
+
+            await patientService.SyncHistoriesAsync(patientId, glucosesToInsert, mealsToInsert, insulinsToInsert);
 
             await db.SaveChangesAsync();
 
