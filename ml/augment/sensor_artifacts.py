@@ -1,13 +1,13 @@
 """
 Sensor-artifact augmentation for CGM glucose: dropouts, calibration jumps,
-compression lows. Pure + seeded — same (inputs, rng state) → same output.
+compression lows. Pure + seeded - same (inputs, rng state) -> same output.
 Sensor-only: operates on the glucose channel; insulin/carbs are never passed in.
 
 Dropout gap-lengths are intended to be sourced from Ohio's real gaps (see
 `run_lengths`); jump/compression parameters are literature-based (Dexcom
 recalibration steps; nocturnal compression lows) and live in ArtifactConfig.
 
-Injection order is jumps → compression → dropouts, so a dropout's linear
+Injection order is jumps -> compression -> dropouts, so a dropout's linear
 interpolation spans whatever the other artifacts left (a real dropout hides
 whatever the sensor was doing). Glucose is clamped to the CGM floor last.
 """
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-CGM_FLOOR = 1.5  # mmol/L — matches simulator cgm_min_glucose_mmol
+CGM_FLOOR = 1.5  # mmol/L - matches simulator cgm_min_glucose_mmol
 CLEAN, DROPOUT, JUMP, COMPRESSION = 0, 1, 2, 3
 
 
@@ -25,7 +25,7 @@ CLEAN, DROPOUT, JUMP, COMPRESSION = 0, 1, 2, 3
 class ArtifactConfig:
     # dropouts
     dropout_pct: float = 0.10            # target fraction of timeline made missing
-    gap_len_samples: tuple[int, ...] = ()  # empirical Ohio gap lengths (min); empty → lognormal
+    gap_len_samples: tuple[int, ...] = ()  # empirical Ohio gap lengths (min); empty -> lognormal
     gap_len_mu: float = 3.0              # lognormal(log-min) fallback mean
     gap_len_sigma: float = 0.8           # lognormal fallback sigma
     # calibration jumps
@@ -36,9 +36,9 @@ class ArtifactConfig:
     compression_mmol: float = 3.0        # max dip depth
     compression_min: int = 20            # duration min (minutes)
     compression_max: int = 60            # duration max (minutes)
-    nocturnal_frac: float = 0.7          # fraction placed in 00:00–06:00
+    nocturnal_frac: float = 0.7          # fraction placed in 00:00-06:00
     # global
-    intensity: float = 1.0               # 0 → identity (ablation "off")
+    intensity: float = 1.0               # 0 -> identity (ablation "off")
 
 
 def run_lengths(mask_bool) -> list[int]:
@@ -68,7 +68,7 @@ def _inject_compression(g, mask, rng, cfg, days, T):
             continue
         if rng.random() < cfg.nocturnal_frac:
             day = int(rng.integers(0, n_days))
-            start = day * 1440 + int(rng.integers(0, 360))   # 00:00–06:00
+            start = day * 1440 + int(rng.integers(0, 360))   # 00:00-06:00
         else:
             start = int(rng.integers(0, T - dur))
         start = min(start, T - dur)
@@ -100,7 +100,7 @@ def _inject_dropouts(g, v, mask, rng, cfg, T):
 
 
 def apply_artifacts(glucose, valid, rng, cfg):
-    """Return (glucose2, valid2, artifact_mask). intensity 0 → identity.
+    """Return (glucose2, valid2, artifact_mask). intensity 0 -> identity.
 
     glucose [T] mmol/L (1-min grid); valid [T] bool; rng a np.random.Generator;
     cfg an ArtifactConfig. artifact_mask is int8: 0=clean 1=dropout 2=jump

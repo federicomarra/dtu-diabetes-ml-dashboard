@@ -1,12 +1,12 @@
 """
-XCHANNEL — iTransformer-style cross-channel conditional glucose forecaster.
+XCHANNEL - iTransformer-style cross-channel conditional glucose forecaster.
 
-See ml/docs/XCHANNEL.md for the why. In one line: forecast glucose over the
-next H minutes from glucose HISTORY + insulin/carbs known THROUGH the horizon,
-and score anomalies by the forecast residual. The cross-channel attention is
-the whole point — it is what PatchTST (channel-independent) structurally lacks.
+Forecast glucose over the next H minutes from glucose HISTORY + insulin/carbs
+known THROUGH the horizon, and score anomalies by the forecast residual.
+The cross-channel attention is the whole point - it is what PatchTST
+(channel-independent) structurally lacks.
 
-Layout (iTransformer inversion — one token per CHANNEL, attention over channels):
+Layout (iTransformer inversion - one token per CHANNEL, attention over channels):
 
     glucose  [B, L]    --Linear(L  ->D)-->  token_g  [B, D]
     insulin  [B, L+H]  --Linear(L+H->D)-->  token_i  [B, D]   stack -> [B, 3, D]
@@ -21,7 +21,7 @@ Layout (iTransformer inversion — one token per CHANNEL, attention over channel
                               Linear(D -> H)  ->  glucose forecast  [B, H]
 
 Each channel gets its OWN input Linear because the channels have different
-visible lengths (glucose L, exogenous L+H) — weights can't be shared.
+visible lengths (glucose L, exogenous L+H) - weights can't be shared.
 """
 
 import os
@@ -29,18 +29,18 @@ import os
 import torch
 import torch.nn as nn
 
-# ── shapes (minutes; CGM is 1 sample/min in this cohort) ──────────────────────
-# Env-overridable for the longer-horizon sweep (ml/docs/LONGER_HORIZON.md): set
-# XCH_HORIZON / XCH_CONTEXT for BOTH train and eval of a given run. ckpt args also
-# carry horizon/context so forecaster_from_ckpt rebuilds the right output size.
-CONTEXT_LEN = int(os.environ.get("XCH_CONTEXT", "120"))   # L — glucose history fed in
-HORIZON = int(os.environ.get("XCH_HORIZON", "40"))        # H — minutes to forecast across
+# -- shapes (minutes; CGM is 1 sample/min in this cohort) ----------------------
+# Env-overridable for the longer-horizon sweep: set XCH_HORIZON / XCH_CONTEXT for
+# BOTH train and eval of a given run. ckpt args also carry horizon/context so
+# forecaster_from_ckpt rebuilds the right output size.
+CONTEXT_LEN = int(os.environ.get("XCH_CONTEXT", "120"))   # L - glucose history fed in
+HORIZON = int(os.environ.get("XCH_HORIZON", "40"))        # H - minutes to forecast across
 N_CHANNELS = 3        # glucose, insulin, carbs
 
-# ── capacity (matched to PatchTST/CARLA for a fair comparison) ────────────────
+# -- capacity (matched to PatchTST/CARLA for a fair comparison) ----------------
 D_MODEL = 128
 N_HEADS = 8
-N_LAYERS = 2          # only 3 tokens to attend over — deep is pointless
+N_LAYERS = 2          # only 3 tokens to attend over - deep is pointless
 DROPOUT = 0.1
 
 # index of each channel's token in the stacked [B, 3, D] tensor
@@ -51,11 +51,11 @@ class XChannelForecaster(nn.Module):
     """
     Cross-channel conditional glucose forecaster.
 
-    patch_len = 0 (default): the original iTransformer layout — ONE token per
+    patch_len = 0 (default): the original iTransformer layout - ONE token per
         channel (3 tokens), each channel's whole series embedded by one Linear.
-    patch_len > 0: temporal patching — each channel is split into patch_len-min
+    patch_len > 0: temporal patching - each channel is split into patch_len-min
         patches, every patch is a token, so attention runs over BOTH time and
-        channels (≈ 6 glucose + 8 insulin + 8 carb tokens at L=120,H=40,P=20).
+        channels (~ 6 glucose + 8 insulin + 8 carb tokens at L=120,H=40,P=20).
         Lifts the near-linear ceiling of the 3-token model. Quality-program
         Step 1; see project_quality_program memory.
     """
@@ -94,7 +94,7 @@ class XChannelForecaster(nn.Module):
             dim_feedforward=4 * d_model, dropout=dropout,
             batch_first=True,                    # input is [B, tokens, D]
         )
-        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)
         self.head = nn.Linear(d_model, horizon)                # mean
         if probabilistic:
             self.head_logvar = nn.Linear(d_model, horizon)     # log-variance
@@ -133,7 +133,7 @@ class XChannelForecaster(nn.Module):
         return mean
 
 
-# ── loss + score helpers (handle deterministic vs probabilistic uniformly) ──────
+# -- loss + score helpers (handle deterministic vs probabilistic uniformly) ------
 
 def forecast_loss(out, target):
     """MSE for a point forecast; Gaussian NLL for a (mean, logvar) forecast."""
@@ -146,14 +146,14 @@ def forecast_loss(out, target):
 def anomaly_score(out, target, mode: str = "sym"):
     """Per-window score [B]. `mode` selects the residual aggregation:
 
-      sym    : symmetric — squared residual (point) / per-element NLL (prob.). default.
-      signed : mean POSITIVE-part residual (glucose ABOVE forecast) — targets the
+      sym    : symmetric - squared residual (point) / per-element NLL (prob.). default.
+      signed : mean POSITIVE-part residual (glucose ABOVE forecast) - targets the
                hyperglycemic anomalies (missed/late/large = under-insulinization).
       peak   : max positive-part residual over the horizon (a missed bolus diverges
                progressively; the mean dilutes the late, strongest part).
       end    : mean positive-part residual over the LAST quarter of the horizon.
 
-    For the probabilistic model the positive residual is standardized by σ
+    For the probabilistic model the positive residual is standardized by sigma
     (directional surprise under uncertainty); for the point model it is the raw
     positive residual."""
     if isinstance(out, tuple):

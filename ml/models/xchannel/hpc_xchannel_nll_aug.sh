@@ -1,5 +1,5 @@
 #!/bin/sh
-### XCHANNEL (probabilistic / NLL + sensor-artifact augmentation) — DTU HPC
+### XCHANNEL (probabilistic / NLL + sensor-artifact augmentation) - DTU HPC
 ###
 ### Step 2 of the sensor-artifact work: train with on-the-fly dropouts/jumps/
 ### compression on the TRAIN split (val stays clean) so the detector stops
@@ -49,10 +49,10 @@ python ml/models/xchannel/pretrain.py \
     --parquet       ml/data/sim_data/results_5000p_42d.parquet \
     --probabilistic \
     --augment \
-    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
+    || { echo "Pretraining failed - skipping evaluation"; exit 1; }
 
 echo ""
-echo "=== EVALUATION (simulator test set, clean — sanity that augmentation didn't hurt) ==="
+echo "=== EVALUATION (simulator test set, clean - sanity that augmentation didn't hurt) ==="
 python ml/models/xchannel/anomaly_score.py \
     --checkpoint   ml/data/checkpoints/xchannel_nll_aug_best.pt \
     --batch_size   512 \

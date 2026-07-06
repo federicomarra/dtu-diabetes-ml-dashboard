@@ -7,7 +7,6 @@ CPU-only, synthetic events. Run from repo root:
 
 from dataclasses import dataclass
 
-import pytest
 
 from characterization.rules import classify_meals, RuleConfig, MINUTES_PER_DAY
 
@@ -26,7 +25,7 @@ class TestTiming:
 
     def test_timely_bolus_is_normal(self):
         meals = [M(minute=1000, carb_g=40)]
-        boluses = [M(minute=995, units=5)]                 # 5 min before → on time
+        boluses = [M(minute=995, units=5)]                 # 5 min before -> on time
         out = classify_meals(meals, boluses, CFG)
         assert out["missed"] == [] and out["late"] == []
 
@@ -35,12 +34,12 @@ class TestTiming:
         assert out["missed"] == [1000] and out["late"] == []
 
     def test_far_bolus_is_missed(self):
-        # bolus 90 min later is beyond late_max (60) → still missed
+        # bolus 90 min later is beyond late_max (60) -> still missed
         out = classify_meals([M(1000, carb_g=40)], [M(1090, units=5)], CFG)
         assert out["missed"] == [1000]
 
     def test_delayed_bolus_is_late(self):
-        # bolus 40 min after meal → ≥ late_delay (30), ≤ late_max (60) → late
+        # bolus 40 min after meal -> >= late_delay (30), <= late_max (60) -> late
         out = classify_meals([M(1000, carb_g=40)], [M(1040, units=5)], CFG)
         assert out["late"] == [1000] and out["missed"] == []
 
@@ -74,7 +73,7 @@ class TestLargeCalibration:
         assert out["large"] == []
 
     def test_no_large_without_enough_calibration(self):
-        # only 2 prior meals (< min_calib_meals) → cannot call large yet
+        # only 2 prior meals (< min_calib_meals) -> cannot call large yet
         meals, boluses = self._history(base_carb=40, n=2, large_at_end=200)
         out = classify_meals(meals, boluses, CFG)
         assert out["large"] == []

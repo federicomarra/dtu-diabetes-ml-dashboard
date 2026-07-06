@@ -11,13 +11,11 @@ Usage:
   python ml/explore_patients.py --days 5            # show 5 days
   python ml/explore_patients.py --ids 000042 001337 # specific patients
 
-NOTE on orange→red (late→missed) transitions on the same patient-day:
+NOTE on orange->red (late->missed) transitions on the same patient-day:
   The simulator allows 1 late bolus + 1 missed bolus on *different* meal slots
-  within the same day. The constraint is "2 late boluses → no missed bolus that day",
-  not "any late bolus → no missed bolus". So adjacent orange+red bands are two
+  within the same day. The constraint is "2 late boluses -> no missed bolus that day",
+  not "any late bolus -> no missed bolus". So adjacent orange+red bands are two
   separate meal events and are valid simulator behaviour.
-  Ref: INSTRUCTIONS.md Part 2.5 — "2 late boluses → no missed bolus that day.
-       Bolus anomalies cannot share a meal slot."
 """
 
 import argparse
@@ -41,7 +39,7 @@ N_PANELS = 4 if SHOW_AC else 3   # glucose / insulin / cho [/ ac]
 SPACER_HEIGHT = 1.0               # height ratio for blank row between patient groups
 PANEL_HEIGHTS = [3, 2, 2, 2]     # glucose taller; ac same height as insulin/cho
 
-# ── label colour scheme ────────────────────────────────────────────────────────
+# -- label colour scheme --------------------------------------------------------
 LABEL_COLORS = {
     "missed":    ("#d62728", 0.30),
     "late":      ("#ff7f0e", 0.40),
@@ -54,7 +52,7 @@ LABEL_COLORS = {
 _meal_keys = ["missed", "late", "large"]
 _ex_keys   = ["aerobic", "prolonged", "anaerobic"]
 
-# ncol=3: row 1 = meal anomalies, row 2 = exercise — 2 rows, half the height of ncol=2.
+# ncol=3: row 1 = meal anomalies, row 2 = exercise - 2 rows, half the height of ncol=2.
 LEGEND_PATCHES = [
     mpatches.Patch(color=LABEL_COLORS[k][0], alpha=LABEL_COLORS[k][1], label=k)
     for k in _meal_keys + _ex_keys
@@ -140,7 +138,7 @@ def plot_patient(axes, df: pd.DataFrame, days: int, show_xaxis: bool = False):
     x_min, x_max = t.iloc[0], t.iloc[-1]
     day_ticks = np.arange(0, days + 1) * 1440
 
-    # ── glucose ────────────────────────────────────────────────────────────────
+    # -- glucose ----------------------------------------------------------------
     ax_g.plot(t, df["blood_glucose"].values, lw=0.8, color="#1f77b4", zorder=3)
     ax_g.axhline(3.9,  color="red",    lw=0.7, ls="--", alpha=0.5, zorder=2)
     ax_g.axhline(10.0, color="orange", lw=0.7, ls="--", alpha=0.5, zorder=2)
@@ -161,17 +159,17 @@ def plot_patient(axes, df: pd.DataFrame, days: int, show_xaxis: bool = False):
     ax_g.set_title(f"Patient {pid}  |  base scenario: {sc_name}", fontsize=9, fontweight="bold",
                    pad=4)
 
-    # ── insulin ────────────────────────────────────────────────────────────────
+    # -- insulin ----------------------------------------------------------------
     ax_u.plot(t, df["insulin_mU_min"].values, lw=0.7, color="#d62728")
     ax_u.set_ylabel("Insulin\n(mU/min)", fontsize=8)
     ax_u.set_ylim(bottom=0)
 
-    # ── carbs ──────────────────────────────────────────────────────────────────
+    # -- carbs ------------------------------------------------------------------
     ax_d.fill_between(t, df["cho_mg_min"].values, alpha=0.6, color="#8c564b", lw=0)
     ax_d.set_ylabel("Carbs\n(mg/min)", fontsize=8)
     ax_d.set_ylim(bottom=0)
 
-    # ── AC panel ───────────────────────────────────────────────────────────────
+    # -- AC panel ---------------------------------------------------------------
     # Uncomment the block below (and set SHOW_AC = True at the top) once the
     # new HPC cohort with ac_counts is available (Days 6-7).
     #
@@ -184,7 +182,7 @@ def plot_patient(axes, df: pd.DataFrame, days: int, show_xaxis: bool = False):
     #     shade_events(ax_ac, t, df["exercise_type"].where(df["exercise_type"] == ex_type),
     #                  *LABEL_COLORS[ex_type])
 
-    # ── shared x-axis formatting ───────────────────────────────────────────────
+    # -- shared x-axis formatting -----------------------------------------------
     bottom_ax = axes[N_PANELS - 1]
     for ax in axes:
         ax.set_xticks(day_ticks)
@@ -277,7 +275,7 @@ def main():
     fig.subplots_adjust(top=0.81)
 
     fig.suptitle(
-        f"3-Patient Diagnostic — first {args.days} days\n"
+        f"3-Patient Diagnostic - first {args.days} days\n"
         "dashed: hypo 3.9 / hyper 10.0 mmol/L",
         fontsize=14,
         fontweight="bold",
@@ -303,7 +301,7 @@ def main():
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    print(f"Saved → {out_path}")
+    print(f"Saved -> {out_path}")
 
 
 if __name__ == "__main__":

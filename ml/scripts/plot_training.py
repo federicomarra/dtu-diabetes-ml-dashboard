@@ -17,13 +17,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-# ── paths ─────────────────────────────────────────────────────────────────────
+# -- paths ---------------------------------------------------------------------
 
 LOG_PATH    = Path("ml/data/checkpoints/pretrain_log.json")
 FIGURES_DIR = Path("ml/figures")
 
 
-# ── plot ──────────────────────────────────────────────────────────────────────
+# -- plot ----------------------------------------------------------------------
 
 def plot_loss(log: list[dict], out_path: Path) -> None:
     epochs     = [e["epoch"]      for e in log]
@@ -45,7 +45,7 @@ def plot_loss(log: list[dict], out_path: Path) -> None:
 
     ax.set_xlabel("Epoch", fontsize=12)
     ax.set_ylabel("MSE loss", fontsize=12)
-    ax.set_title("PatchTST pretraining — reconstruction loss", fontsize=13, fontweight="bold")
+    ax.set_title("PatchTST pretraining - reconstruction loss", fontsize=13, fontweight="bold")
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
@@ -54,10 +54,10 @@ def plot_loss(log: list[dict], out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=300)
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved -> {out_path}")
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# -- main ----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Plot pretraining loss curves")

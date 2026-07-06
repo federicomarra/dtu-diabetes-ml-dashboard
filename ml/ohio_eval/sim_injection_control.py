@@ -6,7 +6,7 @@ the model failing to transfer, or the *injection protocol* having a low ceiling?
 The Ohio protocol perturbs only the bolus and keeps REAL glucose, so the
 "anomaly" is a counterfactual input mismatch, not a real excursion.
 
-This runs the IDENTICAL protocol on SIMULATOR data — where the model fits well
+This runs the IDENTICAL protocol on SIMULATOR data - where the model fits well
 (val_loss 0.032) and the native (glucose-reactive) anomalies score AUROC ~0.75.
 If this input-only injection also caps at ~0.58 on sim, the protocol is the
 limiter and the Ohio number says nothing about transfer. If it reaches ~0.75,
@@ -39,17 +39,15 @@ from dataset import (  # noqa: E402
     load_patients, make_patient_split, ANOMALY_CLASSES, N_CHANNELS,
 )
 from features.iob_cob import to_iob_cob  # noqa: E402
-from models.xchannel.model import (  # noqa: E402
-    forecaster_from_ckpt, anomaly_score as compute_score, CONTEXT_LEN, HORIZON,
-)
+from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
+from ohio_eval.scoring import valid_starts, score_windows, L, WIN  # noqa: E402
 
-L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 CLASS_IDX = {c: i for i, c in enumerate(ANOMALY_CLASSES)}
-BASAL_MEDIAN_WIN = 61          # min — rolling median removes 3-min bolus spikes
+BASAL_MEDIAN_WIN = 61          # min - rolling median removes 3-min bolus spikes
 
 
 def _meal_events(carb: np.ndarray, min_mg: float):
-    """(start, end) of each announced-carb box with total carbs ≥ min_mg."""
+    """(start, end) of each announced-carb box with total carbs >= min_mg."""
     nz = carb > 0
     starts = np.where(nz & ~np.concatenate([[False], nz[:-1]]))[0]
     ends = np.where(nz & ~np.concatenate([nz[1:], [False]]))[0] + 1   # exclusive
@@ -68,13 +66,13 @@ def inject_sim(arr: np.ndarray, cls: str, late_delay: int, carb_keep: float,
 
     for s, e in _meal_events(carb, min_mg):
         if cls == "missed":
-            insulin[s:e] -= bolus[s:e]                # → basal (remove bolus)
+            insulin[s:e] -= bolus[s:e]                # -> basal (remove bolus)
             carb[s:e] = 0.0                           # drop the announcement
         elif cls == "late":
             d = late_delay
             seg_i, seg_c = bolus[s:e].copy(), carb[s:e].copy()
             insulin[s:e] -= seg_i; carb[s:e] = 0.0    # remove from origin
-            t0, t1 = min(s + d, T), min(e + d, T)     # …re-add later
+            t0, t1 = min(s + d, T), min(e + d, T)     # ...re-add later
             insulin[t0:t1] += seg_i[: t1 - t0]
             carb[t0:t1] += seg_c[: t1 - t0]
         elif cls == "large":
@@ -83,21 +81,15 @@ def inject_sim(arr: np.ndarray, cls: str, late_delay: int, carb_keep: float,
     return out
 
 
-@torch.no_grad()
 def score_patient(model, device, arr, mean, std, fcol, stride, batch_size):
-    T = arr.shape[0]
+    """Per-window (score, label) over every window (glucose is untouched here)."""
     z = (arr[:, :N_CHANNELS] - mean) / std
-    starts = list(range(0, T - WIN + 1, stride))
-    scores, labels = [], []
-    for i in range(0, len(starts), batch_size):
-        chunk = starts[i : i + batch_size]
-        glu = torch.stack([torch.from_numpy(z[s : s + L, 0].copy()) for s in chunk]).to(device)
-        ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in chunk]).to(device)
-        car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in chunk]).to(device)
-        tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in chunk]).to(device)
-        scores.append(compute_score(model(glu, ins, car), tgt).cpu().numpy())
-        labels.append(np.array([arr[s + L : s + WIN, fcol].max() for s in chunk], dtype=np.float32))
-    return np.concatenate(scores), np.concatenate(labels)
+    starts = valid_starts(arr.shape[0], stride)
+    if not starts:
+        return np.empty(0), np.empty(0)
+    scores = score_windows(model, z, starts, device, batch_size)
+    labels = np.array([arr[s + L : s + WIN, fcol].max() for s in starts], dtype=np.float32)
+    return scores, labels
 
 
 def main():
@@ -139,8 +131,8 @@ def main():
             # z-score stats from the ORIGINAL (transformed) array, applied to the injected one
             ref = xf(arr.copy())
             mean = ref[:, :N_CHANNELS].mean(0); std = ref[:, :N_CHANNELS].std(0).clip(1e-8)
-            s, l = score_patient(model, device, xf(inj), mean, std, fcol, args.stride, args.batch_size)
-            all_s.append(s); all_l.append(l)
+            s, lab = score_patient(model, device, xf(inj), mean, std, fcol, args.stride, args.batch_size)
+            all_s.append(s); all_l.append(lab)
         scores, labels = np.concatenate(all_s), np.concatenate(all_l)
         if labels.sum() == 0:
             print(f"  {cls:<8}    n/a"); continue

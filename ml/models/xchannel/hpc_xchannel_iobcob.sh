@@ -1,9 +1,9 @@
 #!/bin/sh
-### XCHANNEL (IOB/COB features) pretraining + evaluation — DTU HPC
+### XCHANNEL (IOB/COB features) pretraining + evaluation - DTU HPC
 ###
 ### Same model as hpc_xchannel.sh but inputs are IOB/COB (insulin/carbs-on-board,
-### ml/features/iob_cob.py) instead of raw insulin/carb rates. Encoding-robust →
-### the generalization ("B") arm of the OhioT1DM A→B contrast.
+### ml/features/iob_cob.py) instead of raw insulin/carb rates. Encoding-robust ->
+### the generalization ("B") arm of the OhioT1DM A->B contrast.
 ###
 ### Submit from repo root:
 ###     bsub < ml/models/xchannel/hpc_xchannel_iobcob.sh
@@ -45,7 +45,7 @@ python ml/models/xchannel/pretrain.py \
     --seed          42 \
     --val_patients  800 \
     --features      iob_cob \
-    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
+    || { echo "Pretraining failed - skipping evaluation"; exit 1; }
 
 echo ""
 echo "=== EVALUATION (simulator test set, IOB/COB) ==="

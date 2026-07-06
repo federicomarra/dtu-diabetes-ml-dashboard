@@ -20,7 +20,7 @@ def test_manchester_patient_units_and_render():
     daily_basal = p.basal_mU_min.sum() / 1000.0 / (p.T / 1440.0)
     assert 5.0 <= daily_basal <= 80.0                          # U/day physiological
     assert len(p.meals) > 0 and len(p.boluses) > 0
-    # carb channel only where a bolus carried an announced carb (≤ bolus minutes)
+    # carb channel only where a bolus carried an announced carb (<= bolus minutes)
     assert (arr[:, 1] > p.basal_mU_min + 1e-6).any()           # boluses spike insulin
 
 
@@ -34,4 +34,4 @@ def test_manchester_icr_physiological():
             near = np.where((bmin >= me.minute - 5) & (bmin <= me.minute + 60) & (bun > 0))[0]
             if near.size:
                 icrs.append(me.carb_g / bun[near[np.argmin(np.abs(bmin[near] - me.minute))]])
-    assert 6.0 <= float(np.median(icrs)) <= 18.0               # g/U — confirms carbs=grams, bolus=U
+    assert 6.0 <= float(np.median(icrs)) <= 18.0               # g/U - confirms carbs=grams, bolus=U

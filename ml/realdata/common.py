@@ -1,5 +1,5 @@
 """
-Common types + stats for the real-patient datasets (sim→real gap assessment).
+Common types + stats for the real-patient datasets (sim->real gap assessment).
 
 Each loader returns a list of `RealPatient` with the glucose series in mmol/L on
 its native timestamps plus per-patient insulin/carb event counts. `pool_stats`
@@ -69,7 +69,7 @@ def pool_stats(name: str, patients: list[RealPatient]) -> dict:
 
 
 HEADER = (f"{'dataset':<12}{'n':>4}{'d/pat':>7}{'dt':>5}{'gap%':>6}"
-          f"{'gluμ':>6}{'gluσ':>6}{'hypo%':>7}{'hyper%':>7}{'ROCσ':>7}{'ins/d':>7}{'carb/d':>7}")
+          f"{'glumu':>6}{'glusigma':>6}{'hypo%':>7}{'hyper%':>7}{'ROCsigma':>7}{'ins/d':>7}{'carb/d':>7}")
 
 
 def fmt_row(s: dict) -> str:

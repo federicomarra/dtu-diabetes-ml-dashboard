@@ -1,5 +1,5 @@
 """Train XCHANNEL-NLL on HUPA's rule-clean normal windows (real-N arm of the
-data-matched train-on-real experiment). See ml/docs/TRAIN_ON_REAL.md."""
+data-matched train-on-real experiment)."""
 import argparse
 import sys
 from pathlib import Path
@@ -27,9 +27,9 @@ def labelled_render(p, cfg, meal_min_g, rescue_lookback, exclude="flat60"):
     """[T,8] with CLEANED rule anomaly flags in cols 3-7 (for train_on=normal).
 
     `exclude` sets the anomaly-tail length removed from the 'normal' training set:
-      flat60    — legacy [m, m+60] (leaks the 60-300min hyper tail into 'normal')
-      aligned   — [m, m+{180,240,300}] per class (removes the full anomaly tail)
-      excursion — glucose-derived window, fixed-aligned fallback when no rise
+      flat60    - legacy [m, m+60] (leaks the 60-300min hyper tail into 'normal')
+      aligned   - [m, m+{180,240,300}] per class (removes the full anomaly tail)
+      excursion - glucose-derived window, fixed-aligned fallback when no rise
     """
     arr = p.render()
     labels = classify_meals(clean_meals(p, meal_min_g, rescue_lookback), p.boluses, cfg)
@@ -60,7 +60,7 @@ def main():
     ap.add_argument("--pooled", action="store_true",
                     help="train on pooled HUPA+Ohio real cohort (else HUPA only)")
     ap.add_argument("--init", type=str, default=None,
-                    help="checkpoint to init from (sim-pretrain → fine-tune); else scratch")
+                    help="checkpoint to init from (sim-pretrain -> fine-tune); else scratch")
     ap.add_argument("--n_real_patients", type=int, default=0,
                     help="cap real train patients (0=all); data-efficiency sweep")
     ap.add_argument("--exclude", choices=["flat60", "aligned", "excursion"], default="flat60",
@@ -105,7 +105,7 @@ def main():
                             num_workers=args.num_workers, pin_memory=pin)
 
     model = XChannelForecaster(n_layers=2, probabilistic=True).to(device)
-    if args.init:                                            # sim-pretrain → fine-tune
+    if args.init:                                            # sim-pretrain -> fine-tune
         model.load_state_dict(torch.load(args.init, map_location=device)["model_state"])
         print(f"  loaded init weights from {Path(args.init).name} (fine-tuning)", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -125,7 +125,7 @@ def main():
             torch.save({"epoch": ep, "model_state": model.state_dict(),
                         "args": ckpt_args, "val_loss": vl},
                        CHECKPOINT_DIR / ckpt_name)
-            print(f"  ✓ saved (val={vl:.4f})", flush=True)
+            print(f"  [ok] saved (val={vl:.4f})", flush=True)
     print(f"Done. Best val {best:.4f}")
 
 

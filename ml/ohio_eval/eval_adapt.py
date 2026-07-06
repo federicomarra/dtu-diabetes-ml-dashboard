@@ -1,14 +1,14 @@
 """
 Per-patient self-supervised adaptation on OhioT1DM (quality-program Step 3).
 
-The sim-trained detector forecasts REAL glucose poorly → noisy residual →
+The sim-trained detector forecasts REAL glucose poorly -> noisy residual ->
 over-detection. Fix: for each patient, fine-tune a COPY of the detector on their
 first N baseline days (forecasting needs no labels), so it learns THAT patient's
 normal dynamics, then detect deviations on the held-out remainder. Matches
 INSTRUCTIONS Stage 3 (per-patient adaptation).
 
 Fair measurement: adapted vs un-adapted on the SAME held-out windows (anchors
-after the baseline period), so the Δ is purely the adaptation effect — for both
+after the baseline period), so the delta is purely the adaptation effect - for both
 detection (AUPRC/AUROC vs rule labels) and over-detection (flagged fraction at a
 per-patient threshold calibrated on the baseline scores).
 
@@ -25,29 +25,20 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from scipy.stats import iqr
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import N_CHANNELS, set_seed  # noqa: E402
 from features.iob_cob import to_iob_cob  # noqa: E402
-from characterization.rules import classify_meals, RuleConfig  # noqa: E402
+from characterization.rules import RuleConfig  # noqa: E402
 from ohio_eval.adapter import load_ohio_cohort  # noqa: E402
 from ohio_eval.eval_proxy import label_array, CLASS_IDX  # noqa: E402
-from models.xchannel.model import (  # noqa: E402
-    forecaster_from_ckpt, forecast_loss, anomaly_score as compute_score, CONTEXT_LEN, HORIZON,
+from models.xchannel.model import forecaster_from_ckpt, forecast_loss  # noqa: E402
+from ohio_eval.scoring import (  # noqa: E402
+    score_windows as score, window_tensors, robust_threshold, L, WIN,
 )
 
-L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 DAY = 1440
-
-
-def _tensors(z, starts, device):
-    glu = torch.stack([torch.from_numpy(z[s : s + L, 0].copy()) for s in starts]).to(device)
-    ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in starts]).to(device)
-    car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in starts]).to(device)
-    tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in starts]).to(device)
-    return glu, ins, car, tgt
 
 
 def adapt(base, z, starts, device, epochs, lr, batch):
@@ -58,24 +49,15 @@ def adapt(base, z, starts, device, epochs, lr, batch):
     for _ in range(epochs):
         for b in range(0, len(starts), batch):
             sel = starts[b : b + batch]
-            glu, ins, car, tgt = _tensors(z, sel, device)
+            glu, ins, car, tgt = window_tensors(z, sel, device)
             opt.zero_grad()
             forecast_loss(m(glu, ins, car), tgt).backward()
             opt.step()
     return m.eval()
 
 
-@torch.no_grad()
-def score(model, z, starts, device, batch=512):
-    out = []
-    for b in range(0, len(starts), batch):
-        glu, ins, car, tgt = _tensors(z, starts[b : b + batch], device)
-        out.append(compute_score(model(glu, ins, car), tgt).cpu().numpy())
-    return np.concatenate(out) if out else np.empty(0)
-
-
 def _threshold(cal):                       # per-patient robust threshold
-    return float(np.median(cal) + 2 * max(iqr(cal) / 1.349, 1e-6))
+    return robust_threshold(cal, floor=1e-6)
 
 
 def main():
@@ -111,7 +93,7 @@ def main():
         bz = xf(p.render())
         m, s = bz[:, :N_CHANNELS].mean(0), bz[:, :N_CHANNELS].std(0).clip(1e-8)
         z = bz.copy(); z[:, :N_CHANNELS] = (bz[:, :N_CHANNELS] - m) / s
-        flags = label_array(p, cfg)
+        flags = label_array(p, cfg, p.meals)
 
         starts = [st for st in range(0, p.T - WIN + 1, args.stride) if p.valid[st : st + WIN].all()]
         base_starts = [st for st in starts if st + WIN <= base_min]
@@ -120,7 +102,7 @@ def main():
             continue                                   # too little baseline to adapt
 
         adapted = adapt(base, z, base_starts, device, args.epochs, args.lr, args.batch_size)
-        cal_b = score(base, z, base_starts, device)    # baseline scores → threshold
+        cal_b = score(base, z, base_starts, device)    # baseline scores -> threshold
         cal_a = score(adapted, z, base_starts, device)
         thr_b, thr_a = _threshold(cal_b), _threshold(cal_a)
 
@@ -133,17 +115,17 @@ def main():
 
     labels = {c: np.concatenate(v) for c, v in Lb.items()}
     print(f"\nHeld-out windows: {len(np.concatenate(S['base'])):,}  (anchors after baseline)")
-    print(f"  {'class':<8} {'pos':>6} | {'AUROC base→adapt':>20} | {'AUPRC base→adapt':>20}")
+    print(f"  {'class':<8} {'pos':>6} | {'AUROC base->adapt':>20} | {'AUPRC base->adapt':>20}")
     for c in ("missed", "late", "large"):
-        y = labels[c];
+        y = labels[c]
         if y.sum() == 0:
             print(f"  {c:<8}   n/a"); continue
         sb, sa = np.concatenate(S["base"]), np.concatenate(S["adapt"])
-        print(f"  {c:<8} {int(y.sum()):>6} | {roc_auc_score(y,sb):>9.3f} → {roc_auc_score(y,sa):<8.3f} | "
-              f"{average_precision_score(y,sb):>9.3f} → {average_precision_score(y,sa):<8.3f}")
+        print(f"  {c:<8} {int(y.sum()):>6} | {roc_auc_score(y,sb):>9.3f} -> {roc_auc_score(y,sa):<8.3f} | "
+              f"{average_precision_score(y,sb):>9.3f} -> {average_precision_score(y,sa):<8.3f}")
     fb, fa = flagged["base"], flagged["adapt"]
-    print(f"\nOver-detection (flagged held-out windows at per-patient threshold):")
-    print(f"  base  {fb[0]/fb[1]:.1%}   →   adapt {fa[0]/fa[1]:.1%}")
+    print("\nOver-detection (flagged held-out windows at per-patient threshold):")
+    print(f"  base  {fb[0]/fb[1]:.1%}   ->   adapt {fa[0]/fa[1]:.1%}")
 
 
 if __name__ == "__main__":

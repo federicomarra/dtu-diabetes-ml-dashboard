@@ -3,11 +3,11 @@ Train the characterization head on the FROZEN XCHANNEL encoder (sim labels only)
 
 Pipeline:
   1. load a trained XCHANNEL checkpoint, freeze it
-  2. stream simulator windows → frozen 128-d embeddings + single-label class
+  2. stream simulator windows -> frozen 128-d embeddings + single-label class
      (balanced: cap per class so abundant 'normal' doesn't swamp rare anomalies)
   3. train the 2-layer MLP head (cross-entropy)
   4. fit the latent-OOD cluster on 'normal' embeddings
-  5. save head + OOD stats → ml/data/checkpoints/characterization_head.pt
+  5. save head + OOD stats -> ml/data/checkpoints/characterization_head.pt
 
 Usage
 -----
@@ -38,10 +38,10 @@ PARQUET = Path("ml/data/sim_data/results_20000p_14d.parquet")
 
 
 def _batch_classes(label_dict) -> np.ndarray:
-    """[B] class index from the per-class window flags, by precedence (missed→anaerobic)."""
+    """[B] class index from the per-class window flags, by precedence (missed->anaerobic)."""
     flags = np.stack([label_dict[c].numpy() for c in ANOMALY_CLASSES], axis=1)   # [B,5]
     cls = np.zeros(len(flags), dtype=np.int64)                                    # normal
-    for j in range(len(ANOMALY_CLASSES) - 1, -1, -1):      # anaerobic..missed → missed wins
+    for j in range(len(ANOMALY_CLASSES) - 1, -1, -1):      # anaerobic..missed -> missed wins
         cls[flags[:, j] > 0] = j + 1
     return cls
 
@@ -67,7 +67,7 @@ def collect_embeddings(encoder, loader, device, max_per_class, log_every=200):
         if i % log_every == 0:
             print(f"    batch {i}  counts={counts.tolist()}  {i/(time.time()-t0):.1f} it/s", flush=True)
         if counts[0] >= max_per_class and counts.sum() >= max_per_class * 2:
-            break       # normal capped + plenty of anomalies → stop scanning
+            break       # normal capped + plenty of anomalies -> stop scanning
     Z = np.concatenate([np.concatenate(b) for b in buf_z if b])
     y = np.concatenate([np.full(len(np.concatenate(b)), c) for c, b in enumerate(buf_z) if b])
     return Z.astype(np.float32), y, counts
@@ -100,7 +100,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}  | features={args.features}")
 
-    # ── frozen encoder ────────────────────────────────────────────────────────
+    # -- frozen encoder --------------------------------------------------------
     ckpt = torch.load(args.xchannel_checkpoint, map_location=device)
     encoder = forecaster_from_ckpt(ckpt, device)
     encoder.eval()
@@ -108,17 +108,17 @@ def main():
         prm.requires_grad_(False)
     print(f"Frozen XCHANNEL encoder (epoch {ckpt['epoch']}, val_loss={ckpt.get('val_loss', float('nan')):.4f})")
 
-    # ── labelled sim windows → embeddings ────────────────────────────────────
+    # -- labelled sim windows -> embeddings ------------------------------------
     ids = make_patient_split(args.parquet)["train"][: args.n_patients]
     ds = ForecastWindowDataset(ids, parquet=args.parquet, stride=args.stride,
                                train_on="all", features=args.features)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True,
                         num_workers=args.num_workers, pin_memory=device.type == "cuda")
-    print(f"Collecting embeddings (≤{args.max_per_class}/class) from {len(ds):,} windows…", flush=True)
+    print(f"Collecting embeddings (<={args.max_per_class}/class) from {len(ds):,} windows...", flush=True)
     Z, y, counts = collect_embeddings(encoder, loader, device, args.max_per_class)
     print("  per-class counts: " + ", ".join(f"{CLASSES[c]}={counts[c]}" for c in range(N_CLASSES)))
 
-    # ── train the head (class-weighted CE for residual imbalance) ─────────────
+    # -- train the head (class-weighted CE for residual imbalance) -------------
     head = CharacterizationHead(dropout=args.dropout).to(device)
     Zt = torch.from_numpy(Z).to(device); yt = torch.from_numpy(y).to(device)
     weights = torch.tensor([1.0 / max(1, (y == c).sum()) for c in range(N_CLASSES)],
@@ -140,7 +140,7 @@ def main():
                 acc = (head(Zt).argmax(-1) == yt).float().mean().item()
             print(f"Epoch {ep:02d}/{args.epochs}  loss={tot/n:.4f}  train_acc={acc:.3f}", flush=True)
 
-    # ── OOD cluster on normal embeddings (+ a calibrated radius) + save ───────
+    # -- OOD cluster on normal embeddings (+ a calibrated radius) + save -------
     mu, inv_cov = fit_ood(Z[y == 0])
     ood_radius = float(np.percentile(ood_distance(Z[y == 0], mu, inv_cov), 99))  # 99th pct of normal
     print(f"OOD: normal-cluster radius (99th pct) = {ood_radius:.2f}")
@@ -150,7 +150,7 @@ def main():
                 "ood_mu": mu, "ood_inv_cov": inv_cov, "ood_radius": ood_radius,
                 "features": args.features, "xchannel_checkpoint": str(args.xchannel_checkpoint),
                 "args": vars(args)}, out)
-    print(f"\nSaved → {out}")
+    print(f"\nSaved -> {out}")
 
 
 if __name__ == "__main__":

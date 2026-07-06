@@ -55,6 +55,10 @@ jobs:
         working-directory: ml
         run: uv pip install --system -r requirements.txt
 
+      - name: Run tests
+        working-directory: ml
+        run: python -m pytest tests/ -v
+
   # ── Frontend (React NextJS) ─────────────────────────────────────────────────────────────────
   frontend:
     name: "frontend"

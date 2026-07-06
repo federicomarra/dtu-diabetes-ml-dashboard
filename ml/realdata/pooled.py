@@ -1,8 +1,8 @@
 """Pooled HUPA+Ohio real cohort + stratified split (pooled-transfer experiment).
 
-See ml/docs/POOLED_TRANSFER.md. Ohio = 12 unique patients (TRAIN-split records,
-~40 d each — one record per patient, no leakage); HUPA = 25. HUPA pids (HUPA0001P)
-and Ohio pids (numeric 540) are disjoint → filter by pid membership, no tagging.
+Ohio = 12 unique patients (TRAIN-split records,
+~40 d each - one record per patient, no leakage); HUPA = 25. HUPA pids (HUPA0001P)
+and Ohio pids (numeric 540) are disjoint -> filter by pid membership, no tagging.
 """
 import sys
 from pathlib import Path

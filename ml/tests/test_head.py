@@ -6,7 +6,6 @@ CPU-only, tiny tensors. Run from repo root:
 """
 
 import numpy as np
-import pytest
 import torch
 
 from characterization.head import (
@@ -25,7 +24,7 @@ class TestWindowClass:
                              "prolonged": 0, "anaerobic": 0}) == CLASSES.index("large")
 
     def test_precedence_missed_over_late(self):
-        # both present → missed wins (higher precedence)
+        # both present -> missed wins (higher precedence)
         assert window_class({"missed": 1.0, "late": 1.0, "large": 0,
                              "prolonged": 0, "anaerobic": 0}) == CLASSES.index("missed")
 
@@ -49,7 +48,7 @@ class TestHead:
         assert mean.shape == (16, N_CLASSES)
         torch.testing.assert_close(mean.sum(-1), torch.ones(16), atol=1e-5, rtol=1e-4)
         assert unc.shape == (16,)
-        assert (unc > 0).all(), "dropout should make MC passes disagree → nonzero uncertainty"
+        assert (unc > 0).all(), "dropout should make MC passes disagree -> nonzero uncertainty"
 
     def test_mc_predict_restores_mode(self):
         head = CharacterizationHead()

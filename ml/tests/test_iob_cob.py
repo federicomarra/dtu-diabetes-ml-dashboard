@@ -6,7 +6,6 @@ CPU-only, tiny arrays. Run from repo root:
 """
 
 import numpy as np
-import pytest
 
 from features.iob_cob import (
     _two_compartment, insulin_on_board, carbs_on_board, to_iob_cob,
@@ -45,7 +44,7 @@ class TestTwoCompartment:
         assert (_two_compartment(u, TAU_I) >= 0).all()
 
     def test_one_step_delay(self):
-        # out[t] depends on u[0..t-1] → an impulse at t=0 yields out[0]==0
+        # out[t] depends on u[0..t-1] -> an impulse at t=0 yields out[0]==0
         u = np.zeros(50); u[0] = 1.0
         assert _two_compartment(u, TAU_I)[0] == 0.0
         assert _two_compartment(u, TAU_I)[1] > 0.0
@@ -58,7 +57,7 @@ class TestTwoCompartment:
         assert out[-1] < 0.05 * out[peak]               # nearly gone after long tail
 
     def test_constant_input_steady_state(self):
-        # constant u → steady state IOB = 2·u·tau (each compartment → u·tau)
+        # constant u -> steady state IOB = 2*u*tau (each compartment -> u*tau)
         u = np.ones(4000)
         out = _two_compartment(u, TAU_I)
         np.testing.assert_allclose(out[-1], 2 * 1.0 * TAU_I, rtol=0.02)
@@ -87,8 +86,8 @@ class TestToIobCob:
         out = to_iob_cob(arr)
         np.testing.assert_array_equal(out[:, 0], arr[:, 0])          # glucose untouched
         np.testing.assert_array_equal(out[:, 3:], arr[:, 3:])        # flags untouched
-        assert not np.allclose(out[:, 1], arr[:, 1])                 # insulin → IOB
-        assert not np.allclose(out[:, 2], arr[:, 2])                 # carbs → COB
+        assert not np.allclose(out[:, 1], arr[:, 1])                 # insulin -> IOB
+        assert not np.allclose(out[:, 2], arr[:, 2])                 # carbs -> COB
 
     def test_does_not_mutate_input(self):
         arr = np.ones((100, 8), dtype=np.float32)
@@ -97,6 +96,6 @@ class TestToIobCob:
         np.testing.assert_array_equal(arr, before)
 
     def test_iob_uses_tau_i_cob_uses_tau_g(self):
-        # COB has the Ag gain and a shorter tau → different curve from IOB on same input
+        # COB has the Ag gain and a shorter tau -> different curve from IOB on same input
         u = np.zeros(500); u[50] = 1000.0
         assert not np.allclose(insulin_on_board(u), carbs_on_board(u))

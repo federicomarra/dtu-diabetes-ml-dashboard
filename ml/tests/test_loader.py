@@ -28,7 +28,7 @@ def test_empty_rows():
 
 
 def test_grid_and_valid_mask():
-    rows = _rows(n=12, step_min=5)               # 12 readings, 5-min → spans 55 min → T=56
+    rows = _rows(n=12, step_min=5)               # 12 readings, 5-min -> spans 55 min -> T=56
     arr, valid, t0 = histories_to_array(rows)
     assert arr.shape == (56, 8)
     assert valid.sum() == 12                       # only sampled minutes are valid
@@ -61,7 +61,7 @@ def test_no_meal_when_no_carbs():
 
 def test_rate_carbs_aggregate_to_one_meal():
     # sim/histories store carbs as g/min over absorption: 30 min @ 2 g/min = one 60 g meal.
-    # The rule's min_carb_g=10 would drop each minute individually → must aggregate the run.
+    # The rule's min_carb_g=10 would drop each minute individually -> must aggregate the run.
     base = datetime.fromisoformat("2026-01-01T00:00:00")
     rows = [{"timestamp": (base + timedelta(minutes=i)).isoformat(),
              "glucose_mmoll": 7.0, "insulin_u": 0.0,
@@ -70,7 +70,7 @@ def test_rate_carbs_aggregate_to_one_meal():
     meals, _ = derive_events(arr)
     assert len(meals) == 1
     assert meals[0].minute == 100                 # onset of the run
-    assert abs(meals[0].carb_g - 60.0) < 1e-6      # Σ over the 30-min run
+    assert abs(meals[0].carb_g - 60.0) < 1e-6      # sum over the 30-min run
 
 
 def test_zscore_only_touches_channels():

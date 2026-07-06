@@ -1,6 +1,6 @@
 """
-Manchester (UoM Coordinated Diabetes Study) → sim-format adapter, mirroring the
-HUPA/Ohio adapters (same [T,8] encoding, Bolus/Meal, render). See IMPROVEMENT_DIRECTIONS.
+Manchester (UoM Coordinated Diabetes Study) -> sim-format adapter, mirroring the
+HUPA/Ohio adapters (same [T,8] encoding, Bolus/Meal, render).
 
 Manchester per-stream CSVs (per patient ID, e.g. 2301):
   Glucose Data/UoMGlucose{ID}.csv        bg_ts (dd/mm/YYYY HH:MM), value [mmol/L]
@@ -8,11 +8,11 @@ Manchester per-stream CSVs (per patient ID, e.g. 2301):
   Insulin Data/Basal Data/UoMBasal{ID}.csv   basal_ts, basal_dose [U/hr], insulin_kind
   Nutrition Data/UoMNutrition{ID}.csv    meal_ts, ..., carbs_g [g], macros
 
-Units are already physiological — glucose mmol/L (no conversion), carbs in GRAMS,
+Units are already physiological - glucose mmol/L (no conversion), carbs in GRAMS,
 bolus U, basal U/hr. ~5-min CGM, ~98-day records, occasional real gaps.
 
 Carbs and boluses are separate streams (like HUPA): the carb INPUT channel is the
-ANNOUNCED carb (carb paired to a co-timed bolus, ±15 min; unbolused → 0, matching the
+ANNOUNCED carb (carb paired to a co-timed bolus, +/-15 min; unbolused -> 0, matching the
 sim's cho_mg_announced + Ohio), while `meals` (all carbs) feed the rule labels.
 """
 from __future__ import annotations
@@ -24,11 +24,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from dataset import N_CHANNELS
 from ohio_eval.adapter import Bolus, Meal, MAX_GAP_MIN, BOLUS_DURATION, ANNOUNCE_DURATION, N_COLS
 
 ROOT = Path("ml/data/real/manchester")
-ANNOUNCE_PAIR_MIN = 15     # carb↔bolus pairing window for "announced" carbs (min)
+ANNOUNCE_PAIR_MIN = 15     # carb<->bolus pairing window for "announced" carbs (min)
 
 
 @dataclass
@@ -83,7 +82,7 @@ def load_manchester_patient(pid: str, root: Path = ROOT) -> ManchesterPatient:
     def minute(ts_series):
         return ((_dt(ts_series) - t0).dt.total_seconds() // 60).to_numpy(float)   # NaN for NaT
 
-    # basal U/hr → mU/min, piecewise-held by timestamp
+    # basal U/hr -> mU/min, piecewise-held by timestamp
     basal_mU_min = np.zeros(T, dtype=np.float64)
     bf = root / "Insulin Data" / "Basal Data" / f"UoMBasal{pid}.csv"
     if bf.exists():
@@ -96,7 +95,7 @@ def load_manchester_patient(pid: str, root: Path = ROOT) -> ManchesterPatient:
             s = max(0, int(m)); e = int(bm[i + 1]) if i + 1 < len(bm) else T
             basal_mU_min[s:max(s, min(e, T))] = rate[i] / 60.0 * 1000.0
 
-    # boluses (U) with announced carb paired from nutrition (±ANNOUNCE_PAIR_MIN)
+    # boluses (U) with announced carb paired from nutrition (+/-ANNOUNCE_PAIR_MIN)
     nf = root / "Nutrition Data" / f"UoMNutrition{pid}.csv"
     cmin = np.empty(0, np.int64); cg = np.empty(0, float)
     if nf.exists():

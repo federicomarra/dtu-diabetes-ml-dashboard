@@ -4,22 +4,22 @@ Stateless ML inference microservice (Flask, port 5001).
 The C# backend orchestrates; this service only does INFERENCE. The backend POSTs
 a patient's `histories` window as JSON; we run XCHANNEL detection + the missed/late
 rule layer and return the anomalies (filtered to the frontend-chosen threshold).
-The backend writes them to the DB and returns them to the caller — this service
+The backend writes them to the DB and returns them to the caller - this service
 never touches the database.
 
-Design (see ml/docs/SYSTEM_INTEGRATION.md):
+Design:
   - DETECTOR-ONLY for the demo: the characterisation head is dropped. For a
-    missed/late-only demo it is redundant — the rule layer labels missed/late
+    missed/late-only demo it is redundant - the rule layer labels missed/late
     deterministically from logged carbs+insulin, and anomaly_strength comes from the
     score. No head checkpoint, no MC-dropout/OOD, one forward pass per window.
   - model loaded ONCE at startup (torch + checkpoint = seconds; never per request).
   - `patient_id` is request-envelope metadata, echoed back; the math ignores it.
   - anomaly_strength = the event score's percentile among THIS patient's windows
-    (0-100%) — the honest, self-calibrating UI knob. Only `missed_bolus`/`late_bolus`
+    (0-100%) - the honest, self-calibrating UI knob. Only `missed_bolus`/`late_bolus`
     are surfaced (other classes = future work).
 
 Request  (POST /infer):
-  {"patient_id": 12, "threshold_k": 3.0, "min_event_min": 30, "max_events": 50,
+  {"patient_id": 12, "threshold_k": 3.0, "min_event_min": 30, "max_events": 0,  # 0 = no cap (default); >0 keeps top-k by severity
    "histories": [{"timestamp": "...", "glucose_mmoll": 7.1, "insulin_u": 0.01, "cho_grams": 0}, ...],
    "meals":   [{"timestamp": "...", "carb_g": 60}, ...],   # optional: logged meal events (rule input)
    "boluses": [{"timestamp": "...", "units": 5.0}, ...]}   # optional: logged bolus events (rule input)
@@ -32,11 +32,11 @@ Response:
       "anomaly_type": "missed_bolus"|"late_bolus",   # DB-allowed type (rule-named or default)
       "description": str,              # honest qualifier (rule-confirmed vs model-detected/unconfirmed)
       "rule_confirmed": bool,          # True = a logged meal/bolus pattern named it; False = detector-only
-      "severity": float,               # σ above THIS patient's baseline median (interpretable, stable across queries)
-      "anomaly_strength": 0.0-100.0,   # severity relative to the strongest flag — magnitude bar (UI knob)
+      "severity": float,               # sigma above THIS patient's baseline median (interpretable, stable across queries)
+      "anomaly_strength": 0.0-100.0,   # severity relative to the strongest flag - magnitude bar (UI knob)
       "score": float}]}                # raw surprise (forecast residual)
-The frontend thresholds on `severity` (σ, e.g. "show > 3σ") or `anomaly_strength`
-(0-100 bar). Both self-calibrate per patient — no absolute score knowledge needed.
+The frontend thresholds on `severity` (sigma, e.g. "show > 3sigma") or `anomaly_strength`
+(0-100 bar). Both self-calibrate per patient - no absolute score knowledge needed.
 Severity is the honest cross-query number; strength is a within-query display bar.
 """
 
@@ -82,7 +82,7 @@ class InferRequestSchema(ma.Schema):
     patient_id    = ma.fields.Int(required=True, metadata={"description": "Patient identifier echoed back in the response"})
     threshold_k   = ma.fields.Float(load_default=3.0, metadata={"description": "Anomaly threshold in σ above baseline"})
     min_event_min = ma.fields.Int(load_default=30, metadata={"description": "Minimum event duration in minutes"})
-    max_events    = ma.fields.Int(load_default=50, metadata={"description": "Maximum number of anomalies returned"})
+    max_events    = ma.fields.Int(load_default=0, metadata={"description": "Maximum number of anomalies returned (0 = no cap)"})
     histories     = ma.fields.List(ma.fields.Nested(HistoryPointSchema), required=True, metadata={"description": "CGM + bolus + carb time-series"})
     meals         = ma.fields.List(ma.fields.Nested(MealEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged meal events (optional rule input)"})
     boluses       = ma.fields.List(ma.fields.Nested(BolusEventSchema), load_default=None, allow_none=True, metadata={"description": "Logged bolus events (optional rule input)"})
@@ -137,12 +137,11 @@ def _load_model() -> dict:
     det = forecaster_from_ckpt(torch.load(DETECTOR_CKPT, map_location=device), device)
     det.eval()
     return {"device": device, "detector": det}
-
+  
 
 # ─── Blueprints ───────────────────────────────────────────────────────────────
 
 blp = Blueprint("ml", __name__, description="Inference endpoints")
-
 
 @blp.route("/health")
 class Health(MethodView):
@@ -172,25 +171,31 @@ class Infer(MethodView):
         and returns ranked anomalies. It never touches the database.
         """
         from flask import jsonify
-
-        rows          = body.get("histories") or []
-        patient_id    = body.get("patient_id")
-        threshold_k   = float(body.get("threshold_k", 3.0))
+        
+        rows = body.get("histories") or []
+        patient_id = body.get("patient_id")
+        threshold_k = float(body.get("threshold_k", 3.0))
         min_event_min = int(body.get("min_event_min", 30))
-        max_events    = int(body.get("max_events", 50))
+        # 0 (default) = no cap: the backend stores ALL anomalies and the frontend's
+        # severity slider filters at read time; a silent top-k here would make every
+        # patient show the same saturated count. A positive value caps (opt-in).
+        max_events = int(body.get("max_events", 0))
 
         arr, valid, t0 = histories_to_array(rows)
         if arr.shape[0] == 0 or valid.sum() == 0 or t0 is None:
             return jsonify(patient_id=patient_id, n_windows=0, anomalies=[]), 200
-        assert t0 is not None  # narrowed by the guard above
+        assert t0 is not None  # narrowed by the guard above (non-empty rows -> a start time)
 
+        # Rule input = logged meal/bolus EVENTS (actual carb vs bolus timing), a stream
+        # SEPARATE from the detector's announced-carb histories channel. The backend sends
+        # them from the meals/insulins tables; minutes are relative to the histories start.
+        # Fall back to deriving from the (announced) carb channel only if not provided.
         def _to_min(ts):
             return int(round((_parse_ts(ts) - t0).total_seconds() / 60.0))
-
-        body_meals   = body.get("meals")
+        body_meals = body.get("meals")
         body_boluses = body.get("boluses")
         if body_meals is not None or body_boluses is not None:
-            meals   = [_Meal(_to_min(m["timestamp"]), float(m["carb_g"])) for m in (body_meals or [])]
+            meals = [_Meal(_to_min(m["timestamp"]), float(m["carb_g"])) for m in (body_meals or [])]
             boluses = [_Bolus(_to_min(b["timestamp"]), float(b["units"])) for b in (body_boluses or [])]
         else:
             meals, boluses = derive_events(arr)
@@ -201,37 +206,49 @@ class Infer(MethodView):
             meals=meals, boluses=boluses, threshold_k=threshold_k, min_event_min=min_event_min,
         )
 
+        # 0-100 strength bar = each event's severity (sigma above baseline) relative to the
+        # STRONGEST surfaced anomaly -> magnitude-discriminating (the true outlier reads 100%,
+        # marginal flags read low), unlike a percentile that saturates at ~100% for all of them.
         sev_max = max((e.severity for e in events), default=1.0) or 1.0
 
         def strength(sev: float) -> float:
             return round(100.0 * sev / sev_max, 1)
 
+        # DETECTION-ANCHORED naming: the detector surfaces the excursion; the rule names it
+        # by the bolus that should have covered it (see rules.classify_detection). This is a
+        # missed/late-bolus demo, so we surface ONLY those two - an excursion with a timely
+        # covering bolus (rule_label is None: e.g. a correctly-bolused large meal) is a real
+        # anomaly but not a BOLUS-timing one, so it is not shown here. DB type is missed/late
+        # (CHECK-constrained); both surfaced types are rule-confirmed.
         out = []
         for e in events:
             if e.rule_label == "late":
-                atype, desc = "late_bolus", "delayed bolus after a logged meal (rule-confirmed)"
+                atype, desc = "late_bolus", "bolus delivered well after the glucose rise began (detection-anchored)"
             elif e.rule_label == "missed":
-                atype, desc = "missed_bolus", "logged meal with no bolus (rule-confirmed)"
+                atype, desc = "missed_bolus", "glucose excursion with no covering bolus (detection-anchored)"
             else:
-                atype, desc = "missed_bolus", "model-detected excursion; no logged cause (unconfirmed)"
+                continue   # timely bolus covers the excursion -> not a missed/late-bolus event
             out.append({
-                "start":            (t0 + timedelta(minutes=e.start_min)).isoformat(),
-                "end":              (t0 + timedelta(minutes=e.start_min + e.duration_min)).isoformat(),
-                "start_minute":     int(e.start_min),
-                "duration_min":     int(e.duration_min),
-                "anomaly_type":     atype,
-                "description":      desc,
-                "rule_confirmed":   e.rule_label is not None,
-                "severity":         round(float(e.severity), 2),
-                "anomaly_strength": strength(e.severity),
-                "score":            round(float(e.anomaly_score), 4),
+                "start": (t0 + timedelta(minutes=e.start_min)).isoformat(),
+                "end": (t0 + timedelta(minutes=e.start_min + e.duration_min)).isoformat(),
+                "start_minute": int(e.start_min),
+                "duration_min": int(e.duration_min),
+                "anomaly_type": atype,
+                "description": desc,
+                "rule_confirmed": e.rule_label is not None,
+                "severity": round(float(e.severity), 2),        # sigma above this patient's baseline (interpretable, stable)
+                "anomaly_strength": strength(e.severity),        # 0-100 bar relative to the strongest flag (UI knob)
+                "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
             })
         out.sort(key=lambda a: a["severity"], reverse=True)
+        if max_events > 0:
+            out = out[:max_events]
         return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
-                       anomalies=out[:max_events]), 200
+                       anomalies=out), 200
 
 
 api.register_blueprint(blp)
+
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
 

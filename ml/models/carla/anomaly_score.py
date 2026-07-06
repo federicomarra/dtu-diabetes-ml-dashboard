@@ -14,15 +14,15 @@ Higher score = more anomalous.
 PCA before GMM
 --------------
 PCA removes near-zero variance dimensions first, which would otherwise destabilise
-the GMM's covariance matrix. We keep 95% of variance. reg_covar=1e-4 adds εI
+the GMM's covariance matrix. We keep 95% of variance. reg_covar=1e-4 adds epsI
 regularisation to all covariance matrices (sklearn applies this internally via
-Cholesky decomposition — no manual implementation needed).
+Cholesky decomposition - no manual implementation needed).
 
 K selection
 -----------
-K is selected by BIC over K ∈ {2, 3, 5, 8, 10}. Fit once after training on
+K is selected by BIC over K in {2, 3, 5, 8, 10}. Fit once after training on
 normal training embeddings. Actual optimal K depends on the encoder's learned
-latent geometry and will be reported in CARLA.md after the first HPC run.
+latent geometry.
 
 Evaluation
 ----------
@@ -60,16 +60,16 @@ from models.carla.model import CARLAModel
 from models.carla.dataset import ContrastiveDataset
 import time
 
-# ── config ────────────────────────────────────────────────────────────────────
+# -- config --------------------------------------------------------------------
 
 CHECKPOINT  = Path("ml/data/checkpoints/carla_best.pt")
 PARQUET     = Path("ml/data/sim_data/results_20000p_14d.parquet")
 SPLIT_FILE  = Path("ml/data/patient_split.json")
 SCALER_FILE = Path("ml/data/scalers.json")
-GMM_K_GRID  = [2, 3, 5, 8, 10, 15, 20, 30, 40]   # BIC search grid — extended; smoke test hit edge at K=20
+GMM_K_GRID  = [2, 3, 5, 8, 10, 15, 20, 30, 40]   # BIC search grid - extended; smoke test hit edge at K=20
 
 
-# ── embedding extraction ──────────────────────────────────────────────────────
+# -- embedding extraction ------------------------------------------------------
 
 @torch.no_grad()
 def embed_dataset(
@@ -83,7 +83,7 @@ def embed_dataset(
     Returns
     -------
     embeddings : float32 array [N, D_MODEL]
-    is_normal  : int array [N]  — 1 for normal windows, 0 for anomaly
+    is_normal  : int array [N]  - 1 for normal windows, 0 for anomaly
     """
     model.eval()
     all_emb:    list[np.ndarray] = []
@@ -100,7 +100,7 @@ def embed_dataset(
     return np.concatenate(all_emb, axis=0), np.array(all_normal, dtype=np.int32)
 
 
-# ── GMM fitting ───────────────────────────────────────────────────────────────
+# -- GMM fitting ---------------------------------------------------------------
 
 def fit_gmm(
     normal_embeddings: np.ndarray,    # [N_normal, D_MODEL]
@@ -118,22 +118,22 @@ def fit_gmm(
     -----------
     At stride 15 the 12k-patient train split yields ~14M normal embeddings.
     EM with full covariance over that many points is hours-to-days on CPU and
-    buys nothing — a K≤40 GMM has only a few thousand parameters, so 300k
-    points already over-determines it ~100×. We fit on a fixed-seed random
+    buys nothing - a K<=40 GMM has only a few thousand parameters, so 300k
+    points already over-determines it ~100x. We fit on a fixed-seed random
     sample of max_samples (set max_samples=0 to disable). All test windows are
     still scored against the fitted GMM; only the *fit* is subsampled.
 
-    Returns (pca, gmm) fitted objects — save them with joblib for reuse.
+    Returns (pca, gmm) fitted objects - save them with joblib for reuse.
     """
     n_total = len(normal_embeddings)
     if max_samples and n_total > max_samples:
         idx = np.random.default_rng(seed).choice(n_total, max_samples, replace=False)
         normal_embeddings = normal_embeddings[idx]
-        print(f"GMM fit: subsampled {n_total:,} → {max_samples:,} normal embeddings (seed={seed})")
+        print(f"GMM fit: subsampled {n_total:,} -> {max_samples:,} normal embeddings (seed={seed})")
 
     pca = PCA(n_components=0.95, random_state=42)
     reduced = pca.fit_transform(normal_embeddings)
-    print(f"PCA: {normal_embeddings.shape[1]} → {reduced.shape[1]} dims (95% variance)")
+    print(f"PCA: {normal_embeddings.shape[1]} -> {reduced.shape[1]} dims (95% variance)")
 
     best_k, best_bic, best_gmm = k_grid[0], float("inf"), None
     for k in k_grid:
@@ -155,7 +155,7 @@ def fit_gmm(
     return pca, best_gmm
 
 
-# ── scoring ───────────────────────────────────────────────────────────────────
+# -- scoring -------------------------------------------------------------------
 
 def score_with_gmm(
     pca: PCA,
@@ -167,10 +167,10 @@ def score_with_gmm(
     Higher score = more anomalous.
     """
     reduced = pca.transform(embeddings)
-    return -gmm.score_samples(reduced).astype(np.float32)   # [N]
+    return -np.asarray(gmm.score_samples(reduced), dtype=np.float32)   # [N]
 
 
-# ── metrics ───────────────────────────────────────────────────────────────────
+# -- metrics -------------------------------------------------------------------
 
 def auprc_per_class(
     scores: np.ndarray,
@@ -196,7 +196,7 @@ def auroc_per_class(
     return result
 
 
-# ── main ───────────────────────────────────────────────────────────────────────
+# -- main -----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="CARLA anomaly scoring")
@@ -205,13 +205,13 @@ def main() -> None:
     parser.add_argument("--gmm_sample", type=int, default=300_000,
                         help="max normal embeddings for GMM fit (0 = use all)")
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
-                        help="normalization mode — MUST match the pretrain run")
+                        help="normalization mode - MUST match the pretrain run")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── load model ─────────────────────────────────────────────────────────────
+    # -- load model -------------------------------------------------------------
     backbone = PatchTST()
     model    = CARLAModel(backbone)
     ckpt  = torch.load(args.checkpoint, map_location=device)
@@ -220,7 +220,7 @@ def main() -> None:
     model.to(device)
     print(f"Loaded checkpoint: {args.checkpoint}")
 
-    # ── load data ──────────────────────────────────────────────────────────────
+    # -- load data --------------------------------------------------------------
     split   = json.loads(SPLIT_FILE.read_text())
     # global mode needs population scalers; per-patient needs none
     scalers = load_scalers() if args.norm == "global" else None
@@ -233,28 +233,28 @@ def main() -> None:
 
     # Training embeddings for GMM fitting. stride=60 not 15: fit_gmm subsamples
     # to ~300k anyway, so embedding all 16M stride-15 windows is pure waste.
-    # stride 60 → ~4M windows (still >>300k), ~4× faster, no quality loss.
-    print("Embedding training set (stride 60) …")
+    # stride 60 -> ~4M windows (still >>300k), ~4x faster, no quality loss.
+    print("Embedding training set (stride 60) ...")
     train_loader            = make_contrastive_loader(split["train"], stride=60)
     train_emb, train_normal = embed_dataset(model, train_loader, device)
     normal_emb = train_emb[train_normal == 1]
     print(f"Normal training embeddings: {normal_emb.shape}")
 
-    # ── fit GMM ────────────────────────────────────────────────────────────────
+    # -- fit GMM ----------------------------------------------------------------
     pca, gmm = fit_gmm(normal_emb, max_samples=args.gmm_sample)
 
-    # ── test set evaluation ────────────────────────────────────────────────────
+    # -- test set evaluation ----------------------------------------------------
     # For evaluation we need per-window anomaly class labels (not just is_normal).
-    # Re-use GlucoseWindowDataset for test set — it returns the full label dict.
-    print("Scoring test set …")
+    # Re-use GlucoseWindowDataset for test set - it returns the full label dict.
+    print("Scoring test set ...")
     _, _, test_ds = build_datasets(
         split=split, parquet=args.parquet, eval_stride=EVAL_STRIDE,
         include_train=False, include_val=False, norm=args.norm,
     )
 
-    test_loader = DataLoader(test_ds, batch_size=256, shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_ds, batch_size=256, shuffle=False, num_workers=4)     # type: ignore
 
-    # numpy chunks, not Python floats — 80M stride-1 windows × 6 columns of
+    # numpy chunks, not Python floats - 80M stride-1 windows x 6 columns of
     # Python floats would cost >15 GB
     all_scores: list[np.ndarray]               = []
     all_labels: dict[str, list[np.ndarray]]    = {cls: [] for cls in ANOMALY_CLASSES}
@@ -277,7 +277,7 @@ def main() -> None:
     # cross-class contamination that depresses the per-class numbers
     any_lbl = any_anomaly_label(labels_arr)
     any_prev = float(any_lbl.mean())
-    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_prev:.2%})")
+    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ~ {any_prev:.2%})")
     if any_lbl.sum() > 0:
         print(f"  AUPRC={average_precision_score(any_lbl, scores_arr):.4f}  "
               f"AUROC={roc_auc_score(any_lbl, scores_arr):.4f}")
@@ -285,7 +285,7 @@ def main() -> None:
     auprc = auprc_per_class(scores_arr, labels_arr)
     auroc = auroc_per_class(scores_arr, labels_arr)
 
-    # ── per-class results (classification-flavoured; see any_anomaly_label) ────
+    # -- per-class results (classification-flavoured; see any_anomaly_label) ----
     print(f"\n{'Class':<12} {'AUPRC':>8} {'Prevalence':>12} {'AUROC':>8}")
     print("-" * 44)
     for cls in ANOMALY_CLASSES:

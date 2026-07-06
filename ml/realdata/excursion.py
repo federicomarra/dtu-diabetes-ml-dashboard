@@ -1,7 +1,7 @@
-"""Glucose-derived label placement (eval-side). See ml/docs/EXCURSION_LABELS.md.
+"""Glucose-derived label placement (eval-side).
 
 Model-INDEPENDENT: a positive window is derived from the raw glucose trace + the
-logged meal minute only — never from a forecast residual (that would make labels and
+logged meal minute only - never from a forecast residual (that would make labels and
 scores circular). Anchors a rule-labelled meal's positive window to the ACTUAL glucose
 excursion it caused, instead of a fixed clock window after the logged timestamp.
 """
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# per-class search/return caps (min) — reuse the sim-aligned window ends
+# per-class search/return caps (min) - reuse the sim-aligned window ends
 ALIGNED_CAP = {"missed": 180, "late": 240, "large": 300}
 
 

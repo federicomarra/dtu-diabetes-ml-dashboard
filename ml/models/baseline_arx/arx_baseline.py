@@ -1,5 +1,5 @@
 """
-ARX residual baseline — tests the core hypothesis.
+ARX residual baseline - tests the core hypothesis.
 
 Hypothesis
 ----------
@@ -7,8 +7,8 @@ The anomaly signal these classes need is CONDITIONAL: does glucose follow from
 the known inputs (insulin, announced carbs)? PatchTST is channel-independent
 (glucose predicted from glucose alone) and so is structurally blind to this.
 
-This script fits a cheap linear ARX model — glucose[t] from lagged glucose +
-lagged/current insulin + lagged/current carbs — on NORMAL training behaviour,
+This script fits a cheap linear ARX model - glucose[t] from lagged glucose +
+lagged/current insulin + lagged/current carbs - on NORMAL training behaviour,
 then scores anomalies by the prediction residual. It runs TWO variants:
 
   conditional : features = past glucose + insulin + carbs   (uses the inputs)
@@ -16,7 +16,7 @@ then scores anomalies by the prediction residual. It runs TWO variants:
                                                               channel-independence)
 
 If `conditional` beats `glucose_only` on missed/late AUPRC, the channel-
-independence ceiling is real and cross-channel conditioning is the fix — and a
+independence ceiling is real and cross-channel conditioning is the fix - and a
 ~100-line linear model establishing that is the strongest insight-per-hour we
 can get before building a new transformer.
 
@@ -53,11 +53,11 @@ def build_xy(arr: np.ndarray, lag: int, horizon: int, conditional: bool):
 
     glucose feature : glucose[t-lag : t]            (history only)
     exogenous       : insulin/carbs over [t-lag : t+H]  (known through horizon)
-                      — only if conditional.
+                      - only if conditional.
     target          : glucose[t+H]
 
     The control (glucose_only) must extrapolate H minutes with no knowledge of
-    meals/insulin in the gap — exactly PatchTST's channel-independent blind spot.
+    meals/insulin in the gap - exactly PatchTST's channel-independent blind spot.
     Returns (X, y, anchor_t).
     """
     glu, ins, carb = arr[:, 0], arr[:, 1], arr[:, 2]
@@ -98,8 +98,8 @@ def window_scores_labels(arr, r, lag, horizon, stride):
 
 
 def fit_and_eval(train, test, lag, horizon, conditional, stride, max_rows=800_000):
-    # Subsample rows PER PATIENT before stacking — stacking all rows first
-    # OOM's a laptop (150 features × millions of rows).
+    # Subsample rows PER PATIENT before stacking - stacking all rows first
+    # OOM's a laptop (150 features x millions of rows).
     rng = np.random.default_rng(42)
     per = max(1, max_rows // max(1, len(train)))
     Xs, ys = [], []
@@ -153,7 +153,7 @@ def main():
     test_ids  = split["test"][: args.n_test]
 
     t0 = time.time()
-    print(f"Loading {len(train_ids)} train + {len(test_ids)} test patients …")
+    print(f"Loading {len(train_ids)} train + {len(test_ids)} test patients ...")
     train = {p: _patient_zscore(a, inplace=True) for p, a in load_patients(train_ids, args.parquet).items()}
     test  = {p: _patient_zscore(a, inplace=True) for p, a in load_patients(test_ids,  args.parquet).items()}
     print(f"  loaded in {time.time()-t0:.0f}s")
@@ -161,8 +161,8 @@ def main():
     print(f"Forecast horizon H={args.horizon} min, lag={args.lag} min")
     for conditional in (False, True):
         tag = "conditional (glu+insulin+carbs)" if conditional else "glucose_only (PatchTST-like)"
-        s, l = fit_and_eval(train, test, args.lag, args.horizon, conditional, args.stride)
-        report(tag, s, l)
+        s, lab = fit_and_eval(train, test, args.lag, args.horizon, conditional, args.stride)
+        report(tag, s, lab)
 
 
 if __name__ == "__main__":

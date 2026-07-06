@@ -1,7 +1,7 @@
 """
 Evaluate the characterization head on the simulator test set.
 
-Reports the honesty-aware metrics from INSTRUCTIONS §289–297:
+Reports the honesty-aware metrics:
   * per-class recall + overall balanced accuracy (similarity quality on sim)
   * MC-Dropout uncertainty (mean predictive std) per class
   * latent-OOD separation (Mahalanobis distance: normal vs anomaly windows)
@@ -23,7 +23,7 @@ import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from dataset import make_patient_split, ANOMALY_CLASSES  # noqa: E402
+from dataset import make_patient_split  # noqa: E402
 from models.xchannel.model import forecaster_from_ckpt  # noqa: E402
 from models.xchannel.dataset import ForecastWindowDataset  # noqa: E402
 from characterization.head import CharacterizationHead, mc_predict, ood_distance, CLASSES, N_CLASSES  # noqa: E402
@@ -81,7 +81,7 @@ def main():
         print(f"  {CLASSES[c]:<11} {int(seen[c]):>7} {rec:>7.3f} "
               f"{unc_sum[c]/seen[c]:>8.4f} {ood_sum[c]/seen[c]:>9.2f}")
     print(f"\n  balanced accuracy (mean recall): {np.mean(recalls):.3f}  | chance {1/n_cls:.3f}")
-    print(f"  OOD check: anomaly windows should sit FARTHER from the normal cluster than normal.")
+    print("  OOD check: anomaly windows should sit FARTHER from the normal cluster than normal.")
 
 
 if __name__ == "__main__":

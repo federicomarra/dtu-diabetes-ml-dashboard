@@ -1,7 +1,7 @@
 """
 Unit tests for the combined inference path (ml/inference/diary.py).
 
-Uses a FAKE detector (forecast = 0 → residual = mean target²) so the diary logic
+Uses a FAKE detector (forecast = 0 -> residual = mean target^2) so the diary logic
 is testable without trained checkpoints; the head is the real (untrained) module.
 Run from repo root:
     .venv/bin/pytest ml/tests/test_diary.py -v
@@ -11,13 +11,13 @@ import numpy as np
 import torch
 
 from inference.diary import build_diary, Event
-from models.xchannel.model import HORIZON, CONTEXT_LEN
+from models.xchannel.model import HORIZON
 from characterization.head import CharacterizationHead, fit_ood, CLASSES
 from characterization.rules import RuleConfig
 
 
 class FakeDetector:
-    """forecast = zeros (residual = mean target²); embedding = ones."""
+    """forecast = zeros (residual = mean target^2); embedding = ones."""
     def __call__(self, glu, ins, car, return_embeddings=False):
         B = glu.shape[0]
         return torch.ones(B, 128) if return_embeddings else torch.zeros(B, HORIZON)
@@ -29,7 +29,7 @@ def _setup(bump=True):
     T = 400
     arr = np.zeros((T, 8), dtype=np.float32)
     if bump:
-        arr[200:240, 0] = 5.0                 # glucose excursion → high residual
+        arr[200:240, 0] = 5.0                 # glucose excursion -> high residual
     valid = np.ones(T, dtype=bool)
     head = CharacterizationHead()
     mu, inv_cov = fit_ood(np.random.default_rng(0).standard_normal((500, 128)))
@@ -69,9 +69,9 @@ def test_ood_radius_controls_flag():
 
 def test_rule_label_wired_from_logs():
     arr, valid, head, mu, inv_cov = _setup()
-    # a logged meal in the event window with NO bolus → rule says "missed"
+    # a logged meal in the event window with NO bolus -> rule says "missed"
     meals = [type("M", (), {"minute": 210, "carb_g": 40.0})()]
-    boluses = []   # none → missed
+    boluses = []   # none -> missed
     e = _diary(arr, valid, head, mu, inv_cov, meals=meals, boluses=boluses,
                rule_cfg=RuleConfig())[0]
     assert e.rule_label == "missed"
@@ -88,7 +88,7 @@ def test_min_event_duration_drops_short_events():
 
 
 def test_low_confidence_is_uncharacterised():
-    # impossible confidence floor → label withheld → to_text says 'uncharacterised'
+    # impossible confidence floor -> label withheld -> to_text says 'uncharacterised'
     e = _diary(*_setup(), min_confidence=1.1)[0]
     assert e.characterised is False
     assert "uncharacterised" in e.to_text()

@@ -1,8 +1,8 @@
 #!/bin/sh
-### XCHANNEL (temporal patching) pretraining + evaluation — DTU HPC
+### XCHANNEL (temporal patching) pretraining + evaluation - DTU HPC
 ###
 ### Quality-program Step 1: lift the near-linear 3-token ceiling with per-channel
-### temporal patch tokens (patch_len=20 → ~22 tokens, 3 layers). Same task/loss
+### temporal patch tokens (patch_len=20 -> ~22 tokens, 3 layers). Same task/loss
 ### as hpc_xchannel.sh; only the architecture changes, for clean attribution.
 ###
 ### Submit from repo root:
@@ -45,7 +45,7 @@ python ml/models/xchannel/pretrain.py \
     --val_patients  800 \
     --patch_len     20 \
     --n_layers      3 \
-    || { echo "Pretraining failed — skipping evaluation"; exit 1; }
+    || { echo "Pretraining failed - skipping evaluation"; exit 1; }
 
 echo ""
 echo "=== EVALUATION (simulator test set) ==="

@@ -1,5 +1,5 @@
 """
-XCHANNEL pretraining — cross-channel conditional glucose forecasting.
+XCHANNEL pretraining - cross-channel conditional glucose forecasting.
 
 Objective (plain MSE, no masking trick): given glucose history + insulin/carbs
 through the horizon, predict glucose over the horizon. Train on CLEAN windows
@@ -26,7 +26,6 @@ import time
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 from torch.nn.utils.clip_grad import clip_grad_norm_
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
@@ -142,7 +141,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}  | train_on={args.train_on}  norm={args.norm}", flush=True)
 
-    print("Building datasets…", flush=True)
+    print("Building datasets...", flush=True)
     train_loader, val_loader = build_loaders(args, device)
 
     model = XChannelForecaster(patch_len=args.patch_len, n_layers=args.n_layers,
@@ -183,7 +182,7 @@ def main():
             torch.save({"epoch": epoch, "model_state": model.state_dict(),
                         "val_loss": val_loss, "args": ckpt_args},
                        CHECKPOINT_DIR / best_name)
-            print(f"  ✓ saved best checkpoint (val={val_loss:.4f})", flush=True)
+            print(f"  [ok] saved best checkpoint (val={val_loss:.4f})", flush=True)
 
     torch.save({"epoch": args.epochs, "model_state": model.state_dict(), "args": ckpt_args},
                CHECKPOINT_DIR / final_name)

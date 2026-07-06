@@ -3,13 +3,13 @@ PatchTST anomaly scoring and evaluation.
 
 Anomaly score (two complementary scores; glucose channel only by default)
 -------------------------------------------------------------------------
-Option 1 — whole-window reconstruction deviation.
+Option 1 - whole-window reconstruction deviation.
   - Feed a 120-min window with no masking; score = mean((recon - actual)^2).
   - Measures how unusual the whole window looks. NOT prediction.
 
-Option 2 — next-N-min prediction error (the "forecast" score).
+Option 2 - next-N-min prediction error (the "forecast" score).
   - Mask the last `horizon_patches` patches (default 1 = 20 min) and score only
-    them. The model predicts the hidden tail from the visible prefix — same as
+    them. The model predicts the hidden tail from the visible prefix - same as
     the masked training task, so no train/inference shift. This is genuine
     prediction error.
   - Horizon is a CLI flag (--horizon_patches); 2 = 40 min.
@@ -17,11 +17,11 @@ Option 2 — next-N-min prediction error (the "forecast" score).
 Per-patient threshold calibration
 ----------------------------------
 Robust estimator on the first N_CAL_DAYS days of scores:
-  threshold = median + 2 × (IQR / 1.349)
+  threshold = median + 2 x (IQR / 1.349)
 IQR / 1.349 converts the interquartile range to a std-equivalent for a
 Gaussian. Using median + IQR instead of mean + std makes the threshold
 resistant to anomaly windows that happen to fall inside the calibration
-period — no ground-truth labels needed, so this works on OhioT1DM too.
+period - no ground-truth labels needed, so this works on OhioT1DM too.
 
 Evaluation metrics
 ------------------
@@ -29,15 +29,15 @@ Both AUROC and AUPRC are reported.
 
 AUROC (Area Under ROC Curve):
   - Threshold-free ranking metric. 0.5 = random, 1.0 = perfect.
-  - Standard in anomaly detection literature — included for comparability.
+  - Standard in anomaly detection literature - included for comparability.
   - Can be optimistic on imbalanced data: a model that scores everything
     low still ranks rare positives slightly above average.
 
 AUPRC (Area Under Precision-Recall Curve):
   - PRIMARY metric for this project.
   - Only evaluates how well the model finds the positive (anomaly) class.
-  - Random baseline ≈ class prevalence (~0.02 here), not 0.5.
-  - Harder to fake on <2% anomaly rates — more honest than AUROC here.
+  - Random baseline ~ class prevalence (~0.02 here), not 0.5.
+  - Harder to fake on <2% anomaly rates - more honest than AUROC here.
 
 Usage
 -----
@@ -57,11 +57,11 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from dataset import build_datasets, progress_log, ANOMALY_CLASSES, EVAL_STRIDE
+from dataset import build_datasets, progress_log, ANOMALY_CLASSES
 import time
 from models.patch_tst.model import PatchTST
 
-# ── config ────────────────────────────────────────────────────────────────────
+# -- config --------------------------------------------------------------------
 
 CHECKPOINT    = Path("ml/data/checkpoints/patchtst_best.pt")
 PARQUET       = Path("ml/data/sim_data/results_20000p_14d.parquet")
@@ -69,7 +69,7 @@ N_CAL_DAYS    = 5      # days used to calibrate per-patient threshold
 MINUTES_PER_DAY = 1440
 
 
-# ── scoring ───────────────────────────────────────────────────────────────────
+# -- scoring -------------------------------------------------------------------
 
 @torch.no_grad()
 def score_dataset(
@@ -90,14 +90,14 @@ def score_dataset(
     Returns
     -------
     scores : float32 array [N_windows]
-        Reconstruction MSE per window — the raw anomaly score.
-    labels : dict class → bool array [N_windows]
+        Reconstruction MSE per window - the raw anomaly score.
+    labels : dict class -> bool array [N_windows]
         Ground-truth binary label per window per anomaly class.
     """
     model.eval()
     ch = list(score_channels)
 
-    # Accumulate numpy chunks, not Python floats — 80M stride-1 windows as
+    # Accumulate numpy chunks, not Python floats - 80M stride-1 windows as
     # Python list elements cost ~3 GB per metric column.
     all_scores: list[np.ndarray] = []
     all_labels: dict[str, list[np.ndarray]] = {cls: [] for cls in ANOMALY_CLASSES}
@@ -132,18 +132,17 @@ def score_dataset_last_patch(
     """
     Prediction score: mask the last `horizon_patches` patches, score only them.
 
-    The model predicts the hidden tail from the visible context — matching the
+    The model predicts the hidden tail from the visible context - matching the
     masked training task, so there is no train/inference distribution shift.
     This is true prediction error, not cropped full reconstruction.
 
     horizon_patches sets the forecast length: 1 patch = 20 min (default),
     2 = 40 min. At least one context patch is always kept visible, so the value
     is clamped to [1, N_PATCHES - 1]. Missed bolus is the motivation for a
-    longer horizon — its glucose consequence takes 60–90 min to develop, so a
+    longer horizon - its glucose consequence takes 60-90 min to develop, so a
     20-min tail may end before the anomalous rise diverges. NB: with a
     channel-independent backbone glucose is predicted from glucose alone, so a
-    longer horizon may still not separate missed bolus (see PATCHTST.md / the
-    iTransformer contingency).
+    longer horizon may still not separate missed bolus.
 
     Returns same format as score_dataset.
     """
@@ -151,9 +150,9 @@ def score_dataset_last_patch(
 
     model.eval()
     ch = list(score_channels)   # glucose only by default (see score_dataset)
-    k = max(1, min(horizon_patches, N_PATCHES - 1))   # keep ≥1 visible context patch
+    k = max(1, min(horizon_patches, N_PATCHES - 1))   # keep >=1 visible context patch
 
-    # fixed mask hiding the last k patches — broadcasts across the batch
+    # fixed mask hiding the last k patches - broadcasts across the batch
     last_mask = torch.zeros(N_PATCHES, dtype=torch.bool, device=device)
     last_mask[-k:] = True
     last_start = (N_PATCHES - k) * PATCH_LEN          # first masked minute
@@ -165,7 +164,7 @@ def score_dataset_last_patch(
     for i, (x, label_dict) in enumerate(loader, 1):
         x = x.to(device)                               # [B, 120, 3]
 
-        # hide the last k patches → model must predict them from the prefix
+        # hide the last k patches -> model must predict them from the prefix
         recon, _ = model(x, fixed_mask=last_mask)
 
         # score only the predicted (masked) tail, selected channels
@@ -182,7 +181,7 @@ def score_dataset_last_patch(
     return scores, labels
 
 
-# ── threshold calibration ─────────────────────────────────────────────────────
+# -- threshold calibration -----------------------------------------------------
 
 def calibrate_threshold(
     scores: np.ndarray,
@@ -190,9 +189,9 @@ def calibrate_threshold(
     k: float = 2.0,
 ) -> float:
     """
-    Robust threshold: median + k × (IQR-derived σ).
+    Robust threshold: median + k x (IQR-derived sigma).
 
-    Uses median and IQR instead of mean/std — both are resistant to
+    Uses median and IQR instead of mean/std - both are resistant to
     outlier anomaly windows in the calibration period. Works without
     ground-truth labels, so compatible with Ohio and real deployments.
 
@@ -200,13 +199,13 @@ def calibrate_threshold(
     ----------
     scores        : all anomaly scores for one patient, in time order
     n_cal_windows : number of windows from the start to use for calibration
-                    (= N_CAL_DAYS × MINUTES_PER_DAY when stride=1)
+                    (= N_CAL_DAYS x MINUTES_PER_DAY when stride=1)
     k             : sensitivity. Higher = fewer flags (curbs over-detection);
-                    2.0 ≈ flags the top few % under a Gaussian.
+                    2.0 ~ flags the top few % under a Gaussian.
     """
     cal = scores[:n_cal_windows]
     mu  = np.median(cal)
-    std = iqr(cal) / 1.349   # IQR ≈ 1.349σ for a Gaussian → converts to std-equivalent
+    std = iqr(cal) / 1.349   # IQR ~ 1.349sigma for a Gaussian -> converts to std-equivalent
     std = max(std, 1e-6)
     return float(mu + k * std)
 
@@ -220,7 +219,7 @@ def calibrate_per_patient(
     Per-patient robust threshold, applied per patient.
 
     Each patient is calibrated on its OWN first n_cal_windows scores (or all of
-    its windows if it has fewer — short real-data patients), then flagged
+    its windows if it has fewer - short real-data patients), then flagged
     against its OWN threshold. This is the per-patient baseline the spec
     requires: a global threshold would calibrate everyone on patient #1's first
     days, which is meaningless.
@@ -234,17 +233,17 @@ def calibrate_per_patient(
     offset = 0
     for _pid, n in patient_counts:
         s = scores[offset : offset + n]
-        thr = calibrate_threshold(s, min(n_cal_windows, n))   # short patient → use all
+        thr = calibrate_threshold(s, min(n_cal_windows, n))   # short patient -> use all
         flagged[offset : offset + n] = s > thr
         offset += n
     return flagged, float(flagged.mean() * 100)
 
 
-# ── metrics ───────────────────────────────────────────────────────────────────
+# -- metrics -------------------------------------------------------------------
 
 def any_anomaly_label(labels: dict[str, np.ndarray]) -> np.ndarray:
     """
-    OR the per-class labels → 1.0 where ANY anomaly class is present.
+    OR the per-class labels -> 1.0 where ANY anomaly class is present.
 
     This is the headline DETECTION target (anomaly vs normal). Per-class AUPRC
     is confounded: for class X, windows of other anomaly classes count as
@@ -252,7 +251,7 @@ def any_anomaly_label(labels: dict[str, np.ndarray]) -> np.ndarray:
     any-anomaly label removes that cross-class contamination.
     """
     stacked = np.stack([labels[cls] for cls in ANOMALY_CLASSES], axis=0)  # [C, N]
-    return (stacked.max(axis=0) > 0).astype(np.float32)
+    return (stacked.max(axis=0) > 0).astype(np.float32)  # type: ignore  # numpy stub types don't match np.ndarray
 
 
 def auroc_per_class(
@@ -281,8 +280,8 @@ def auprc_per_class(
     """
     AUPRC (average precision) per anomaly class. PRIMARY metric.
 
-    Random baseline ≈ class prevalence (~0.02). Much harder to inflate than
-    AUROC on imbalanced data — a model that scores everything low cannot fake
+    Random baseline ~ class prevalence (~0.02). Much harder to inflate than
+    AUROC on imbalanced data - a model that scores everything low cannot fake
     a high AUPRC because precision collapses when there are no true positives.
     Returns nan for classes with no positive windows.
     """
@@ -296,7 +295,7 @@ def auprc_per_class(
     return results
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+# -- main ----------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PatchTST anomaly scoring")
@@ -313,10 +312,10 @@ def main() -> None:
                         help="prediction horizon for Option 2, in 20-min patches "
                              "(1=20min default, 2=40min)")
     parser.add_argument("--norm", choices=["per_patient", "global"], default="per_patient",
-                        help="normalization mode — MUST match the pretrain run")
+                        help="normalization mode - MUST match the pretrain run")
     parser.add_argument("--test_stride", type=int, default=1,
                         help="eval window stride. 1 = per-minute (80M windows, slow); "
-                             "5 ≈ same AUPRC at 5x less compute (windows overlap ~99%)")
+                             "5 ~ same AUPRC at 5x less compute (windows overlap ~99%)")
     parser.add_argument("--last_only", action="store_true",
                         help="score only Option 2 (prediction); skip Option 1 full reconstruction")
     parser.add_argument("--smoke_test",  action="store_true",
@@ -324,11 +323,11 @@ def main() -> None:
     args = parser.parse_args()
     score_channels = tuple(args.score_channels)
 
-    # ── device ────────────────────────────────────────────────────────────────
+    # -- device ----------------------------------------------------------------
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── load checkpoint ───────────────────────────────────────────────────────
+    # -- load checkpoint -------------------------------------------------------
     if not args.checkpoint.exists():
         raise FileNotFoundError(
             f"Checkpoint not found: {args.checkpoint}\n"
@@ -339,7 +338,7 @@ def main() -> None:
     model.load_state_dict(ckpt["model_state"])
     print(f"Loaded checkpoint from epoch {ckpt['epoch']}  (val_loss={ckpt['val_loss']:.4f})")
 
-    # ── data ──────────────────────────────────────────────────────────────────
+    # -- data ------------------------------------------------------------------
     max_per_split = 10 if args.smoke_test else None
     # Only the test set is needed; cached scalers (written by pretrain.py)
     # let build_datasets skip the 12k-patient train load entirely.
@@ -351,12 +350,12 @@ def main() -> None:
         include_val   = False,
         norm          = args.norm,
     )
-    print(f"Test windows: {len(test_ds):,}  (stride={args.test_stride} min)")
+    print(f"Test windows: {len(test_ds):,}  (stride={args.test_stride} min)")   #type: ignore
 
     loader = DataLoader(
-        test_ds,
+        test_ds,    #type: ignore
         batch_size  = args.batch_size,
-        shuffle     = False,   # keep time order — needed for calibration
+        shuffle     = False,   # keep time order - needed for calibration
         num_workers = args.num_workers,
         pin_memory  = device.type == "cuda",
     )
@@ -371,41 +370,41 @@ def main() -> None:
     labels: dict[str, np.ndarray] | None = None
 
     if not args.last_only:
-        print("Scoring — Option 1: whole-window reconstruction deviation…")
+        print("Scoring - Option 1: whole-window reconstruction deviation...")
         scores_full, labels = score_dataset(model, loader, device, score_channels)
         print(f"  range min={scores_full.min():.4f} max={scores_full.max():.4f} mean={scores_full.mean():.4f}")
         scored.append(("full", scores_full))
 
-    print(f"Scoring — Option 2: next-{args.horizon_patches * 20}-min prediction error…")
+    print(f"Scoring - Option 2: next-{args.horizon_patches * 20}-min prediction error...")
     scores_last, labels_last = score_dataset_last_patch(model, loader, device, score_channels, args.horizon_patches)
     print(f"  range min={scores_last.min():.4f} max={scores_last.max():.4f} mean={scores_last.mean():.4f}")
     scored.append(("last", scores_last))
     if labels is None:
         labels = labels_last
 
-    # ── per-patient threshold (informational) ─────────────────────────────────
-    # n_cal_windows = first N_CAL_DAYS days, in windows (one window ≈ test_stride min).
+    # -- per-patient threshold (informational) ---------------------------------
+    # n_cal_windows = first N_CAL_DAYS days, in windows (one window ~ test_stride min).
     n_cal = N_CAL_DAYS * MINUTES_PER_DAY // args.test_stride
-    patient_counts = test_ds.patient_window_counts()
+    patient_counts = test_ds.patient_window_counts()   # type: ignore
     for name, scores in scored:
         _, flagged = calibrate_per_patient(scores, patient_counts, n_cal)
-        print(f"Threshold [{name}] (per-patient median+2×IQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
+        print(f"Threshold [{name}] (per-patient median+2xIQR/1.349, first {N_CAL_DAYS} days): {flagged:.1f}% flagged")
 
-    # ── headline detection metric: any-anomaly (any class vs normal) ──────────
+    # -- headline detection metric: any-anomaly (any class vs normal) ----------
     any_lbl = any_anomaly_label(labels)
-    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ≈ {any_lbl.mean():.2%})")
+    print(f"\nANY-ANOMALY detection (any class vs normal | random baseline ~ {any_lbl.mean():.2%})")
     for name, scores in scored:
         ap = average_precision_score(any_lbl, scores) if any_lbl.sum() > 0 else float("nan")
         au = roc_auc_score(any_lbl, scores)           if any_lbl.sum() > 0 else float("nan")
         print(f"  {name:<10}  AUPRC={ap:.4f}  AUROC={au:.4f}")
 
-    # ── per-class metrics (classification-flavoured; see any_anomaly_label) ────
+    # -- per-class metrics (classification-flavoured; see any_anomaly_label) ----
     def _fmt(v): return f"{v:.4f}" if not np.isnan(v) else "   n/a"
     metrics = {name: (auprc_per_class(s, labels), auroc_per_class(s, labels)) for name, s in scored}
     n_total = len(scored[0][1])
 
     cols = "  ".join(f"{name+'-AUPRC':>11} {name+'-AUROC':>11}" for name, _ in scored)
-    print(f"\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ≈ prevalence)")
+    print("\nResults per anomaly class  (PRIMARY: AUPRC | random baseline ~ prevalence)")
     print(f"  {'class':<12} {'prev':>7}  {cols}")
     for cls in ANOMALY_CLASSES:
         prevalence = labels[cls].sum() / n_total if n_total > 0 else 0.0

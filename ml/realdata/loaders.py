@@ -1,5 +1,5 @@
 """
-Loaders for the four real T1D datasets → list[RealPatient] (glucose in mmol/L).
+Loaders for the four real T1D datasets -> list[RealPatient] (glucose in mmol/L).
 
   ohio       OhioT1DM XML (reuses ml/ohio_eval/adapter)         CGM 5-min, mg/dL
   hupa       HUPA-UCM, one ;-CSV per patient                    CGM 5-min, mg/dL
@@ -7,7 +7,7 @@ Loaders for the four real T1D datasets → list[RealPatient] (glucose in mmol/L)
   shanghai   Shanghai_T1DM, one xlsx/xls per patient-visit      CGM 15-min, mg/dL
 
 Carbs in Shanghai are free-text ('Dietary intake'), so its carb count is a rough
-meal tally, not grams — flagged.
+meal tally, not grams - flagged.
 """
 
 from __future__ import annotations
@@ -18,11 +18,28 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.ndimage import median_filter
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from dataset import load_patients, make_patient_split  # noqa: E402
 from realdata.common import RealPatient, MGDL_PER_MMOL  # noqa: E402
 
 REAL = Path("ml/data/real")
+
+
+def load_sim(parquet: Path, n_patients: int) -> list[RealPatient]:
+    """Load simulator patients as RealPatient records, for sim->real comparison.
+    Insulin/carb event counts come from run onsets: a carb box start, or an
+    insulin spike above the rolling-median basal."""
+    ids = make_patient_split(parquet)["train"][:n_patients]
+    out = []
+    for pid, arr in load_patients(ids, parquet).items():
+        glu, ins, carb = arr[:, 0], arr[:, 1], arr[:, 2]
+        carb_edges = int(((carb > 0) & ~np.r_[False, carb[:-1] > 0]).sum())
+        bolus = ins - median_filter(ins, 61)                 # spikes above basal
+        ins_edges = int(((bolus > 200) & ~np.r_[False, bolus[:-1] > 200]).sum())
+        out.append(RealPatient(pid, np.arange(arr.shape[0]), glu, ins_edges, carb_edges))
+    return out
 
 
 def _tmin(ts: pd.Series) -> np.ndarray:
