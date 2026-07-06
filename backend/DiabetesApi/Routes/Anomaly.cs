@@ -18,10 +18,10 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     private const float DetectThresholdK = 2.0f;
 
     /// <summary>
-    /// Get detected anomalies for a patient, optionally filtered by severity and time window.
+    /// Get detected anomalies for a patient, optionally filtered by time window.
+    /// Severity filtering is handled client-side via the sensitivity slider.
     /// </summary>
     /// <param name="id">Patient ID.</param>
-    /// <param name="minSeverity">Only return anomalies with severity ≥ this (σ; the frontend threshold). At slider minimum → all.</param>
     /// <param name="start">ISO datetime — only anomalies whose detected_at ≥ start (optional).</param>
     /// <param name="end">ISO datetime — only anomalies whose detected_at ≤ end (optional).</param>
     /// <param name="last">Last time period (e.g. "24h", "7d", "2w", "1m"), measured back from the latest glucose reading (optional).</param>
@@ -30,15 +30,11 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAnomalies(
         [FromQuery, BindRequired] int id,
-        [FromQuery] float? minSeverity = null,
         [FromQuery] string? start = null,
         [FromQuery] string? end = null,
         [FromQuery] string? last = null)
     {
         var query = db.Anomalies.Where(a => a.PatientId == id);
-
-        if (minSeverity.HasValue)
-            query = query.Where(a => a.Severity >= minSeverity.Value);
 
         if (start is not null)
         {

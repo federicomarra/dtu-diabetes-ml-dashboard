@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle, X } from "lucide-react";
 import { format } from "date-fns";
 import type { AnomalyDetection } from "@/models/types";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import styles from "./AnomalyAlert.module.css";
 
 interface AnomalyAlertProps {
@@ -20,9 +21,14 @@ export default function AnomalyAlert({
   anomalies,
   onAcknowledge,
 }: AnomalyAlertProps) {
-  const unacknowledged = anomalies.filter((a) => !a.is_acknowledged);
+  const { minSeverity } = useSeverityInference();
 
-  if (unacknowledged.length === 0) {
+  // Apply severity threshold client-side — the slider never triggers a refetch.
+  const visible = anomalies.filter(
+    (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+  );
+
+  if (visible.length === 0) {
     return (
       <div className={styles.noAlerts}>
         <CheckCircle size={18} />
@@ -35,10 +41,10 @@ export default function AnomalyAlert({
     <div className={styles.container}>
       <h3 className={styles.title}>
         <AlertTriangle size={18} />
-        Active Alerts ({unacknowledged.length})
+        Active Alerts ({visible.length})
       </h3>
       <div className={styles.list}>
-        {unacknowledged.map((anomaly) => (
+        {visible.map((anomaly) => (
           <div key={anomaly.id} className={styles.alert}>
             <div className={styles.alertContent}>
               <span className={styles.alertType}>

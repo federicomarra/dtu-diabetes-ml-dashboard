@@ -212,7 +212,7 @@ export default function DoctorPatientDetail() {
         patientAge={patient!.age != null ? String(patient!.age) : "??"}
         latestReading={latestReading}
         tir={tir ?? undefined}
-        anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
+        anomalyCount={anomalies.filter((a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)).length}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
         hba1c={hba1c ?? undefined}

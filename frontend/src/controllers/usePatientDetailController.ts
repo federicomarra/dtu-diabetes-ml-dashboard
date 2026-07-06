@@ -67,9 +67,9 @@ export function usePatientDetailController(externalId: string) {
   }, []);
   const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges } = useGlucoseRanges();
-  const { inferenceEnabled, minSeverity } = useSeverityInference();
+  const { inferenceEnabled } = useSeverityInference();
   // Remembers the window we last ran detection for, so moving the sensitivity slider
-  // (minSeverity) only RE-READS — it never re-triggers an expensive detection pass.
+  // only re-filters locally — it never triggers a refetch or a detection pass.
   const lastDetectKey = useRef<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -129,7 +129,7 @@ export function usePatientDetailController(externalId: string) {
               High: glucoseRanges.high,
               VeryHigh: glucoseRanges.veryHigh,
             }),
-            getAnomalies(patient.id, { ...timeRange, minSeverity }),
+            getAnomalies(patient.id, { ...timeRange }),
             getAverageReading(patient.id, timeRange),
             getHbA1c(patient.id, timeRange),
             getGmi(patient.id, timeRange),
@@ -173,7 +173,7 @@ export function usePatientDetailController(externalId: string) {
 
     load();
     return () => { cancelled = true; };
-  }, [externalId, timeRange, glucoseRanges, inferenceEnabled, minSeverity, refreshKey, setStateAndRef]);
+  }, [externalId, timeRange, glucoseRanges, inferenceEnabled, refreshKey, setStateAndRef]);
 
   const handleAcknowledge = useCallback(
     async (anomalyId: number) => {

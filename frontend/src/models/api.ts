@@ -12,7 +12,7 @@
  *   GET  api/glucose/average?id={id}   → getAverageReading()
  *   GET  api/glucose/hba1c?id={id}     → getHbA1c()
  *   GET  api/glucose/gmi?id={id}       → getGmi()
- *   GET  api/anomaly?id&minSeverity&start&end&last → getAnomalies()
+ *   GET  api/anomaly?id&start&end&last → getAnomalies()
  *   POST api/anomaly/detect?id&start&end&last        → runDetection()
  *   POST api/anomaly/acknowledge?patientId={patientId}&anomalyId={anomalyId} → acknowledgeAnomaly()
  *   GET  api/insulin?id={id}            → getInsulins()
@@ -140,15 +140,14 @@ export async function getScatterplot(
 
 // ─── Anomalies ───────────────────────────────────────────
 
-/** Read stored anomalies, filtered by the severity threshold + window (inference=false path). */
+/** Read stored anomalies, filtered by time window only. Severity filtering is done client-side. */
 export async function getAnomalies(
   patientId: number,
-  params?: { minSeverity?: number; start?: string; end?: string; last?: string }
+  params?: { start?: string; end?: string; last?: string }
 ): Promise<{ patient_id: number; anomalies: AnomalyDetection[]; count: number }> {
   const { data } = await api.get(`/anomaly`, {
     params: {
       id: patientId,
-      minSeverity: params?.minSeverity,
       start: params?.start,
       end: params?.end,
       last: params?.last,
