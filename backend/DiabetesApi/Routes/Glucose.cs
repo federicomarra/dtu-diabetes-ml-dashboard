@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using DiabetesApi.Data;
 using DiabetesApi.Models;
@@ -23,7 +24,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(typeof(GlucosesResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetGlucoseReadings(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
@@ -94,7 +95,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(typeof(TirResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetTimeInRange(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] GlucoseRanges glucoseRanges,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
@@ -115,7 +116,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [HttpGet("latest")]
     [ProducesResponseType(typeof(GlucoseReadingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetLatestReading([FromQuery] int id)
+    public async Task<IActionResult> GetLatestReading([FromQuery, BindRequired] int id)
     {
         var reading = await db.Glucoses
             .Where(r => r.PatientId == id)
@@ -150,7 +151,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAverageReading(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
@@ -223,7 +224,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetHbA1c(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
@@ -253,7 +254,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetGmi(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
@@ -283,7 +284,7 @@ public class GlucoseController(AppDbContext db, GlucoseService glucoseService) :
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetScatterplot(
-        [FromQuery] int id,
+        [FromQuery, BindRequired] int id,
         [FromQuery] string? start = null,
         [FromQuery] string? end   = null,
         [FromQuery] string? last = null)
