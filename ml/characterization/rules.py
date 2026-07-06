@@ -42,6 +42,16 @@ class RuleConfig:
     calib_window_days: int = 7    # trailing window for the rolling meal stats
     min_calib_meals: int = 3      # need this many prior meals to call "large"
     min_carb_g: float = 10.0      # ignore tiny snacks
+    # --- detection-anchored labelling (classify_detection) ---
+    # A DETECTED glucose excursion is the anchor (not a logged meal), so this works
+    # on real data where missed meals leave NO carb log - only a glucose rise. We ask
+    # of the excursion's onset: is there a bolus that covers it, and was it on time?
+    # Windows fit from the simulator: a timely bolus lands at onset+0, a late bolus at
+    # onset+[16,72] (median 43); a missed excursion has no bolus in [onset-15, onset+75]
+    # 93% of the time. See ml/tests/test_detection_rule.py for the validation.
+    det_lookback: int = 15        # a covering bolus may precede the rise by this much
+    det_attribute_max: int = 75   # a bolus later than this belongs to the NEXT meal
+    det_late_delay: int = 15      # covering bolus >= this many min after onset -> "late"
 
 
 def _rolling_large(meal_min: np.ndarray, meal_carb: np.ndarray, cfg: RuleConfig) -> np.ndarray:
@@ -89,3 +99,32 @@ def classify_meals(meals, boluses, cfg: RuleConfig = RuleConfig()) -> dict[str, 
             out["late"].append(int(m))
         # else: timely bolus -> normal (no timing flag)
     return out
+
+
+def classify_detection(onset_min: int, bolus_minutes, cfg: RuleConfig = RuleConfig()) -> str | None:
+    """
+    Name a DETECTED glucose excursion by the bolus that should have covered it.
+
+    Unlike classify_meals (which starts from a logged meal), this starts from the
+    detector's excursion onset - so it names missed boluses, whose meal is never
+    logged (no announced carb, no bolus) and shows up ONLY as a glucose rise. That
+    is the real-data case: OhioT1DM etc. give announced carbs + boluses but no
+    "actual eaten" signal, so a log-anchored rule is structurally blind to misses.
+
+      missed : no bolus in [onset - det_lookback, onset + det_attribute_max]
+      late   : the covering bolus lands >= det_late_delay after onset
+      None   : a timely bolus covers it (the excursion has some other cause -
+               e.g. a large but correctly-bolused meal) -> not a behavioural flag
+
+    `bolus_minutes` are event onsets in the SAME minute base as `onset_min`.
+    """
+    b = np.asarray(sorted(int(x) for x in bolus_minutes), dtype=int)
+    if b.size:
+        near = b[(b >= onset_min - cfg.det_lookback) & (b <= onset_min + cfg.det_attribute_max)]
+    else:
+        near = np.empty(0, dtype=int)
+    if near.size == 0:
+        return "missed"
+    if int(near.min()) - onset_min >= cfg.det_late_delay:
+        return "late"
+    return None

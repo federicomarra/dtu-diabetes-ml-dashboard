@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import N_CHANNELS  # noqa: E402
 from models.xchannel.model import CONTEXT_LEN, HORIZON, anomaly_score as compute_score  # noqa: E402
 from models.patch_tst.anomaly_score import calibrate_threshold  # noqa: E402
-from characterization.rules import classify_meals, RuleConfig  # noqa: E402
+from characterization.rules import classify_detection, RuleConfig  # noqa: E402
 
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 MERGE_GAP_MIN = 30          # flagged window starts within this gap -> one event
@@ -94,7 +94,12 @@ def detect(arr, valid, *, detector, device=None, stride=5, n_cal_days=5,
     med = float(np.median(base))
     sigma = max(float(np.subtract(*np.percentile(base, [75, 25])) / 1.349), 1e-9)
 
-    rule_minutes = classify_meals(meals, boluses or [], rule_cfg) if meals is not None else {}
+    # Detection-anchored labelling: name each detected excursion by the bolus that
+    # should have covered it (missed = none, late = delayed). Anchored on the glucose
+    # rise, NOT a logged meal, so it names misses that leave no carb log - the case a
+    # meal-anchored rule (classify_meals) is structurally blind to. Boluses come off
+    # the insulin channel, so this needs no "actual eaten" signal and runs on real data.
+    bolus_min = [b.minute for b in (boluses or []) if getattr(b, "units", 1.0) > 0]
     pos = {s: i for i, s in enumerate(starts)}
 
     events: list[Detection] = []
@@ -103,10 +108,7 @@ def detect(arr, valid, *, detector, device=None, stride=5, n_cal_days=5,
         end_min = grp[-1] + WIN
         if end_min - start_min < min_event_min:
             continue
-        label = None
-        for cls, mins in rule_minutes.items():
-            if cls in ("missed", "late") and any(start_min - WIN <= m <= end_min for m in mins):
-                label = cls; break
+        label = classify_detection(start_min, bolus_min, rule_cfg)
         peak = float(max(scores[pos[s]] for s in grp))
         severity = (peak - med) / sigma
         events.append(Detection(start_min, end_min - start_min, peak, severity, label))

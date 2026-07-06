@@ -19,7 +19,7 @@ Design:
     are surfaced (other classes = future work).
 
 Request  (POST /infer):
-  {"patient_id": 12, "threshold_k": 3.0, "min_event_min": 30, "max_events": 50,
+  {"patient_id": 12, "threshold_k": 3.0, "min_event_min": 30, "max_events": 0,  # 0 = no cap (default); >0 keeps top-k by severity
    "histories": [{"timestamp": "...", "glucose_mmoll": 7.1, "insulin_u": 0.01, "cho_grams": 0}, ...],
    "meals":   [{"timestamp": "...", "carb_g": 60}, ...],   # optional: logged meal events (rule input)
    "boluses": [{"timestamp": "...", "units": 5.0}, ...]}   # optional: logged bolus events (rule input)
@@ -86,7 +86,10 @@ def infer():
     patient_id = body.get("patient_id")
     threshold_k = float(body.get("threshold_k", 3.0))
     min_event_min = int(body.get("min_event_min", 30))
-    max_events = int(body.get("max_events", 50))
+    # 0 (default) = no cap: the backend stores ALL anomalies and the frontend's
+    # severity slider filters at read time; a silent top-k here would make every
+    # patient show the same saturated count. A positive value caps (opt-in).
+    max_events = int(body.get("max_events", 0))
 
     arr, valid, t0 = histories_to_array(rows)
     if arr.shape[0] == 0 or valid.sum() == 0 or t0 is None:
@@ -121,20 +124,20 @@ def infer():
     def strength(sev: float) -> float:
         return round(100.0 * sev / sev_max, 1)
 
-    # DETECTOR-SURFACED: every detected excursion is an anomaly (the model's contribution).
-    # The rule only NAMES it when a logged meal/bolus pattern coincides; otherwise it's an
-    # honest model-detected excursion with no logged cause. On real data the rule rarely
-    # coincides (proxy labels are sparse), so gating on it would surface ~nothing - hence
-    # we surface the detection and annotate. DB type stays missed/late (CHECK); the honest
-    # qualifier lives in `description`.
+    # DETECTION-ANCHORED naming: the detector surfaces the excursion; the rule names it
+    # by the bolus that should have covered it (see rules.classify_detection). This is a
+    # missed/late-bolus demo, so we surface ONLY those two - an excursion with a timely
+    # covering bolus (rule_label is None: e.g. a correctly-bolused large meal) is a real
+    # anomaly but not a BOLUS-timing one, so it is not shown here. DB type is missed/late
+    # (CHECK-constrained); both surfaced types are rule-confirmed.
     out = []
     for e in events:
         if e.rule_label == "late":
-            atype, desc = "late_bolus", "delayed bolus after a logged meal (rule-confirmed)"
+            atype, desc = "late_bolus", "bolus delivered well after the glucose rise began (detection-anchored)"
         elif e.rule_label == "missed":
-            atype, desc = "missed_bolus", "logged meal with no bolus (rule-confirmed)"
+            atype, desc = "missed_bolus", "glucose excursion with no covering bolus (detection-anchored)"
         else:
-            atype, desc = "missed_bolus", "model-detected excursion; no logged cause (unconfirmed)"
+            continue   # timely bolus covers the excursion -> not a missed/late-bolus event
         out.append({
             "start": (t0 + timedelta(minutes=e.start_min)).isoformat(),
             "end": (t0 + timedelta(minutes=e.start_min + e.duration_min)).isoformat(),
@@ -148,8 +151,10 @@ def infer():
             "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
         })
     out.sort(key=lambda a: a["severity"], reverse=True)
+    if max_events > 0:
+        out = out[:max_events]
     return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
-                   anomalies=out[:max_events]), 200
+                   anomalies=out), 200
 
 
 # Load the model at import time so gunicorn/flask workers are ready before the first request.
