@@ -314,6 +314,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
           key={`glucose-${ctrl.refreshKey}`}
           readings={readings}
           patientId={patient!.id}
+          anomalies={anomalies}
           onOffsetChange={handleGlucoseOffsetChange}
           onLatestDayResolved={handleGlucoseLatestDayResolved}
         />

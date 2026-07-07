@@ -278,3 +278,68 @@
   from { transform: translateX(0); }
   to   { transform: translateX(-100%); }
 }
+
+/* Custom Tooltip Styles */
+.customTooltip {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 0.85rem;
+  max-width: 250px;
+  z-index: 100;
+}
+
+.tooltipTime {
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+
+.tooltipValue {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.tooltipLabel {
+  color: var(--text-secondary);
+}
+
+.tooltipGlucose {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tooltipAnomalies {
+  margin-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tooltipAnomalyItem {
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+}
+
+.tooltipAnomalyType {
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+}
+
+.tooltipAnomalyDesc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+  white-space: normal;
+  word-break: break-word;
+}
+

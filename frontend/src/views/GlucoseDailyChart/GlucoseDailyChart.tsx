@@ -27,10 +27,11 @@ import {
   isSameDay,
   isAfter,
 } from "date-fns";
-import type { GlucoseReading } from "@/models/types";
-import { getGlucoseReadings } from "@/models/api";
+import type { GlucoseReading, AnomalyDetection } from "@/models/types";
+import { getGlucoseReadings, getAnomalies } from "@/models/api";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import { convertGlucose } from "@/models/glucoseUnits";
 import {
   LOW_THRESHOLD,
@@ -42,11 +43,59 @@ import {
 } from "@/models/glucoseConfig";
 import styles from "./GlucoseDailyChart.module.css";
 
+const TYPE_LABELS: Record<string, string> = {
+  missed_bolus: "Missed Bolus",
+  late_bolus: "Late Bolus",
+  unusual_pattern: "Unusual Pattern",
+};
+
+interface CustomDotProps {
+  cx?: number;
+  cy?: number;
+  payload?: {
+    anomalies?: AnomalyDetection[];
+  };
+}
+
+const CustomDot = (props: CustomDotProps) => {
+  const { cx, cy, payload } = props;
+  if (!cx || !cy || !payload || !payload.anomalies || payload.anomalies.length === 0) return null;
+
+  const anomaliesList = payload.anomalies;
+  const isMissedBolus = anomaliesList.some((a) => a.anomaly_type === "missed_bolus");
+  const color = isMissedBolus ? "var(--danger)" : "var(--warning)";
+
+  return (
+    <g key={`dot-${cx}-${cy}`}>
+      {/* Outer Halo ring (radius 10px, 30% opacity) */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={0.15}
+        fill={color}
+        fillOpacity={0.1}
+        stroke="none"
+      />
+      {/* Inner Solid dot (radius 5px) */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={5}
+        fill={color}
+        stroke="#fff"
+        strokeWidth={0}
+      />
+    </g>
+  );
+};
+
 interface GlucoseDailyChartProps {
   /** Pass to enable self-fetching day-by-day navigation. */
   patientId?: number;
   /** Fallback readings when patientId is not provided (e.g. demo/patient page). */
   readings?: GlucoseReading[];
+  /** Anomalies for the patient. */
+  anomalies?: AnomalyDetection[];
   title?: string;
   /** Called whenever the day offset changes (0 = latest, 1 = 1 day ago, …). */
   onOffsetChange?: (offset: number, latestDay: Date | null) => void;
@@ -57,12 +106,14 @@ interface GlucoseDailyChartProps {
 export default function GlucoseDailyChart({
   patientId,
   readings: fallbackReadings,
+  anomalies,
   title,
   onOffsetChange,
   onLatestDayResolved,
 }: GlucoseDailyChartProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: thresholds } = useGlucoseRanges();
+  const { minSeverity } = useSeverityInference();
 
   // The midnight Date of the latest available day (anchor from ?last=1d response).
   // All backward navigation is relative to this anchor.
@@ -81,6 +132,7 @@ export default function GlucoseDailyChart({
   const [isAnimating, setIsAnimating] = useState(false);
 
   const [fetchedReadings, setFetchedReadings] = useState<GlucoseReading[] | null>(null);
+  const [fetchedAnomalies, setFetchedAnomalies] = useState<AnomalyDetection[] | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [showCalendar, setShowCalendar] = useState(false);
@@ -114,13 +166,23 @@ export default function GlucoseDailyChart({
       setLoading(true);
       try {
         const base = subDays(anchor, offsetDays);
-        const resp = await getGlucoseReadings(patientId, {
-          start: startOfDay(base).toISOString(),
-          end: endOfDay(base).toISOString(),
-        });
-        setFetchedReadings(resp.readings);
+        const startIso = startOfDay(base).toISOString();
+        const endIso = endOfDay(base).toISOString();
+        const [readingsResp, anomaliesResp] = await Promise.all([
+          getGlucoseReadings(patientId, {
+            start: startIso,
+            end: endIso,
+          }),
+          getAnomalies(patientId, {
+            start: startIso,
+            end: endIso,
+          })
+        ]);
+        setFetchedReadings(readingsResp.readings);
+        setFetchedAnomalies(anomaliesResp.anomalies);
       } catch {
         setFetchedReadings([]);
+        setFetchedAnomalies([]);
       } finally {
         setLoading(false);
       }
@@ -146,10 +208,26 @@ export default function GlucoseDailyChart({
           setLatestDay(day);
           onLatestDayResolved?.(day);
           onOffsetChange?.(0, day);
+
+          // Fetch anomalies for this resolved day
+          const startIso = startOfDay(day).toISOString();
+          const endIso = endOfDay(day).toISOString();
+          getAnomalies(patientId, { start: startIso, end: endIso })
+            .then((anomResp) => {
+              if (!cancelled) {
+                setFetchedAnomalies(anomResp.anomalies);
+              }
+            })
+            .catch(() => {
+              if (!cancelled) setFetchedAnomalies([]);
+            });
         }
       })
       .catch(() => {
-        if (!cancelled) setFetchedReadings([]);
+        if (!cancelled) {
+          setFetchedReadings([]);
+          setFetchedAnomalies([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -218,17 +296,38 @@ export default function GlucoseDailyChart({
   // Decide which readings to display
   const activeReadings = patientId ? (fetchedReadings ?? []) : (fallbackReadings ?? []);
 
+  // Filter anomalies for the active day and passes severity filter
+  const rawAnomalies = patientId ? (fetchedAnomalies ?? anomalies ?? []) : (anomalies ?? []);
+  const activeAnomalies = rawAnomalies.filter((a) => {
+    if (!a.detected_at) return false;
+    const isSame = isSameDay(new Date(a.detected_at), activeDate);
+    const passesSeverity = a.severity == null || a.severity >= minSeverity;
+    return isSame && passesSeverity;
+  });
+
   const chartData = activeReadings
     .slice()
     .map((r) => {
       const d = new Date(r.timestamp);
+      // Find anomalies associated with this reading (either by glucose_reading_id or proximity within 15 mins)
+      const matchingAnomalies = activeAnomalies.filter((a) => {
+        if (a.glucose_reading_id === r.id) return true;
+        if (a.detected_at) {
+          const diffMs = Math.abs(new Date(a.detected_at).getTime() - d.getTime());
+          return diffMs < 15 * 60 * 1000;
+        }
+        return false;
+      });
+
       return {
+        id: r.id,
         // Fractional hour: 08:30 → 8.5, used as the numeric X value
         hour: d.getHours() + d.getMinutes() / 60,
         time: format(d, "HH:mm"),
         fullTime: format(d, "MMM d, HH:mm"),
         glucose: convertGlucose(r.glucose_mmoll, unit),
         status: r.status,
+        anomalies: matchingAnomalies,
       };
     })
     .sort((a, b) => a.hour - b.hour);
@@ -437,17 +536,52 @@ export default function GlucoseDailyChart({
               }}
             />
             <Tooltip
-              contentStyle={{
-                background: "var(--card-bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-              }}
-              formatter={(value: unknown) => [`${value} ${unit}`, "Glucose"]}
-              labelFormatter={(_label: unknown, payload) => {
-                const t = (payload?.[0]?.payload as { time?: string })?.time;
-                return t ? `Time: ${t}` : '';
+              content={({ active, payload }) => {
+                if (!active || !payload || !payload.length) return null;
+                const data = payload[0].payload as {
+                  time?: string;
+                  glucose?: number;
+                  anomalies?: AnomalyDetection[];
+                };
+                const anomaliesList = data.anomalies || [];
+                return (
+                  <div className={styles.customTooltip}>
+                    <div className={styles.tooltipTime}>{data.time}</div>
+                    <div className={styles.tooltipValue}>
+                      <span className={styles.tooltipLabel}>Glucose:</span>
+                      <span className={styles.tooltipGlucose}>{data.glucose} {unit}</span>
+                    </div>
+                    {anomaliesList.length > 0 && (
+                      <div className={styles.tooltipAnomalies}>
+                        {anomaliesList.map((anom) => {
+                          const isSevere = anom.severity != null && anom.severity >= 4;
+                          const accentColor = isSevere ? "var(--danger)" : "var(--warning)";
+                          return (
+                            <div
+                              key={anom.id}
+                              className={styles.tooltipAnomalyItem}
+                              style={{
+                                background: `color-mix(in srgb, ${accentColor} 8%, transparent)`,
+                                borderLeft: `3px solid ${accentColor}`,
+                              }}
+                            >
+                              <span className={styles.tooltipAnomalyType}>
+                                ⚠️ {TYPE_LABELS[anom.anomaly_type] || anom.anomaly_type}
+                                {anom.severity != null && ` (${anom.severity.toFixed(1)}σ)`}
+                              </span>
+                              {anom.description && (
+                                <div className={styles.tooltipAnomalyDesc}>{anom.description}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
               }}
             />
+
             {/* key change forces re-render on day navigation; wipe overlay handles the visual transition */}
             <Line
               key={animationKey.current}
@@ -455,7 +589,7 @@ export default function GlucoseDailyChart({
               dataKey="glucose"
               stroke="var(--primary)"
               strokeWidth={2}
-              dot={false}
+              dot={<CustomDot />}
               activeDot={{ r: 4, fill: "var(--primary)" }}
               isAnimationActive={false}
             />
