@@ -2,11 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
 import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
-import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
+import MultiWeeklyChart from "@/views/MultiWeeklyChart/MultiWeeklyChart";
 import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
@@ -14,20 +16,27 @@ import DataUploader from "@/views/DataUploader/DataUploader";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import {
+  useSeverityInference,
+  severityToPct,
+  SEVERITY_MIN,
+  SEVERITY_MAX,
+  SEVERITY_STEP,
+} from "@/controllers/SeverityInferenceContext";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
-import styles from "../patient.module.css";
+import styles from "./PatientDetailView.module.css";
 
-/**
- * Dynamic Patient Dashboard.
- * Loads patient data based on the external_id path segment.
- */
-export default function PatientDashboard() {
-  const { external_id } = useParams<{ external_id: string }>();
+interface PatientDetailViewProps {
+  mode: "doctor" | "patient";
+}
+
+export default function PatientDetailView({ mode }: PatientDetailViewProps) {
+  const { ext_id } = useParams<{ ext_id: string }>();
   const router = useRouter();
-  const ctrl = usePatientDetailController(external_id);
-
+  const ctrl = usePatientDetailController(ext_id);
   const { timeRange, setLast } = useTimeRange();
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
+  const { inferenceEnabled, setInferenceEnabled, minSeverity, setMinSeverity } = useSeverityInference();
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
 
@@ -73,41 +82,64 @@ export default function PatientDashboard() {
   if (ctrl.loading) {
     return (
       <div className={styles.dashboard}>
+        {mode === "doctor" && (
+          <Link href="/doctor" className={styles.backLink}>
+            <ArrowLeft size={16} /> Back to Doctor Dashboard
+          </Link>
+        )}
         <p style={{ color: "var(--text-secondary)", marginTop: "2rem" }}>
-          Loading dashboard data…
+          {mode === "doctor" ? "Loading patient data…" : "Loading dashboard data…"}
         </p>
       </div>
     );
   }
 
   if (ctrl.notFound) {
-    return (
-      <div className={styles.dashboard} style={{ textAlign: "center", padding: "4rem 2rem" }}>
-        <h2 style={{ color: "var(--color-high)", marginBottom: "1rem" }}>Patient Not Found</h2>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
-          We couldn&apos;t find a patient with ID: <code>{external_id}</code>.
-        </p>
-        <button
-          onClick={() => router.push("/patient")}
-          style={{
-            background: "var(--primary)",
-            color: "white",
-            border: "none",
-            padding: "0.75rem 1.5rem",
-            borderRadius: "8px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Go to Patient Login
-        </button>
-      </div>
-    );
+    if (mode === "doctor") {
+      return (
+        <div className={styles.notFound}>
+          <p>
+            Patient <code>{ext_id}</code> not found.
+          </p>
+          <Link href="/doctor" className={styles.backLink}>
+            <ArrowLeft size={16} /> Back to Doctor Dashboard
+          </Link>
+        </div>
+      );
+    } else {
+      return (
+        <div className={styles.dashboard} style={{ textAlign: "center", padding: "4rem 2rem" }}>
+          <h2 style={{ color: "var(--color-high)", marginBottom: "1rem" }}>Patient Not Found</h2>
+          <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
+            We couldn&apos;t find a patient with ID: <code>{ext_id}</code>.
+          </p>
+          <button
+            onClick={() => router.push("/patient")}
+            style={{
+              background: "var(--primary)",
+              color: "white",
+              border: "none",
+              padding: "0.75rem 1.5rem",
+              borderRadius: "8px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Go to Patient Login
+          </button>
+        </div>
+      );
+    }
   }
 
   if (ctrl.error) {
     return (
       <div className={styles.dashboard}>
+        {mode === "doctor" && (
+          <Link href="/doctor" className={styles.backLink}>
+            <ArrowLeft size={16} /> Back to Doctor Dashboard
+          </Link>
+        )}
         <p style={{ color: "var(--color-high)", marginTop: "2rem" }}>
           Error: {ctrl.error}
         </p>
@@ -115,39 +147,67 @@ export default function PatientDashboard() {
     );
   }
 
-  const { patient, readings, multiWeekReadings, tir, anomalies, latestReading, averageGlucose, hba1c, gmi, scatterplotData, handleAcknowledge } = ctrl;
+  const {
+    patient,
+    tir,
+    readings,
+    multiWeekReadings,
+    anomalies,
+    latestReading,
+    averageGlucose,
+    hba1c,
+    gmi,
+    scatterplotData,
+    handleAcknowledge,
+  } = ctrl;
 
   const allChartsPresent = hasInsulin && hasCarbo;
   const onlyOneChart = (hasInsulin || hasCarbo) && !allChartsPresent;
 
+  const anomalyCount = mode === "doctor"
+    ? anomalies.filter((a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)).length
+    : anomalies.filter((a) => !a.is_acknowledged).length;
+
   return (
     <div className={styles.dashboard}>
+      {mode === "doctor" && (
+        <Link href="/doctor" className={styles.backLink}>
+          <ArrowLeft size={16} />
+          Back to Doctor Dashboard
+        </Link>
+      )}
+
       <div className={styles.titleRow}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <h2 className={styles.pageTitle}>Patient Dashboard</h2>
-          {ctrl.isRefreshing && (
-            <span style={{
-              fontSize: "0.8rem",
-              fontWeight: 500,
-              color: "var(--text-secondary)",
-              background: "var(--border)",
-              padding: "0.25rem 0.6rem",
-              borderRadius: "6px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.4rem",
-            }}>
+        {mode === "doctor" ? (
+          <h2 className={styles.pageTitle}>Patient Detail View</h2>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <h2 className={styles.pageTitle}>Patient Dashboard</h2>
+            {ctrl.isRefreshing && (
               <span style={{
-                display: "inline-block",
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                background: "var(--primary)",
-              }} />
-              Updating...
-            </span>
-          )}
-        </div>
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                background: "var(--border)",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "6px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}>
+                <span style={{
+                  display: "inline-block",
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "var(--primary)",
+                }} />
+                Updating...
+              </span>
+            )}
+          </div>
+        )}
+
         <div className={styles.controls}>
           <div className={styles.timeRangeSelector}>
             <span className={styles.selectorLabel}>Last</span>
@@ -196,6 +256,34 @@ export default function PatientDashboard() {
             </svg>
             Custom Ranges
           </button>
+
+          {mode === "doctor" && (
+            <>
+              {/* Anomaly detection: toggle inference for the current window + sensitivity filter */}
+              <button
+                className={`${styles.rangesBtn} ${inferenceEnabled ? styles.rangesBtnActive : ""}`}
+                onClick={() => setInferenceEnabled(!inferenceEnabled)}
+                title="Run ML anomaly detection over the selected window"
+              >
+                {inferenceEnabled ? "Detection: ON" : "Detection: OFF"}
+              </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+                <label htmlFor="sensitivity">Sensitivity</label>
+                <input
+                  id="sensitivity"
+                  type="range"
+                  min={SEVERITY_MIN}
+                  max={SEVERITY_MAX}
+                  step={SEVERITY_STEP}
+                  value={minSeverity}
+                  onChange={(e) => setMinSeverity(Number(e.target.value))}
+                  title={`${minSeverity}σ above baseline`}
+                />
+                <span>{severityToPct(minSeverity)}%</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -205,14 +293,16 @@ export default function PatientDashboard() {
         patientAge={patient!.age != null ? String(patient!.age) : "??"}
         latestReading={latestReading}
         tir={tir ?? undefined}
-        anomalyCount={anomalies.filter((a) => !a.is_acknowledged).length}
+        anomalyCount={anomalyCount}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
         hba1c={hba1c ?? undefined}
         gmi={gmi ?? undefined}
       />
 
-      <DataUploader patientId={patient!.id} allowedTypes={["csv", "zip"]} onUploadSuccess={ctrl.refresh} />
+      {mode === "patient" && (
+        <DataUploader patientId={patient!.id} allowedTypes={["csv", "zip"]} onUploadSuccess={ctrl.refresh} />
+      )}
 
       {anomalies.length > 0 && (
         <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />
