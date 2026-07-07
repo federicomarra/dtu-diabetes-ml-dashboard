@@ -68,6 +68,16 @@
   border-style: solid;
 }
 
+.dropZone.uploading {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.dropZone.uploading:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
 .dropZone.csvType {
   border-color: var(--primary);
   animation: pulseGlow 2.5s ease-in-out infinite;

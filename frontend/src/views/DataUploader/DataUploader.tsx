@@ -51,6 +51,7 @@ export default function DataUploader({
   }, [allowedTypes]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uploading) return;
     if (e.target.files && e.target.files.length > 0) {
       acceptFile(e.target.files[0]);
     }
@@ -58,13 +59,18 @@ export default function DataUploader({
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (uploading) return;
     setIsDragOver(true);
   };
 
-  const handleDragLeave = () => setIsDragOver(false);
+  const handleDragLeave = () => {
+    if (uploading) return;
+    setIsDragOver(false);
+  };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (uploading) return;
     setIsDragOver(false);
     const dropped = e.dataTransfer.files[0];
     if (dropped) acceptFile(dropped);
@@ -187,6 +193,7 @@ export default function DataUploader({
             onChange={handleFileChange}
             id="unified-file-input"
             style={{ display: "none" }}
+            disabled={uploading}
           />
 
           {/* 2/3 drop zone + 1/3 button panel */}
@@ -195,28 +202,34 @@ export default function DataUploader({
             <div
               className={[
                 styles.dropZone,
-                isDragOver ? styles.dragOver : "",
+                isDragOver && !uploading ? styles.dragOver : "",
                 file ? styles.hasFile : "",
                 fileType === "csv" ? styles.csvType : "",
                 fileType === "zip" ? styles.zipType : "",
                 fileType === "parquet" ? styles.parquetType : "",
+                uploading ? styles.uploading : "",
               ].filter(Boolean).join(" ")}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
+              onClick={() => {
+                if (uploading) return;
+                inputRef.current?.click();
+              }}
             >
               {file ? (
                 <>
                   {/* Clear button */}
-                  <button
-                    type="button"
-                    className={styles.clearBtn}
-                    onClick={(e) => { e.stopPropagation(); reset(); }}
-                    title="Remove file"
-                  >
-                    ✕
-                  </button>
+                  {!uploading && (
+                    <button
+                      type="button"
+                      className={styles.clearBtn}
+                      onClick={(e) => { e.stopPropagation(); reset(); }}
+                      title="Remove file"
+                    >
+                      ✕
+                    </button>
+                  )}
 
                   {/* Badge */}
                   {badgeLabel && (
