@@ -77,6 +77,7 @@ export async function uploadCsv(
   const { data } = await api.post("/patient/upload-libre-csv", formData, {
     params: { id: patientId },
     headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000, // 2 minutes for single-patient CSV upload
   });
   return data;
 }
@@ -90,6 +91,7 @@ export async function uploadGlookoZip(
   const { data } = await api.post("/patient/upload-glooko-zip", formData, {
     params: { id: patientId },
     headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000, // 2 minutes for single-patient Glooko ZIP upload
   });
   return data;
 }
@@ -101,6 +103,7 @@ export async function uploadParquet(
   formData.append("file", file);
   const { data } = await api.post("/doctor/upload-parquet", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+    timeout: 300000, // 5 minutes for large cohort simulation Parquet upload
   });
   return data;
 }

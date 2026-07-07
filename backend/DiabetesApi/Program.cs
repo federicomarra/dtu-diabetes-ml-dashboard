@@ -35,6 +35,7 @@ else
 // ── Application Services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<GlucoseService>();
 builder.Services.AddScoped<PatientService>();
+builder.Services.AddScoped<UploadService>();
 
 // ML inference microservice client (reaches the `ml` container at $ML_URL; localhost = the
 // backend's own container, so this MUST be the compose service DNS). Inference is a
