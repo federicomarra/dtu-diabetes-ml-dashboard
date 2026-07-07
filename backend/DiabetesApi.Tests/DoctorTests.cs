@@ -96,7 +96,7 @@ public class DoctorTests(CustomWebApplicationFactory factory) : TestBase(factory
         Assert.NotNull(patient);
         Assert.Equal("Simulated patient 999999", patient.Name);
         Assert.Equal(2, patient.Glucoses.Count);
-        Assert.Equal(1, patient.Meals.Count);
+        Assert.Single(patient.Meals);
         Assert.True(patient.Insulins.Count >= 2);
         
         // Check histories table synced
