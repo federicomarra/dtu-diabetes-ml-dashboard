@@ -226,7 +226,7 @@ function DayPanel({ day, low, high, /*veryHigh,*/ domainMin, domainMax, unit, is
                 strokeWidth={1}
               />
 
-              <XAxis dataKey="t" hide />
+              <XAxis dataKey="t" type="number" domain={[0, 1439]} hide />
               <YAxis
                 domain={[domainMin, domainMax]}
                 hide
