@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
+import DataUploader from "@/views/DataUploader/DataUploader";
 import {
   useDoctorController,
   PER_PAGE_OPTIONS,
@@ -27,6 +28,8 @@ export default function DoctorDashboard() {
     totalPages,
     setPage,
     setPerPage,
+    refresh,
+    isRefreshing,
   } = useDoctorController();
 
   /** Per-page selector is shown whenever the total exceeds the minimum option (20). */
@@ -75,7 +78,31 @@ export default function DoctorDashboard() {
       {/* ── Header ───────────────────────────────────────── */}
       <div className={styles.header}>
         <div>
-          <h2 className={styles.pageTitle}>Doctor Dashboard</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <h2 className={styles.pageTitle}>Doctor Dashboard</h2>
+            {isRefreshing && (
+              <span style={{
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                background: "var(--border)",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "6px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}>
+                <span style={{
+                  display: "inline-block",
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "var(--primary)",
+                }} />
+                Updating...
+              </span>
+            )}
+          </div>
           <p className={styles.subtitle}>
             {totalPatients} patients • {totalAlerts} total alerts
             {totalPages > 1 && (
@@ -102,6 +129,11 @@ export default function DoctorDashboard() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Parquet Data Uploader ─────────────────────────────────── */}
+      <div style={{ marginBottom: "0.05rem" }}>
+        <DataUploader allowedTypes={["parquet"]} onUploadSuccess={refresh} />
       </div>
 
       {/* ── Pagination if needed ────────────────────────────── */}

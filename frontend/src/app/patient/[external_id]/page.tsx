@@ -212,7 +212,7 @@ export default function PatientDashboard() {
         gmi={gmi ?? undefined}
       />
 
-      <DataUploader patientId={patient!.id} onUploadSuccess={ctrl.refresh} />
+      <DataUploader patientId={patient!.id} allowedTypes={["csv", "zip"]} onUploadSuccess={ctrl.refresh} />
 
       {anomalies.length > 0 && (
         <AnomalyAlert anomalies={anomalies} onAcknowledge={handleAcknowledge} />

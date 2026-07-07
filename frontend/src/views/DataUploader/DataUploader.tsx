@@ -2,31 +2,39 @@
 
 import { useState, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { uploadCsv, uploadGlookoZip } from "@/models/api";
+import { uploadCsv, uploadGlookoZip, uploadParquet } from "@/models/api";
 import styles from "./DataUploader.module.css";
 
+export type UploadFileType = "csv" | "zip" | "parquet";
+
 interface DataUploaderProps {
-  patientId: number;
+  patientId?: number;
+  allowedTypes?: UploadFileType[];
   onUploadSuccess?: () => void;
 }
 
 type UploadResult = {
   success: boolean;
   message: string;
-  stats?: { glucose: number; meal: number; insulin: number };
+  stats?: { glucose: number; meal: number; insulin: number; patients?: number };
   dateFrom?: string | null;
   dateTo?: string | null;
 } | null;
 
-type FileType = "csv" | "zip" | null;
+type FileType = UploadFileType | null;
 
-function detectFileType(file: File): FileType {
-  if (file.name.endsWith(".csv")) return "csv";
-  if (file.name.endsWith(".zip")) return "zip";
+function detectFileType(file: File, allowed: UploadFileType[]): FileType {
+  if (file.name.endsWith(".csv") && allowed.includes("csv")) return "csv";
+  if (file.name.endsWith(".zip") && allowed.includes("zip")) return "zip";
+  if (file.name.endsWith(".parquet") && allowed.includes("parquet")) return "parquet";
   return null;
 }
 
-export default function DataUploader({ patientId, onUploadSuccess }: DataUploaderProps) {
+export default function DataUploader({
+  patientId,
+  allowedTypes = ["csv", "zip"],
+  onUploadSuccess,
+}: DataUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -36,11 +44,11 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
   const [result, setResult] = useState<UploadResult>(null);
 
   const acceptFile = useCallback((f: File) => {
-    const type = detectFileType(f);
+    const type = detectFileType(f, allowedTypes);
     setFile(f);
     setFileType(type);
     setResult(null);
-  }, []);
+  }, [allowedTypes]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -64,27 +72,43 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !fileType || !patientId) return;
+    if (!file || !fileType) return;
+    if (fileType !== "parquet" && !patientId) return;
 
     setUploading(true);
     setResult(null);
 
     try {
-      const res = fileType === "csv"
-        ? await uploadCsv(patientId, file)
-        : await uploadGlookoZip(patientId, file);
+      if (fileType === "parquet") {
+        const res = await uploadParquet(file);
+        setResult({
+          success: true,
+          message: res.message,
+          stats: {
+            patients: res.patients_count,
+            glucose: res.glucose_count,
+            meal: res.meal_count,
+            insulin: res.insulin_count,
+          },
+        });
+      } else {
+        const res = fileType === "csv"
+          ? await uploadCsv(patientId!, file)
+          : await uploadGlookoZip(patientId!, file);
 
-      setResult({
-        success: true,
-        message: res.message,
-        stats: {
-          glucose: res.glucose_count,
-          meal: res.meal_count,
-          insulin: res.insulin_count,
-        },
-        dateFrom: res.date_from,
-        dateTo: res.date_to,
-      });
+        setResult({
+          success: true,
+          message: res.message,
+          stats: {
+            glucose: res.glucose_count,
+            meal: res.meal_count,
+            insulin: res.insulin_count,
+          },
+          dateFrom: res.date_from,
+          dateTo: res.date_to,
+        });
+      }
+
       setFile(null);
       setFileType(null);
       if (inputRef.current) inputRef.current.value = "";
@@ -95,7 +119,7 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
       console.error(err);
       const errMsg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        `Failed to upload ${fileType === "csv" ? "CSV" : "ZIP"} file`;
+        `Failed to upload ${fileType.toUpperCase()} file`;
       setResult({ success: false, message: errMsg });
     } finally {
       setUploading(false);
@@ -110,10 +134,32 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
   };
 
   const badgeLabel =
-    fileType === "csv" ? "CSV \u2014 LibreView" : fileType === "zip" ? "ZIP \u2014 Glooko" : null;
+    fileType === "csv"
+      ? "CSV \u2014 LibreView"
+      : fileType === "zip"
+      ? "ZIP \u2014 Glooko"
+      : fileType === "parquet"
+      ? "Parquet \u2014 Simulation"
+      : null;
 
   const badgeColor =
-    fileType === "csv" ? "var(--primary)" : fileType === "zip" ? "#8b5cf6" : "var(--border)";
+    fileType === "csv"
+      ? "var(--primary)"
+      : fileType === "zip"
+      ? "#8b5cf6"
+      : fileType === "parquet"
+      ? "#10b981"
+      : "var(--border)";
+
+  const acceptAttr = allowedTypes
+    .map((t) => (t === "csv" ? ".csv" : t === "zip" ? ".zip" : t === "parquet" ? ".parquet" : ""))
+    .filter(Boolean)
+    .join(",");
+
+  const dropSubLabel = `Accepts ${allowedTypes
+    .map((t) => (t === "csv" ? ".csv (LibreView)" : t === "zip" ? ".zip (Glooko)" : t === "parquet" ? ".parquet (Simulation)" : ""))
+    .filter(Boolean)
+    .join(" and ")}`;
 
   return (
     <>
@@ -127,7 +173,9 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
           position: "relative",
           zIndex: 1,
         }}>
-          Upload your patient data
+          {fileType === "parquet" || allowedTypes.includes("parquet")
+            ? "Upload Simulation Cohort Data"
+            : "Upload patient data"}
         </h3>
 
         <form onSubmit={handleUpload} style={{ position: "relative", zIndex: 1 }}>
@@ -135,7 +183,7 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.zip"
+            accept={acceptAttr}
             onChange={handleFileChange}
             id="unified-file-input"
             style={{ display: "none" }}
@@ -151,6 +199,7 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
                 file ? styles.hasFile : "",
                 fileType === "csv" ? styles.csvType : "",
                 fileType === "zip" ? styles.zipType : "",
+                fileType === "parquet" ? styles.parquetType : "",
               ].filter(Boolean).join(" ")}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -180,7 +229,7 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
                           border: `1px solid ${badgeColor}55`,
                         }}
                       >
-                        {fileType === "csv" ? "📄" : "🗜️"}&nbsp;{badgeLabel}
+                        {fileType === "csv" ? "📄" : fileType === "zip" ? "🗜️" : "📊"}&nbsp;{badgeLabel}
                       </span>
                     </div>
                   )}
@@ -201,7 +250,7 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
                   <div className={styles.dropHint}>
                     {isDragOver ? "Drop it here!" : "Drag & drop or click to browse"}
                   </div>
-                  <div className={styles.dropSub}>Accepts .csv (LibreView) and .zip (Glooko)</div>
+                  <div className={styles.dropSub}>{dropSubLabel}</div>
                 </>
               )}
             </div>
@@ -211,18 +260,26 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
               <button
                 type="submit"
                 disabled={!file || !fileType || uploading}
-                className={`${styles.uploadBtn} ${fileType === "csv" ? styles.csvBtn : styles.zipBtn}`}
+                className={`${styles.uploadBtn} ${
+                  fileType === "csv"
+                    ? styles.csvBtn
+                    : fileType === "zip"
+                    ? styles.zipBtn
+                    : styles.parquetBtn
+                }`}
               >
                 {uploading ? (
                   <><span className={styles.spinner} /> Importing&hellip;</>
                 ) : (
-                  <>{fileType === "csv" ? "📤" : "📦"} Upload &amp; Parse</>
+                  <>{fileType === "csv" ? "📤" : fileType === "zip" ? "📦" : "📊"} Upload &amp; Parse</>
                 )}
               </button>
               <span className={styles.uploadHint}>
                 {fileType === "csv"
                   ? "Will parse LibreView CSV and import readings"
-                  : "Will extract and import Glooko ZIP archive"}
+                  : fileType === "zip"
+                  ? "Will extract and import Glooko ZIP archive"
+                  : "Will parse Parquet simulation and import cohort data"}
               </span>
             </div>
           </div>
@@ -245,6 +302,9 @@ export default function DataUploader({ patientId, onUploadSuccess }: DataUploade
             {result.success && result.stats && (
               <div style={{ fontSize: "0.85rem", opacity: 0.85 }}>
                 <div>
+                  {result.stats.patients !== undefined && (
+                    <>Imported <strong>{result.stats.patients}</strong> patients, </>
+                  )}
                   Imported <strong>{result.stats.glucose}</strong> glucose readings,{" "}
                   <strong>{result.stats.meal}</strong> carb entries,{" "}
                   <strong>{result.stats.insulin}</strong> insulin doses.

@@ -78,6 +78,11 @@
   animation: pulseGlow 2.5s ease-in-out infinite;
 }
 
+.dropZone.parquetType {
+  border-color: #10b981;
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
 .fileIcon {
   font-size: 1.75rem;
   line-height: 1;
@@ -214,6 +219,11 @@
 .zipBtn {
   background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
   box-shadow: 0 4px 14px rgba(139,92,246,0.35);
+}
+
+.parquetBtn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 14px rgba(16,185,129,0.35);
 }
 
 .resultBanner {

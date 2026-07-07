@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient, GlucoseReading, TimeInRange } from "@/models/types";
 import {
   getPatients,
@@ -46,6 +46,11 @@ export function useDoctorController() {
   const [perPage, setPerPageRaw] = useState<PerPageOption>(20);
   const [totalPatients, setTotalPatients] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasLoadedOnce = useRef(false);
+
+  const refresh = () => setRefreshTrigger((prev) => prev + 1);
 
   /** Change page — clamped to valid range. */
   const setPage = (p: number) =>
@@ -62,7 +67,11 @@ export function useDoctorController() {
 
     async function load() {
       try {
-        setLoading(true);
+        if (!hasLoadedOnce.current) {
+          setLoading(true);
+        } else {
+          setIsRefreshing(true);
+        }
         setError(null);
 
         // 1. Fetch the patient list for the current page / per-page
@@ -111,13 +120,17 @@ export function useDoctorController() {
 
         if (!cancelled) {
           setPatients(summaries);
+          hasLoadedOnce.current = true;
         }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load patients");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       }
     }
 
@@ -125,7 +138,7 @@ export function useDoctorController() {
     return () => {
       cancelled = true;
     };
-  }, [page, perPage, timeRange, glucoseRanges]);
+  }, [page, perPage, timeRange, glucoseRanges, refreshTrigger]);
 
   const totalAlerts = patients.reduce((sum, p) => sum + p.anomalyCount, 0);
 
@@ -142,5 +155,7 @@ export function useDoctorController() {
     totalPages,
     setPage,
     setPerPage,
+    refresh,
+    isRefreshing,
   };
 }

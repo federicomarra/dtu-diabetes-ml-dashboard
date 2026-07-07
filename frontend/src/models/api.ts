@@ -94,6 +94,17 @@ export async function uploadGlookoZip(
   return data;
 }
 
+export async function uploadParquet(
+  file: File
+): Promise<{ message: string; patients_count: number; glucose_count: number; meal_count: number; insulin_count: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post("/doctor/upload-parquet", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 
 // ─── Glucose ─────────────────────────────────────────────
 
