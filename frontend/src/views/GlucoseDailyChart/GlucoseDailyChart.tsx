@@ -67,23 +67,21 @@ const CustomDot = (props: CustomDotProps) => {
 
   return (
     <g key={`dot-${cx}-${cy}`}>
-      {/* Outer Halo ring (radius 10px, 30% opacity) */}
+      {/* Outer Halo ring (radius 3px, 30% opacity) */}
       <circle
         cx={cx}
         cy={cy}
-        r={0.15}
+        r={3}
         fill={color}
-        fillOpacity={0.1}
+        fillOpacity={0.3}
         stroke="none"
       />
-      {/* Inner Solid dot (radius 5px) */}
+      {/* Inner Solid dot (radius 1.5px) */}
       <circle
         cx={cx}
         cy={cy}
-        r={5}
+        r={1.5}
         fill={color}
-        stroke="#fff"
-        strokeWidth={0}
       />
     </g>
   );
