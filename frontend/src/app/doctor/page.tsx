@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowDown, ArrowUp } from "lucide-react";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
+import DataUploader from "@/views/DataUploader/DataUploader";
 import {
   useDoctorController,
   PER_PAGE_OPTIONS,
@@ -27,10 +28,20 @@ export default function DoctorDashboard() {
     totalPages,
     setPage,
     setPerPage,
+    refresh,
+    isRefreshing,
+    sortKey,
+    sortDir,
+    toggleSort,
   } = useDoctorController();
 
   /** Per-page selector is shown whenever the total exceeds the minimum option (20). */
   const showPerPageSelector = totalPatients > PER_PAGE_OPTIONS[0];
+
+  function getSortIcon(key: "name" | "ext_id" | "age") {
+    if (sortKey !== key) return <ArrowUpDown size={13} />;
+    return sortDir === "desc" ? <ArrowDown size={13} /> : <ArrowUp size={13} />;
+  }
 
   if (loading) {
     return (
@@ -75,7 +86,31 @@ export default function DoctorDashboard() {
       {/* ── Header ───────────────────────────────────────── */}
       <div className={styles.header}>
         <div>
-          <h2 className={styles.pageTitle}>Doctor Dashboard</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <h2 className={styles.pageTitle}>Doctor Dashboard</h2>
+            {isRefreshing && (
+              <span style={{
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                color: "var(--text-secondary)",
+                background: "var(--border)",
+                padding: "0.25rem 0.6rem",
+                borderRadius: "6px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}>
+                <span style={{
+                  display: "inline-block",
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "var(--primary)",
+                }} />
+                Updating...
+              </span>
+            )}
+          </div>
           <p className={styles.subtitle}>
             {totalPatients} patients • {totalAlerts} total alerts
             {totalPages > 1 && (
@@ -84,24 +119,79 @@ export default function DoctorDashboard() {
           </p>
         </div>
 
-        {/* Per-page selector */}
-        {showPerPageSelector && (
-          <div className={styles.toolbar}>
-            <span className={styles.toolbarLabel}>Show</span>
-            <div className={styles.perPageGroup}>
-              {PER_PAGE_OPTIONS.filter((opt) => opt < totalPatients).map((opt) => (
-                <button
-                  key={opt}
-                  id={`per-page-${opt}`}
-                  className={`${styles.perPageBtn} ${perPage === opt ? styles.perPageBtnActive : ""}`}
-                  onClick={() => setPerPage(opt as PerPageOption)}
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
+        {/* Toolbar containing sorting buttons and per-page selector */}
+        <div className={styles.toolbar}>
+          {/* Sorting controls */}
+          <div className={styles.sortButtons}>
+            <span className={styles.toolbarLabel}>Sort by</span>
+            <button
+              className={`${styles.sortBtn}${sortKey === "name" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("name")}
+              title={
+                sortKey === "name"
+                  ? sortDir === "asc"
+                    ? "Sorted: A to Z — click for Z to A"
+                    : "Sorted: Z to A — click for A to Z"
+                  : "Sort by name"
+              }
+            >
+              {getSortIcon("name")}
+              Name
+            </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "ext_id" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("ext_id")}
+              title={
+                sortKey === "ext_id"
+                  ? sortDir === "asc"
+                    ? "Sorted: ID low to high — click for high to low"
+                    : "Sorted: ID high to low — click for low to high"
+                  : "Sort by External ID"
+              }
+            >
+              {getSortIcon("ext_id")}
+              ID
+            </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "age" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("age")}
+              title={
+                sortKey === "age"
+                  ? sortDir === "asc"
+                    ? "Sorted: youngest first — click for oldest first"
+                    : "Sorted: oldest first — click for youngest first"
+                  : "Sort by age"
+              }
+            >
+              {getSortIcon("age")}
+              Age
+            </button>
           </div>
-        )}
+
+          {/* Per-page selector */}
+          {showPerPageSelector && (
+            <div className={styles.perPageSelector}>
+              <span className={styles.toolbarLabel}>Show</span>
+              <div className={styles.perPageGroup}>
+                {PER_PAGE_OPTIONS.filter((opt) => opt < totalPatients).map((opt) => (
+                  <button
+                    key={opt}
+                    id={`per-page-${opt}`}
+                    className={`${styles.perPageBtn} ${perPage === opt ? styles.perPageBtnActive : ""}`}
+                    onClick={() => setPerPage(opt as PerPageOption)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Parquet Data Uploader ─────────────────────────────────── */}
+      <div style={{ marginBottom: "0.05rem" }}>
+        <DataUploader allowedTypes={["parquet"]} onUploadSuccess={refresh} />
       </div>
 
       {/* ── Pagination if needed ────────────────────────────── */}

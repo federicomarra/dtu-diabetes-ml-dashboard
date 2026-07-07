@@ -5,8 +5,9 @@ using DiabetesApi.Data;
 using DiabetesApi.Models;
 using DiabetesApi.Services;
 using Microsoft.AspNetCore.Http;
-using System.Globalization;
-using System.IO.Compression;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace DiabetesApi.Routes;
 
@@ -14,18 +15,59 @@ namespace DiabetesApi.Routes;
 [ApiController]
 [Route("api/patient")]
 [Produces("application/json")]
-public class Patient(AppDbContext db, PatientService patientService) : ControllerBase
+public class Patient(AppDbContext db, PatientService patientService, UploadService uploadService) : ControllerBase
 {
-    /// <summary>List all patients with optional pagination.</summary>
+    /// <summary>List all patients with optional pagination and sorting.</summary>
     /// <param name="page">Page number (default 1).</param>
     /// <param name="perPage">Items per page (default 20).</param>
+    /// <param name="sortBy">Field to sort by: "name", "ext_id"/"external_id", or "age"/"date_of_birth" (default is creation date).</param>
+    /// <param name="sortDir">Sorting direction: "asc" or "desc" (default "desc").</param>
     [HttpGet("list")]
     [ProducesResponseType(typeof(PaginatedPatientsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListPatients(
         [FromQuery] int page = 1,
-        [FromQuery] int perPage = 20)
+        [FromQuery] int perPage = 20,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null)
     {
-        var query = db.Patients.OrderByDescending(p => p.CreatedAt);
+        IQueryable<Models.Patient> query = db.Patients;
+
+        if (!string.IsNullOrWhiteSpace(sortBy))
+        {
+            var isAsc = sortDir?.ToLowerInvariant() == "asc";
+            if (sortBy.Equals("name", StringComparison.OrdinalIgnoreCase))
+            {
+                query = isAsc 
+                    ? query.OrderBy(p => p.Name).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.Name).ThenByDescending(p => p.Id);
+            }
+            else if (sortBy.Equals("ext_id", StringComparison.OrdinalIgnoreCase) || 
+                     sortBy.Equals("external_id", StringComparison.OrdinalIgnoreCase))
+            {
+                query = isAsc 
+                    ? query.OrderBy(p => p.ExternalId).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.ExternalId).ThenByDescending(p => p.Id);
+            }
+            else if (sortBy.Equals("age", StringComparison.OrdinalIgnoreCase) || 
+                     sortBy.Equals("date_of_birth", StringComparison.OrdinalIgnoreCase))
+            {
+                // Age is calculated: younger has larger DateOfBirth, older has smaller DateOfBirth.
+                // Age Ascending -> youngest first -> DateOfBirth DESCENDING.
+                // Age Descending -> oldest first -> DateOfBirth ASCENDING.
+                query = isAsc 
+                    ? query.OrderByDescending(p => p.DateOfBirth).ThenByDescending(p => p.Id) 
+                    : query.OrderBy(p => p.DateOfBirth).ThenBy(p => p.Id);
+            }
+            else
+            {
+                query = query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
+            }
+        }
+        else
+        {
+            query = query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
+        }
+
         int total = await query.CountAsync();
         int pages = (int)Math.Ceiling(total / (double)perPage);
 
@@ -114,183 +156,16 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
 
         try
         {
-            using var reader = new StreamReader(file.OpenReadStream());
-            string? headerLine = null;
-            string? line;
-            while ((line = await reader.ReadLineAsync()) != null)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                if (line.StartsWith("Glucose Data")) continue; // Skip metadata header line
-                headerLine = line;
-                break;
-            }
-
-            if (headerLine == null)
-                return BadRequest(new { error = "CSV is empty or missing header" });
-
-            char delimiter = ',';
-            if (headerLine.Contains(';') && !headerLine.Contains(','))
-            {
-                delimiter = ';';
-            }
-
-            var headers = ParseCsvLine(headerLine, delimiter);
-            int timestampIdx = headers.IndexOf("Device Timestamp");
-            int recordTypeIdx = headers.IndexOf("Record Type");
-            int historicGlucoseIdx = headers.IndexOf("Historic Glucose mmol/L");
-            int scanGlucoseIdx = headers.IndexOf("Scan Glucose mmol/L");
-            int rapidInsulinIdx = headers.IndexOf("Rapid-Acting Insulin (units)");
-            int longInsulinIdx = headers.IndexOf("Long-Acting Insulin Value (units)");
-            int carbsIdx = headers.IndexOf("Carbohydrates (grams)");
-
-            if (timestampIdx == -1 || recordTypeIdx == -1)
-            {
-                return BadRequest(new { error = "Required columns 'Device Timestamp' or 'Record Type' not found in CSV headers." });
-            }
-
-            // Fetch existing data to avoid duplicates (N+1 queries prevention)
-            var existingGlucoseTimestamps = await db.Glucoses
-                .Where(g => g.PatientId == patientId)
-                .Select(g => g.Timestamp)
-                .ToHashSetAsync();
-
-            var existingMealTimestamps = await db.Meals
-                .Where(m => m.PatientId == patientId)
-                .Select(m => m.Timestamp)
-                .ToHashSetAsync();
-
-            var existingInsulinTimestamps = await db.Insulins
-                .Where(i => i.PatientId == patientId)
-                .Select(i => i.Timestamp)
-                .ToHashSetAsync();
-
-            var glucosesToInsert = new List<Glucose>();
-            var mealsToInsert = new List<Models.Meal>();
-            var insulinsToInsert = new List<Models.Insulin>();
-
-            string[] formats = {
-                "dd-MM-yyyy HH:mm",
-                "dd-MM-yyyy HH:mm:ss",
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd HH:mm",
-                "yyyy-MM-ddTHH:mm:ss",
-                "dd/MM/yyyy HH:mm",
-                "dd/MM/yyyy HH:mm:ss"
-            };
-
-            while ((line = await reader.ReadLineAsync()) != null)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                var row = ParseCsvLine(line, delimiter);
-                if (row.Count <= timestampIdx || row.Count <= recordTypeIdx) continue;
-
-                string timestampStr = row[timestampIdx];
-                if (string.IsNullOrWhiteSpace(timestampStr)) continue;
-
-                if (!DateTime.TryParseExact(timestampStr, formats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedTime))
-                {
-                    if (!DateTime.TryParse(timestampStr, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsedTime))
-                    {
-                        continue; // skip unparseable timestamps
-                    }
-                }
-
-                DateTime timestampUtc = DateTime.SpecifyKind(parsedTime, DateTimeKind.Utc);
-
-                if (!int.TryParse(row[recordTypeIdx], out int recordType)) continue;
-
-                // 1. Parse Glucose
-                double glucoseVal = 0;
-                bool hasGlucose = false;
-                if (recordType == 0 && historicGlucoseIdx != -1 && historicGlucoseIdx < row.Count && double.TryParse(row[historicGlucoseIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out glucoseVal))
-                {
-                    hasGlucose = true;
-                }
-                else if (recordType == 1 && scanGlucoseIdx != -1 && scanGlucoseIdx < row.Count && double.TryParse(row[scanGlucoseIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out glucoseVal))
-                {
-                    hasGlucose = true;
-                }
-
-                if (hasGlucose && !existingGlucoseTimestamps.Contains(timestampUtc))
-                {
-                    string status = "in_range";
-                    if (glucoseVal < 3.0) status = "very_low";
-                    else if (glucoseVal < 3.9) status = "low";
-                    else if (glucoseVal > 13.9) status = "very_high";
-                    else if (glucoseVal > 10.0) status = "high";
-
-                    glucosesToInsert.Add(new Glucose
-                    {
-                        PatientId = patientId,
-                        Timestamp = timestampUtc,
-                        GlucoseMmoll = glucoseVal,
-                        Source = "libre",
-                        Status = status
-                    });
-                    existingGlucoseTimestamps.Add(timestampUtc);
-                }
-
-                // 2. Parse Carbs
-                if (recordType == 5 && carbsIdx != -1 && carbsIdx < row.Count && double.TryParse(row[carbsIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double carbsVal))
-                {
-                    if (!existingMealTimestamps.Contains(timestampUtc))
-                    {
-                        mealsToInsert.Add(new Models.Meal
-                        {
-                            PatientId = patientId,
-                            Timestamp = timestampUtc,
-                            Carbs = carbsVal,
-                            MealType = null
-                        });
-                        existingMealTimestamps.Add(timestampUtc);
-                    }
-                }
-
-                // 3. Parse Insulin (Rapid-acting/bolus)
-                if (rapidInsulinIdx != -1 && rapidInsulinIdx < row.Count && double.TryParse(row[rapidInsulinIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double rapidInsulinVal))
-                {
-                    if (!existingInsulinTimestamps.Contains(timestampUtc))
-                    {
-                        insulinsToInsert.Add(new Models.Insulin
-                        {
-                            PatientId = patientId,
-                            Timestamp = timestampUtc,
-                            Units = rapidInsulinVal,
-                            EventType = "bolus"
-                        });
-                        existingInsulinTimestamps.Add(timestampUtc);
-                    }
-                }
-
-                // 4. Parse Insulin (Long-acting/basal)
-                if (longInsulinIdx != -1 && longInsulinIdx < row.Count && double.TryParse(row[longInsulinIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out double longInsulinVal))
-                {
-                    if (!existingInsulinTimestamps.Contains(timestampUtc))
-                    {
-                        insulinsToInsert.Add(new Models.Insulin
-                        {
-                            PatientId = patientId,
-                            Timestamp = timestampUtc,
-                            Units = longInsulinVal,
-                            EventType = "basal"
-                        });
-                        existingInsulinTimestamps.Add(timestampUtc);
-                    }
-                }
-            }
-
-            if (glucosesToInsert.Count > 0) db.Glucoses.AddRange(glucosesToInsert.OrderBy(g => g.Timestamp));
-            if (mealsToInsert.Count > 0) db.Meals.AddRange(mealsToInsert.OrderBy(m => m.Timestamp));
-            if (insulinsToInsert.Count > 0) db.Insulins.AddRange(insulinsToInsert.OrderBy(i => i.Timestamp));
-
-            await db.SaveChangesAsync();
+            using var stream = file.OpenReadStream();
+            var result = await uploadService.ProcessCsvUploadAsync(patientId, stream);
 
             return Ok(new {
                 message = "CSV imported successfully",
-                glucose_count = glucosesToInsert.Count,
-                meal_count = mealsToInsert.Count,
-                insulin_count = insulinsToInsert.Count
+                glucose_count = result.GlucoseCount,
+                meal_count = result.MealCount,
+                insulin_count = result.InsulinCount,
+                date_from = result.DateFrom?.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                date_to   = result.DateTo?.ToString("yyyy-MM-ddTHH:mm:ssZ")
             });
         }
         catch (Exception ex)
@@ -319,292 +194,23 @@ public class Patient(AppDbContext db, PatientService patientService) : Controlle
 
         try
         {
-            using var zipStream = file.OpenReadStream();
-            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
-
-            // Preload existing timestamps to avoid duplicates
-            var existingGlucoseTimestamps = await db.Glucoses
-                .Where(g => g.PatientId == patientId)
-                .Select(g => g.Timestamp)
-                .ToHashSetAsync();
-
-            var existingMealTimestamps = await db.Meals
-                .Where(m => m.PatientId == patientId)
-                .Select(m => m.Timestamp)
-                .ToHashSetAsync();
-
-            var existingInsulinTimestamps = await db.Insulins
-                .Where(i => i.PatientId == patientId)
-                .Select(i => i.Timestamp)
-                .ToHashSetAsync();
-
-            var glucosesToInsert = new List<Glucose>();
-            var mealsToInsert = new List<Models.Meal>();
-            var insulinsToInsert = new List<Models.Insulin>();
-
-            // Glooko date format: dd/MM/yyyy HH:mm
-            string[] glookoFormats = {
-                "dd/MM/yyyy HH:mm",
-                "dd/MM/yyyy HH:mm:ss",
-                "dd-MM-yyyy HH:mm",
-                "dd-MM-yyyy HH:mm:ss"
-            };
-
-            foreach (var entry in archive.Entries)
-            {
-                if (entry.Length == 0) continue;
-
-                string entryName = entry.Name.ToLowerInvariant();
-                // Determine which folder this entry is in
-                string entryFullName = entry.FullName.Replace('\\', '/');
-                bool inInsulinDataFolder = entryFullName.Contains("Insulin data/", StringComparison.OrdinalIgnoreCase)
-                    || entryFullName.Contains("Insulin_data/", StringComparison.OrdinalIgnoreCase);
-
-                bool isCgm = entryName.StartsWith("cgm_data") && entryName.EndsWith(".csv");
-                bool isBg = entryName.StartsWith("bg_data") && entryName.EndsWith(".csv");
-                bool isBasal = inInsulinDataFolder && entryName.StartsWith("basal_data") && entryName.EndsWith(".csv");
-                bool isBolus = inInsulinDataFolder && entryName.StartsWith("bolus_data") && entryName.EndsWith(".csv");
-                // insulin_data_*.csv (daily summaries) are skipped
-
-                if (!isCgm && !isBg && !isBasal && !isBolus) continue;
-
-                using var entryStream = entry.Open();
-                using var reader = new StreamReader(entryStream);
-
-                // Skip metadata row 1; row 2 is the column header
-                string? firstLine = await reader.ReadLineAsync();
-                if (firstLine == null) continue;
-
-                // If row 1 looks like a header already (no 'Nome:' prefix), use it directly
-                string? headerLine;
-                if (firstLine.StartsWith("Nome:") || firstLine.StartsWith("Name:"))
-                {
-                    headerLine = await reader.ReadLineAsync();
-                }
-                else
-                {
-                    headerLine = firstLine;
-                }
-
-                if (string.IsNullOrWhiteSpace(headerLine)) continue;
-
-                var headers = ParseCsvLine(headerLine, ',');
-
-                int dateIdx = headers.IndexOf("Data e ora");
-                if (dateIdx == -1) continue; // can't parse without timestamp column
-
-                if (isCgm)
-                {
-                    int valIdx = headers.IndexOf("Valore glicemia CGM (mmol/l)");
-                    if (valIdx == -1) continue;
-
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        var row = ParseCsvLine(line, ',');
-                        if (row.Count <= dateIdx || row.Count <= valIdx) continue;
-
-                        if (!TryParseGlookoDate(row[dateIdx], glookoFormats, out DateTime ts)) continue;
-                        if (!TryParseGlookoDouble(row[valIdx], out double val)) continue;
-
-                        if (existingGlucoseTimestamps.Contains(ts)) continue;
-                        glucosesToInsert.Add(new Glucose
-                        {
-                            PatientId = patientId,
-                            Timestamp = ts,
-                            GlucoseMmoll = val,
-                            Source = "glooko_cgm",
-                            Status = GlucoseStatus(val)
-                        });
-                        existingGlucoseTimestamps.Add(ts);
-                    }
-                }
-                else if (isBg)
-                {
-                    int valIdx = headers.IndexOf("Valore glucosio (mmol/l)");
-                    if (valIdx == -1) continue;
-
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        var row = ParseCsvLine(line, ',');
-                        if (row.Count <= dateIdx || row.Count <= valIdx) continue;
-
-                        if (!TryParseGlookoDate(row[dateIdx], glookoFormats, out DateTime ts)) continue;
-                        if (!TryParseGlookoDouble(row[valIdx], out double val)) continue;
-
-                        if (existingGlucoseTimestamps.Contains(ts)) continue;
-                        glucosesToInsert.Add(new Glucose
-                        {
-                            PatientId = patientId,
-                            Timestamp = ts,
-                            GlucoseMmoll = val,
-                            Source = "glooko_manual",
-                            Status = GlucoseStatus(val)
-                        });
-                        existingGlucoseTimestamps.Add(ts);
-                    }
-                }
-                else if (isBasal)
-                {
-                    // 'Insulina erogata (U)' is always empty in Glooko exports;
-                    // the actual delivery rate is in 'Frequenza' (U/h).
-                    int freqIdx = headers.IndexOf("Frequenza");
-
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        var row = ParseCsvLine(line, ',');
-                        if (row.Count <= dateIdx) continue;
-
-                        if (!TryParseGlookoDate(row[dateIdx], glookoFormats, out DateTime ts)) continue;
-
-                        double units = 0.0;
-                        if (freqIdx != -1 && freqIdx < row.Count && !string.IsNullOrWhiteSpace(row[freqIdx]))
-                            TryParseGlookoDouble(row[freqIdx], out units);
-
-                        if (existingInsulinTimestamps.Contains(ts)) continue;
-                        insulinsToInsert.Add(new Models.Insulin
-                        {
-                            PatientId = patientId,
-                            Timestamp = ts,
-                            Units = units,
-                            EventType = "basal"
-                        });
-                        existingInsulinTimestamps.Add(ts);
-                    }
-                }
-                else if (isBolus)
-                {
-                    int unitsIdx = headers.IndexOf("Insulina erogata (U)");
-                    int carbsIdx = headers.IndexOf("Consumo di carboidrati (g)");
-
-                    string? line;
-                    while ((line = await reader.ReadLineAsync()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        var row = ParseCsvLine(line, ',');
-                        if (row.Count <= dateIdx) continue;
-
-                        if (!TryParseGlookoDate(row[dateIdx], glookoFormats, out DateTime ts)) continue;
-
-                        // Bolus insulin
-                        if (unitsIdx != -1 && unitsIdx < row.Count &&
-                            TryParseGlookoDouble(row[unitsIdx], out double bolusUnits))
-                        {
-                            if (!existingInsulinTimestamps.Contains(ts))
-                            {
-                                insulinsToInsert.Add(new Models.Insulin
-                                {
-                                    PatientId = patientId,
-                                    Timestamp = ts,
-                                    Units = bolusUnits,
-                                    EventType = "bolus"
-                                });
-                                existingInsulinTimestamps.Add(ts);
-                            }
-                        }
-
-                        // Carbs (only if > 0)
-                        if (carbsIdx != -1 && carbsIdx < row.Count &&
-                            TryParseGlookoDouble(row[carbsIdx], out double carbs) &&
-                            carbs > 0)
-                        {
-                            if (!existingMealTimestamps.Contains(ts))
-                            {
-                                mealsToInsert.Add(new Models.Meal
-                                {
-                                    PatientId = patientId,
-                                    Timestamp = ts,
-                                    Carbs = carbs,
-                                    MealType = null
-                                });
-                                existingMealTimestamps.Add(ts);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (glucosesToInsert.Count > 0) db.Glucoses.AddRange(glucosesToInsert.OrderBy(g => g.Timestamp));
-            if (mealsToInsert.Count > 0) db.Meals.AddRange(mealsToInsert.OrderBy(m => m.Timestamp));
-            if (insulinsToInsert.Count > 0) db.Insulins.AddRange(insulinsToInsert.OrderBy(i => i.Timestamp));
-
-            await db.SaveChangesAsync();
+            using var stream = file.OpenReadStream();
+            var result = await uploadService.ProcessGlookoZipUploadAsync(patientId, stream);
 
             return Ok(new
             {
                 message = "Glooko ZIP imported successfully",
-                glucose_count = glucosesToInsert.Count,
-                meal_count = mealsToInsert.Count,
-                insulin_count = insulinsToInsert.Count
+                glucose_count = result.GlucoseCount,
+                meal_count = result.MealCount,
+                insulin_count = result.InsulinCount,
+                date_from = result.DateFrom?.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                date_to   = result.DateTo?.ToString("yyyy-MM-ddTHH:mm:ssZ")
             });
         }
         catch (Exception ex)
         {
             return BadRequest(new { error = $"Failed to parse Glooko ZIP: {ex.Message}" });
         }
-    }
-
-    private static bool TryParseGlookoDate(string raw, string[] formats, out DateTime result)
-    {
-        if (DateTime.TryParseExact(raw, formats, CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal, out result))
-            return true;
-        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal, out result))
-            return true;
-        return false;
-    }
-
-    /// <summary>
-    /// Parses a number that may use comma as decimal separator (Italian locale),
-    /// e.g. "6,5" → 6.5, "9,65" → 9.65, "1.3" → 1.3.
-    /// </summary>
-    private static bool TryParseGlookoDouble(string raw, out double result)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) { result = 0; return false; }
-        // Replace comma decimal separator with dot, then parse invariant
-        string normalised = raw.Replace(',', '.');
-        return double.TryParse(normalised, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
-    }
-
-    private static string GlucoseStatus(double val)
-    {
-        if (val < 3.0) return "very_low";
-        if (val < 3.9) return "low";
-        if (val > 13.9) return "very_high";
-        if (val > 10.0) return "high";
-        return "in_range";
-    }
-
-    private static List<string> ParseCsvLine(string line, char delimiter)
-    {
-        var result = new List<string>();
-        var currentToken = new System.Text.StringBuilder();
-        bool inQuotes = false;
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-            }
-            else if (c == delimiter && !inQuotes)
-            {
-                result.Add(currentToken.ToString().Trim());
-                currentToken.Clear();
-            }
-            else
-            {
-                currentToken.Append(c);
-            }
-        }
-        result.Add(currentToken.ToString().Trim());
-        return result;
     }
 
     private PatientDto ToDto(Models.Patient p) => new(

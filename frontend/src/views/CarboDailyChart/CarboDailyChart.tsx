@@ -280,7 +280,8 @@ export default function CarboDailyChart({
               }}
               formatter={(value: unknown, _name, props) => {
                 const meal = (props?.payload as { mealType?: string })?.mealType;
-                return [`${value} g`, meal ? `Carbs (${meal})` : "Carbs"];
+                const showMeal = meal && meal.toLowerCase() !== "unknown";
+                return [`${value} g`, showMeal ? `Carbs (${meal})` : "Carbs"];
               }}
               labelFormatter={(_label: unknown, payload) => {
                 const t = (payload?.[0]?.payload as { time?: string })?.time;

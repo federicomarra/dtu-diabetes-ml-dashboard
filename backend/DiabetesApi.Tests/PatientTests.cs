@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace DiabetesApi.Tests;
@@ -150,6 +151,20 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
         Assert.Equal(2, body.GetProperty("glucose_count").GetInt32());
         Assert.Equal(1, body.GetProperty("meal_count").GetInt32());
         Assert.Equal(2, body.GetProperty("insulin_count").GetInt32());
+
+        // Verify Histories are populated
+        using var db = CreateDb();
+        var histories = await db.Histories
+            .Where(h => h.PatientId == patient.Id)
+            .OrderBy(h => h.Timestamp)
+            .ToListAsync();
+
+        Assert.Equal(5, histories.Count);
+        Assert.Equal(6.5f, histories[0].Glucose);
+        Assert.Equal(45f, histories[1].Meal);
+        Assert.Equal(7.2f, histories[2].Glucose);
+        Assert.Equal(2.5f, histories[3].Insulin);
+        Assert.Equal(1.5f, histories[4].Insulin);
     }
 
     [Fact]
@@ -176,5 +191,72 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
 
         var resp = await Client.PostAsync("/api/patient/upload-libre-csv?id=99999", content);
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadGlookoZip_SuccessfullyImports()
+    {
+        var patient = await SeedPatientAsync("P_UPLOAD_ZIP", "ZIP Upload Patient");
+
+        using var zipMs = new System.IO.MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zipMs, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            var cgmEntry = archive.CreateEntry("cgm_data_1.csv");
+            using (var writer = new System.IO.StreamWriter(cgmEntry.Open()))
+            {
+                writer.WriteLine("Data e ora,Valore glicemia CGM (mmol/l)");
+                writer.WriteLine("06/07/2026 12:00,6.5");
+            }
+
+            var bgEntry = archive.CreateEntry("bg_data_1.csv");
+            using (var writer = new System.IO.StreamWriter(bgEntry.Open()))
+            {
+                writer.WriteLine("Data e ora,Valore glucosio (mmol/l)");
+                writer.WriteLine("06/07/2026 12:10,7.0");
+            }
+
+            var basalEntry = archive.CreateEntry("Insulin data/basal_data_1.csv");
+            using (var writer = new System.IO.StreamWriter(basalEntry.Open()))
+            {
+                writer.WriteLine("Data e ora,Frequenza");
+                writer.WriteLine("06/07/2026 12:15,1.2");
+            }
+
+            var bolusEntry = archive.CreateEntry("Insulin data/bolus_data_1.csv");
+            using (var writer = new System.IO.StreamWriter(bolusEntry.Open()))
+            {
+                writer.WriteLine("Data e ora,Insulina erogata (U),Consumo di carboidrati (g)");
+                writer.WriteLine("06/07/2026 12:20,5.5,45");
+            }
+        }
+        zipMs.Position = 0;
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(zipMs.ToArray());
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        content.Add(fileContent, "file", "export.zip");
+
+        var resp = await Client.PostAsync($"/api/patient/upload-glooko-zip?id={patient.Id}", content);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal("Glooko ZIP imported successfully", body.GetProperty("message").GetString());
+        Assert.Equal(2, body.GetProperty("glucose_count").GetInt32());
+        Assert.Equal(1, body.GetProperty("meal_count").GetInt32());
+        Assert.Equal(2, body.GetProperty("insulin_count").GetInt32());
+
+        // Verify Histories are populated
+        using var db = CreateDb();
+        var histories = await db.Histories
+            .Where(h => h.PatientId == patient.Id)
+            .OrderBy(h => h.Timestamp)
+            .ToListAsync();
+
+        Assert.Equal(4, histories.Count);
+        Assert.Equal(6.5f, histories[0].Glucose);
+        Assert.Equal(7.0f, histories[1].Glucose);
+        Assert.Equal(1.2f, histories[2].Insulin);
+        Assert.Equal(5.5f, histories[3].Insulin);
+        Assert.Equal(45f, histories[3].Meal);
     }
 }
