@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { format } from "date-fns";
-import { uploadCsv, uploadGlookoZip, uploadParquet } from "@/models/api";
+import { uploadCsv, uploadGlookoZip, uploadParquet, checkIsHealthy } from "@/models/api";
 import styles from "./DataUploader.module.css";
 
 export type UploadFileType = "csv" | "zip" | "parquet";
@@ -42,6 +42,13 @@ export default function DataUploader({
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  useEffect(() => {
+    checkIsHealthy().then((healthy) => {
+      setIsDemoMode(!healthy);
+    });
+  }, []);
 
   const acceptFile = useCallback((f: File) => {
     const type = detectFileType(f, allowedTypes);
@@ -183,6 +190,27 @@ export default function DataUploader({
             ? "Upload Simulation Cohort Data"
             : "Upload patient data"}
         </h3>
+
+        {isDemoMode && (
+          <div style={{
+            background: "rgba(243, 156, 18, 0.1)",
+            border: "1px solid rgba(243, 156, 18, 0.3)",
+            borderRadius: "8px",
+            padding: "0.6rem 0.8rem",
+            marginBottom: "1rem",
+            fontSize: "0.85rem",
+            color: "var(--warning)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+            position: "relative",
+            zIndex: 1,
+            lineHeight: 1.4,
+          }}>
+            <span style={{ fontSize: "1.1rem" }}>⚠️</span>
+            <span><strong>Demo Mode:</strong> Files uploaded here will not be persisted to a backend because it is currently offline.</span>
+          </div>
+        )}
 
         <form onSubmit={handleUpload} style={{ position: "relative", zIndex: 1 }}>
           {/* Hidden file input */}
