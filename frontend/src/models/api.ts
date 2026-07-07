@@ -43,10 +43,12 @@ const api = axios.create({
 
 export async function getPatients(
   page = 1,
-  perPage = 20
+  perPage = 20,
+  sortBy?: string,
+  sortDir?: string
 ): Promise<PaginatedResponse<Patient>> {
   const { data } = await api.get("/patient/list", {
-    params: { page, perPage },
+    params: { page, perPage, sortBy, sortDir },
   });
   return data;
 }

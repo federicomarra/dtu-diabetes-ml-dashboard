@@ -46,13 +46,13 @@
   text-decoration: none;
 }
 
-/* ── Toolbar (per-page selector) ─────────────────────── */
+/* ── Toolbar (per-page selector and sorting buttons) ─────────────────────── */
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .toolbarLabel {
@@ -60,6 +60,12 @@
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.perPageSelector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .perPageGroup {
@@ -154,4 +160,43 @@
   color: var(--text-secondary);
   font-size: 0.82rem;
   user-select: none;
+}
+
+/* ── Sorting Buttons ─────────────────────────────────── */
+
+.sortButtons {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 20px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sortBtn:hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+  color: var(--text-primary);
+}
+
+.sortBtnActive {
+  background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent);
+  border-color: var(--accent, #6366f1);
+  color: var(--accent, #6366f1);
+}
+
+.sortBtnActive:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 20%, transparent);
+  color: var(--accent, #6366f1);
 }

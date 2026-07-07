@@ -17,16 +17,57 @@ namespace DiabetesApi.Routes;
 [Produces("application/json")]
 public class Patient(AppDbContext db, PatientService patientService, UploadService uploadService) : ControllerBase
 {
-    /// <summary>List all patients with optional pagination.</summary>
+    /// <summary>List all patients with optional pagination and sorting.</summary>
     /// <param name="page">Page number (default 1).</param>
     /// <param name="perPage">Items per page (default 20).</param>
+    /// <param name="sortBy">Field to sort by: "name", "ext_id"/"external_id", or "age"/"date_of_birth" (default is creation date).</param>
+    /// <param name="sortDir">Sorting direction: "asc" or "desc" (default "desc").</param>
     [HttpGet("list")]
     [ProducesResponseType(typeof(PaginatedPatientsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListPatients(
         [FromQuery] int page = 1,
-        [FromQuery] int perPage = 20)
+        [FromQuery] int perPage = 20,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null)
     {
-        var query = db.Patients.OrderByDescending(p => p.CreatedAt);
+        IQueryable<Models.Patient> query = db.Patients;
+
+        if (!string.IsNullOrWhiteSpace(sortBy))
+        {
+            var isAsc = sortDir?.ToLowerInvariant() == "asc";
+            if (sortBy.Equals("name", StringComparison.OrdinalIgnoreCase))
+            {
+                query = isAsc 
+                    ? query.OrderBy(p => p.Name).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.Name).ThenByDescending(p => p.Id);
+            }
+            else if (sortBy.Equals("ext_id", StringComparison.OrdinalIgnoreCase) || 
+                     sortBy.Equals("external_id", StringComparison.OrdinalIgnoreCase))
+            {
+                query = isAsc 
+                    ? query.OrderBy(p => p.ExternalId).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.ExternalId).ThenByDescending(p => p.Id);
+            }
+            else if (sortBy.Equals("age", StringComparison.OrdinalIgnoreCase) || 
+                     sortBy.Equals("date_of_birth", StringComparison.OrdinalIgnoreCase))
+            {
+                // Age is calculated: younger has larger DateOfBirth, older has smaller DateOfBirth.
+                // Age Ascending -> youngest first -> DateOfBirth DESCENDING.
+                // Age Descending -> oldest first -> DateOfBirth ASCENDING.
+                query = isAsc 
+                    ? query.OrderByDescending(p => p.DateOfBirth).ThenByDescending(p => p.Id) 
+                    : query.OrderBy(p => p.DateOfBirth).ThenBy(p => p.Id);
+            }
+            else
+            {
+                query = query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
+            }
+        }
+        else
+        {
+            query = query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
+        }
+
         int total = await query.CountAsync();
         int pages = (int)Math.Ceiling(total / (double)perPage);
 

@@ -50,6 +50,9 @@ export function useDoctorController() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedOnce = useRef(false);
 
+  const [sortKey, setSortKey] = useState<"name" | "ext_id" | "age" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+
   const refresh = () => setRefreshTrigger((prev) => prev + 1);
 
   /** Change page — clamped to valid range. */
@@ -59,6 +62,17 @@ export function useDoctorController() {
   /** Change per-page and reset to page 1. */
   const setPerPage = (pp: PerPageOption) => {
     setPerPageRaw(pp);
+    setPageRaw(1);
+  };
+
+  /** Toggle sorting key with cycle: Ascending <-> Descending */
+  const toggleSort = (key: "name" | "ext_id" | "age") => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
     setPageRaw(1);
   };
 
@@ -74,8 +88,13 @@ export function useDoctorController() {
         }
         setError(null);
 
-        // 1. Fetch the patient list for the current page / per-page
-        const paginatedPatients = await getPatients(page, perPage);
+        // 1. Fetch the patient list for the current page / per-page with sorting
+        const paginatedPatients = await getPatients(
+          page,
+          perPage,
+          sortKey || undefined,
+          sortDir || undefined
+        );
         const patientList = paginatedPatients.patients;
 
         if (cancelled) return;
@@ -138,7 +157,7 @@ export function useDoctorController() {
     return () => {
       cancelled = true;
     };
-  }, [page, perPage, timeRange, glucoseRanges, refreshTrigger]);
+  }, [page, perPage, timeRange, glucoseRanges, refreshTrigger, sortKey, sortDir]);
 
   const totalAlerts = patients.reduce((sum, p) => sum + p.anomalyCount, 0);
 
@@ -157,5 +176,9 @@ export function useDoctorController() {
     setPerPage,
     refresh,
     isRefreshing,
+    // Sorting
+    sortKey,
+    sortDir,
+    toggleSort,
   };
 }
