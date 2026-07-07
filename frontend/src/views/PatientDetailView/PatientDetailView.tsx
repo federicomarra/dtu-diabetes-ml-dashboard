@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import GlucoseDailyChart from "@/views/GlucoseDailyChart/GlucoseDailyChart";
 import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
@@ -37,6 +37,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const { timeRange, setLast } = useTimeRange();
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
   const { inferenceEnabled, setInferenceEnabled, minSeverity, setMinSeverity } = useSeverityInference();
+  const sliderPct = ((minSeverity - SEVERITY_MIN) / (SEVERITY_MAX - SEVERITY_MIN)) * 100;
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
 
@@ -178,35 +179,35 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
       )}
 
       <div className={styles.titleRow}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         {mode === "doctor" ? (
           <h2 className={styles.pageTitle}>Patient Detail View</h2>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <h2 className={styles.pageTitle}>Patient Dashboard</h2>
-            {ctrl.isRefreshing && (
-              <span style={{
-                fontSize: "0.8rem",
-                fontWeight: 500,
-                color: "var(--text-secondary)",
-                background: "var(--border)",
-                padding: "0.25rem 0.6rem",
-                borderRadius: "6px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-              }}>
-                <span style={{
-                  display: "inline-block",
-                  width: "6px",
-                  height: "6px",
-                  borderRadius: "50%",
-                  background: "var(--primary)",
-                }} />
-                Updating...
-              </span>
-            )}
-          </div>
+          <h2 className={styles.pageTitle}>Patient Dashboard</h2>
         )}
+          {ctrl.isRefreshing && (
+            <span style={{
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              color: "var(--text-secondary)",
+              background: "var(--border)",
+              padding: "0.25rem 0.6rem",
+              borderRadius: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}>
+              <span style={{
+                display: "inline-block",
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: "var(--primary)",
+              }} />
+              Updating...
+            </span>
+          )}
+        </div>
 
         <div className={styles.controls}>
           <div className={styles.timeRangeSelector}>
@@ -257,19 +258,30 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
             Custom Ranges
           </button>
 
-          {mode === "doctor" && (
-            <>
-              {/* Anomaly detection: toggle inference for the current window + sensitivity filter */}
-              <button
-                className={`${styles.rangesBtn} ${inferenceEnabled ? styles.rangesBtnActive : ""}`}
-                onClick={() => setInferenceEnabled(!inferenceEnabled)}
-                title="Run ML anomaly detection over the selected window"
-              >
-                {inferenceEnabled ? "Detection: ON" : "Detection: OFF"}
-              </button>
+          {/* Anomaly detection: toggle inference for the current window + sensitivity filter */}
+          <div className={styles.switchContainer} title="Run ML anomaly detection over the selected window">
+            <span className={styles.switchLabel}>
+              {ctrl.isRefreshing && inferenceEnabled ? (
+                <Loader2 size={13} className={styles.spinner} />
+              ) : (
+                    <Sparkles size={13} className={inferenceEnabled ? styles.sparkleActive : ""} />
+              )}
+                  ML Anomaly Detection
+            </span>
+                <button
+                  type="button"
+                  id="ml-detection-toggle"
+                  className={`${styles.switchTrack} ${inferenceEnabled ? styles.switchTrackActive : ""}`}
+                  onClick={() => setInferenceEnabled(!inferenceEnabled)}
+                  aria-checked={inferenceEnabled}
+                  role="switch"
+                >
+                  <span className={`${styles.switchKnob} ${inferenceEnabled ? styles.switchKnobActive : ""}`} />
+                </button>
+              </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
-                <label htmlFor="sensitivity">Sensitivity</label>
+              <div className={styles.sliderContainer}>
+                <label htmlFor="sensitivity" className={styles.sliderLabel}>Sensitivity</label>
                 <input
                   id="sensitivity"
                   type="range"
@@ -279,11 +291,11 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
                   value={minSeverity}
                   onChange={(e) => setMinSeverity(Number(e.target.value))}
                   title={`${minSeverity}σ above baseline`}
+                  className={styles.sliderInput}
+                  style={{ "--pct": `${sliderPct}%` } as React.CSSProperties}
                 />
-                <span>{severityToPct(minSeverity)}%</span>
+                <span className={styles.sliderValue}>{severityToPct(minSeverity)}%</span>
               </div>
-            </>
-          )}
         </div>
       </div>
 
