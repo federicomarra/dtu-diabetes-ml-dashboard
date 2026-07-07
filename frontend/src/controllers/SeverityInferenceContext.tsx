@@ -12,10 +12,10 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
  *     stronger anomalies. The mapping is pct = 50 + (σ−2)·10, so 2σ→50%, 3σ→60%, … 6σ→90%.
  *     Slider steps 1σ (= 10%).
  */
-export const SEVERITY_MIN = 2;     // σ, slider minimum  → 50%
-export const SEVERITY_MAX = 6;     // σ, slider maximum  → 90%
+export const SEVERITY_MIN = 6;     // σ, slider minimum  → 50%
+export const SEVERITY_MAX = 10;     // σ, slider maximum  → 90%
 export const SEVERITY_STEP = 1;    // σ per slider step  (= 10%)
-const SEVERITY_DEFAULT = 3;        // σ, default         → 60%
+const SEVERITY_DEFAULT = 6;        // σ, default         → 60%
 
 /** Map a σ threshold to the user-facing percentage label. */
 export function severityToPct(sigma: number): number {
