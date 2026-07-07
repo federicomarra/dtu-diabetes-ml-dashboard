@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import GlucoseChart from "@/views/GlucoseChart/GlucoseChart";
+import GlucoseDailyChart from "@/views/GlucoseDailyChart/GlucoseDailyChart";
 import TIRChart, { RangesModal } from "@/views/TIRChart/TIRChart";
 import PatientOverview from "@/views/PatientOverview/PatientOverview";
 import AnomalyAlert from "@/views/AnomalyAlert/AnomalyAlert";
@@ -40,7 +40,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
 
-  // Shared daily-view state — GlucoseChart is the source of truth
+  // Shared daily-view state — GlucoseDailyChart is the source of truth
   const [dailyOffset, setDailyOffset] = useState(0);
   const [glucoseLatestDay, setGlucoseLatestDay] = useState<Date | null>(null);
 
@@ -310,7 +310,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
 
       {/* Row 1: Glucose + TIR side-by-side when both charts present, else glucose full width */}
       <div className={allChartsPresent ? styles.chartsGrid : styles.chartsGridFull}>
-        <GlucoseChart
+        <GlucoseDailyChart
           key={`glucose-${ctrl.refreshKey}`}
           readings={readings}
           patientId={patient!.id}

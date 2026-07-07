@@ -40,9 +40,9 @@ import {
   CHART_DOMAIN_MAX,
   VERY_LOW_THRESHOLD,
 } from "@/models/glucoseConfig";
-import styles from "./GlucoseChart.module.css";
+import styles from "./GlucoseDailyChart.module.css";
 
-interface GlucoseChartProps {
+interface GlucoseDailyChartProps {
   /** Pass to enable self-fetching day-by-day navigation. */
   patientId?: number;
   /** Fallback readings when patientId is not provided (e.g. demo/patient page). */
@@ -54,13 +54,13 @@ interface GlucoseChartProps {
   onLatestDayResolved?: (day: Date) => void;
 }
 
-export default function GlucoseChart({
+export default function GlucoseDailyChart({
   patientId,
   readings: fallbackReadings,
   title,
   onOffsetChange,
   onLatestDayResolved,
-}: GlucoseChartProps) {
+}: GlucoseDailyChartProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: thresholds } = useGlucoseRanges();
 
