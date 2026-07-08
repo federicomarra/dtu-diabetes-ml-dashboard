@@ -73,12 +73,11 @@
 │       │       ├── page.tsx        # Multi-patient clinician list (paginated, sorted)
 │       │       └── [ext_id]/       # Doctor view of patient detail (hides uploader)
 │       │           └── page.tsx
-│       ├── controllers/           # React hooks & contexts — data & state
+│       ├── controllers/            # React hooks & contexts — data & state
 │       │   ├── GlucoseUnitContext.tsx
 │       │   ├── TimeRangeContext.tsx
 │       │   ├── GlucoseRangesContext.tsx
 │       │   ├── SeverityInferenceContext.tsx
-│       │   ├── usePatientController.ts
 │       │   ├── usePatientDetailController.ts
 │       │   └── useDoctorController.ts
 │       ├── models/                # Types, API client, config
@@ -86,7 +85,7 @@
 │       │   ├── api.ts             # Typed API client with Axios mapping to backend
 │       │   ├── glucoseConfig.ts   # Glucose configuration constants
 │       │   ├── glucoseUnits.ts    # Glucose unit conversion utilities
-│       │   └── demoData.ts          # Demo data for development
+│       │   └── demoData.ts        # Demo data for development
 │       └── views/                 # Presentational components
 │           ├── GlucoseDailyChart/ # Daily CGM line chart with anomaly dots overlay
 │           ├── TIRChart/          # Time-in-range chart (stacked/bar) with range editor
