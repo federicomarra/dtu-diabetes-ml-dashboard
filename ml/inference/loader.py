@@ -27,6 +27,7 @@ N_CHANNELS = 3            # glucose, insulin, carbs (label channels 3-7 stay zer
 _ARR_WIDTH = 8
 _BASAL_WINDOW = 61        # median-filter window (min) to estimate basal -> bolus = spike above it
 _BOLUS_MIN_U = 0.05       # an insulin spike below this isn't a bolus
+MAX_GAP_MIN = 30          # CGM dropout longer than this is NOT bridged (matches ohio_eval/adapter.py)
 
 
 @dataclass
@@ -52,7 +53,15 @@ def histories_to_array(rows: Sequence[dict]) -> tuple[np.ndarray, np.ndarray, da
     """
     rows: list of {timestamp, glucose_mmoll, insulin_u, cho_grams} (any order).
     Returns (arr[T,8] float32, valid[T] bool, t0 datetime) on a 1-minute grid
-    spanning first->last timestamp. `valid[t]` = a glucose reading exists at minute t.
+    spanning first->last timestamp.
+
+    Glucose is linearly interpolated onto the 1-minute grid and `valid[t]` marks
+    every minute the interpolation is trustworthy (a sample within MAX_GAP_MIN on
+    both sides), exactly as ohio_eval/adapter.py and hupa_eval/adapter.py do. Real
+    CGM samples every 5 min; leaving the in-between minutes at 0/invalid would both
+    corrupt the z-score and make the detector's `valid[s:s+WIN].all()` window filter
+    reject every window. Insulin and carbs stay as delivered (the backend already
+    spreads them per-minute).
     """
     if not rows:
         return np.zeros((0, _ARR_WIDTH), np.float32), np.zeros(0, bool), None
@@ -67,20 +76,36 @@ def histories_to_array(rows: Sequence[dict]) -> tuple[np.ndarray, np.ndarray, da
 
     arr = np.zeros((T, _ARR_WIDTH), np.float32)
     valid = np.zeros(T, bool)
+    g_min: list[int] = []
+    g_val: list[float] = []
     for ts, r in parsed:
         m = minute_of(ts)
         if not (0 <= m < T):
             continue
         g = r.get("glucose_mmoll")
         if g is not None and np.isfinite(g):
-            arr[m, 0] = float(g)
-            valid[m] = True
+            if g_min and g_min[-1] == m:
+                g_val[-1] = float(g)        # duplicate minute: last write wins
+            else:
+                g_min.append(m)
+                g_val.append(float(g))
         ins = r.get("insulin_u")
         if ins is not None and np.isfinite(ins):
             arr[m, 1] = float(ins)
         cho = r.get("cho_grams")
         if cho is not None and np.isfinite(cho):
             arr[m, 2] = float(cho)
+
+    if g_min:
+        gm = np.asarray(g_min, dtype=np.int64)
+        arr[:, 0] = np.interp(np.arange(T), gm, np.asarray(g_val, dtype=np.float64))
+        for a, b in zip(gm[:-1], gm[1:]):
+            valid[a : b + 1] = (b - a) <= MAX_GAP_MIN
+        valid[gm] = True
+        # np.interp extrapolates flat outside [first,last] sample -> those minutes are
+        # not backed by a reading, so leave them invalid.
+        valid[: int(gm[0])] = False
+        valid[int(gm[-1]) + 1 :] = False
     return arr, valid, t0
 
 
