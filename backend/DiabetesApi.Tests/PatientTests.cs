@@ -80,6 +80,23 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     }
 
     [Fact]
+    public async Task CreatePatient_DuplicateExternalId_Returns409()
+    {
+        var body = new { external_id = "P003_DUPLICATE", name = "First" };
+
+        var first = await Client.PostAsJsonAsync("/api/patient/create", body);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Without an existence check this hits the unique index and surfaces as a raw
+        // 500 DbUpdateException, which the frontend cannot render.
+        var second = await Client.PostAsJsonAsync("/api/patient/create", body);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
+        var err = await second.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Contains("already exists", err.GetProperty("error").GetString()!);
+    }
+
+    [Fact]
     public async Task GetPatient_ReturnsPatient()
     {
         var patient = await SeedPatientAsync("P_GET_TEST", "Get Test Patient");

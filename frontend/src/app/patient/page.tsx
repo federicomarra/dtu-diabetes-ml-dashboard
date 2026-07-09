@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getPatientByExternalId, createPatient } from "@/models/api";
+import { clearSession, saveSession } from "@/models/session";
 import styles from "./patient.module.css";
 
 export default function PatientLoginPortal() {
@@ -22,11 +23,24 @@ export default function PatientLoginPortal() {
   const [registerError, setRegisterError] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
 
-  // 1. Check if user is already logged in
+  // 1. Check if user is already logged in. The saved ID is only a hint — the patient it
+  // names may be gone (DB reset, deleted row), and redirecting to it unchecked strands the
+  // user on "Patient Not Found" with no way back to this form. Verify, then clear if stale.
   useEffect(() => {
+    let cancelled = false;
     const savedId = localStorage.getItem("logged_in_patient_id");
     if (savedId) {
-      router.replace(`/patient/${savedId}`);
+      getPatientByExternalId(savedId)
+        .then(() => {
+          if (!cancelled) router.replace(`/patient/${savedId}`);
+        })
+        .catch(() => {
+          clearSession();
+          if (!cancelled) setCheckingAuth(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     } else {
       setCheckingAuth(false);
     }
@@ -41,10 +55,7 @@ export default function PatientLoginPortal() {
 
     try {
       const patient = await getPatientByExternalId(loginId.trim());
-      localStorage.setItem("logged_in_patient_id", patient.external_id);
-      localStorage.setItem("logged_in_patient_name", patient.name);
-
-      window.dispatchEvent(new Event("storage"));
+      saveSession(patient.external_id, patient.name);
       router.push(`/patient/${patient.external_id}`);
     } catch (err: unknown) {
       console.error(err);
@@ -74,15 +85,17 @@ export default function PatientLoginPortal() {
         date_of_birth: registerDob || undefined,
       });
 
-      localStorage.setItem("logged_in_patient_id", newPatient.external_id);
-      localStorage.setItem("logged_in_patient_name", newPatient.name);
-
-      window.dispatchEvent(new Event("storage"));
+      saveSession(newPatient.external_id, newPatient.name);
       router.push(`/patient/${newPatient.external_id}`);
     } catch (err: unknown) {
       console.error(err);
+      const status = (err as { response?: { status?: number } })?.response?.status;
       const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setRegisterError(errorMsg || "This Patient ID may already exist. Please try a different ID.");
+      if (status === 409) {
+        setRegisterError(errorMsg || "That Patient ID is taken. Please choose a different one.");
+      } else {
+        setRegisterError(errorMsg || "Could not create the patient. Please try again.");
+      }
     } finally {
       setRegisterLoading(false);
     }

@@ -17,14 +17,12 @@ export default function Home() {
 
   const [hoveredPortal, setHoveredPortal] = useState<"patient" | "doctor" | null>(null);
 
+  // Always go through /patient: it validates the saved session against the backend and
+  // forwards to the dashboard itself. Jumping straight to /patient/<savedId> from here
+  // would skip that check and strand the user if the patient no longer exists.
   const handlePatientPortalClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    const savedId = localStorage.getItem("logged_in_patient_id");
-    if (savedId) {
-      router.push(`/patient/${savedId}`);
-    } else {
-      router.push("/patient");
-    }
+    router.push("/patient");
   };
 
   useEffect(() => {

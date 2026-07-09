@@ -13,6 +13,7 @@ import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import DataUploader from "@/views/DataUploader/DataUploader";
+import { clearSession } from "@/models/session";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -115,7 +116,12 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
             We couldn&apos;t find a patient with ID: <code>{ext_id}</code>.
           </p>
           <button
-            onClick={() => router.push("/patient")}
+            onClick={() => {
+              // Drop the saved session first: it is what sent us to this missing patient,
+              // and /patient would bounce straight back here if we left it in place.
+              clearSession();
+              router.push("/patient");
+            }}
             style={{
               background: "var(--primary)",
               color: "white",

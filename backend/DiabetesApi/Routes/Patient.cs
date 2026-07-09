@@ -118,10 +118,16 @@ public class Patient(AppDbContext db, PatientService patientService, UploadServi
     [HttpPost("create")]
     [ProducesResponseType(typeof(PatientDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreatePatient([FromBody] CreatePatientRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ExternalId) || string.IsNullOrWhiteSpace(req.Name))
             return BadRequest(new { error = "external_id and name are required" });
+
+        // Without this the unique index on external_id raises a DbUpdateException, which the
+        // client receives as an unhandled 500 with a stack trace and no readable `error` field.
+        if (await db.Patients.AnyAsync(p => p.ExternalId == req.ExternalId))
+            return Conflict(new { error = $"A patient with external_id '{req.ExternalId}' already exists." });
 
         var patient = new Models.Patient
         {
