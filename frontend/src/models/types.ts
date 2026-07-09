@@ -18,7 +18,7 @@ export interface GlucoseReading {
   patient_id: number;
   timestamp: string;
   glucose_mmoll: number;
-  source: "simulated" | "dexcom" | "libre";
+  source: "simulated" | "dexcom" | "libre" | "glooko_cgm" | "glooko_manual";
   status: "very_low" | "low" | "in_range" | "high" | "very_high";
 }
 
