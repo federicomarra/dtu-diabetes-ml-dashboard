@@ -22,7 +22,6 @@ export default function DoctorDashboard() {
   const {
     patients,
     totalPatients,
-    totalAlerts,
     loading,
     error,
     page,
