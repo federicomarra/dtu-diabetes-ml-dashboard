@@ -31,11 +31,12 @@ from characterization.rules import classify_detection, RuleConfig  # noqa: E402
 L, H, WIN = CONTEXT_LEN, HORIZON, CONTEXT_LEN + HORIZON
 MERGE_GAP_MIN = 30          # flagged window starts within this gap -> one event
 
-# Mean positive residual over the LAST QUARTER of the horizon. A missed bolus diverges
-# progressively, so the evidence is strongest at the end of the 40-min horizon; 'sym'
-# (the previous default) averaged it away over the early minutes where the forecast is
-# still good. Measured: missed AUPRC 0.0345 -> 0.0417 (+21%) on the OhioT1DM test split
-# and 0.1786 -> 0.1861 on the simulator; 'end' also wins on late in both.
+# Mean per-element NLL over the LAST QUARTER of the horizon. Like 'sym' this is
+# SYMMETRIC (a hypo surprise scores as high as a hyper one); it differs only by
+# restricting the average to the final 10 min. A missed bolus diverges progressively, so
+# the evidence is strongest there, while 'sym' dilutes it with the early minutes where the
+# forecast is still good. Measured: missed AUPRC 0.0345 -> 0.0417 (+21%) on the OhioT1DM
+# test split and 0.1786 -> 0.1861 on the simulator; 'end' also wins on late in both.
 SCORE_MODE = "end"
 
 
@@ -46,17 +47,24 @@ class Detection:
     anomaly_score: float
     severity: float          # sigma above the patient's baseline median (same units as threshold_k)
     rule_label: str | None   # 'missed' / 'late' (deterministic) or None
+    direction: float = 0.0   # mean (observed - forecast) over the horizon tail, z-units.
+                             # >0 = glucose ran ABOVE forecast. Gates the `missed` label.
 
 
 def score_windows(arr, valid, detector, device, stride, score_mode=SCORE_MODE):
-    """Per valid window: (start minute, forecast-residual score). One forward pass
-    (no embeddings - the head path is dropped)."""
+    """Per valid window: (start minutes, scores, directions). One forward pass
+    (no embeddings - the head path is dropped).
+
+    `direction` = mean (observed - forecast) over the same horizon tail the `end` score
+    aggregates. The score is symmetric, so it cannot tell a hyper excursion from a hypo
+    one; the rule layer needs the sign to refuse to call a low a 'missed bolus'.
+    """
     T = arr.shape[0]
     z = arr[:, :N_CHANNELS]
     starts = [s for s in range(0, T - WIN + 1, stride) if valid[s : s + WIN].all()]
     if not starts:
-        return [], np.empty(0)
-    scores = []
+        return [], np.empty(0), np.empty(0)
+    scores, directions = [], []
     with torch.no_grad():
         for i in range(0, len(starts), 512):
             ch = starts[i : i + 512]
@@ -64,8 +72,12 @@ def score_windows(arr, valid, detector, device, stride, score_mode=SCORE_MODE):
             ins = torch.stack([torch.from_numpy(z[s : s + WIN, 1].copy()) for s in ch]).to(device)
             car = torch.stack([torch.from_numpy(z[s : s + WIN, 2].copy()) for s in ch]).to(device)
             tgt = torch.stack([torch.from_numpy(z[s + L : s + WIN, 0].copy()) for s in ch]).to(device)
-            scores.append(compute_score(detector(glu, ins, car), tgt, score_mode).cpu().numpy())
-    return starts, np.concatenate(scores)
+            out = detector(glu, ins, car)
+            scores.append(compute_score(out, tgt, score_mode).cpu().numpy())
+            mean = out[0] if isinstance(out, tuple) else out
+            tail = max(1, mean.shape[1] // 4)                    # same tail `end` averages
+            directions.append((tgt[:, -tail:] - mean[:, -tail:]).mean(dim=1).cpu().numpy())
+    return starts, np.concatenate(scores), np.concatenate(directions)
 
 
 def _group(flagged, stride):
@@ -86,7 +98,7 @@ def detect(arr, valid, *, detector, device=None, stride=5, trim_iters=3,
            rule_cfg=RuleConfig(), score_mode=SCORE_MODE) -> tuple[list[Detection], np.ndarray]:
     """Returns (events, all_window_scores). arr must be per-patient z-scored already."""
     device = device or torch.device("cpu")
-    starts, scores = score_windows(arr, valid, detector, device, stride, score_mode)
+    starts, scores, directions = score_windows(arr, valid, detector, device, stride, score_mode)
     if not starts:
         return [], np.asarray([], dtype=float)
 
@@ -111,8 +123,11 @@ def detect(arr, valid, *, detector, device=None, stride=5, trim_iters=3,
         end_min = grp[-1] + WIN
         if end_min - start_min < min_event_min:
             continue
-        label = classify_detection(start_min, bolus_min, rule_cfg)
-        peak = float(max(scores[pos[s]] for s in grp))
+        # the strongest window in the group carries both the score and the direction
+        best = max(grp, key=lambda s: scores[pos[s]])
+        peak = float(scores[pos[best]])
+        direction = float(directions[pos[best]])
+        label = classify_detection(start_min, bolus_min, rule_cfg, direction=direction)
         severity = (peak - med) / sigma
-        events.append(Detection(start_min, end_min - start_min, peak, severity, label))
+        events.append(Detection(start_min, end_min - start_min, peak, severity, label, direction))
     return events, np.asarray(scores, dtype=float)

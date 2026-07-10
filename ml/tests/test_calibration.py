@@ -85,8 +85,8 @@ def _ramp_window(n_win=6):
 def test_score_mode_is_threaded_through_to_the_scorer():
     arr, valid = _ramp_window()
     det = _StubForecaster()
-    _, s_sym = score_windows(arr, valid, det, torch.device("cpu"), 5, score_mode="sym")
-    _, s_end = score_windows(arr, valid, det, torch.device("cpu"), 5, score_mode="end")
+    _, s_sym, _ = score_windows(arr, valid, det, torch.device("cpu"), 5, score_mode="sym")
+    _, s_end, _ = score_windows(arr, valid, det, torch.device("cpu"), 5, score_mode="end")
     assert not np.allclose(s_sym, s_end)
 
 
