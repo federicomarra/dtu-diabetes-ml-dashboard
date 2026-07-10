@@ -99,7 +99,7 @@ export default function Home() {
             display: "inline-block",
             marginBottom: "1rem"
           }}>
-            DTU Research Project
+            DTU Master Thesis Project
           </span>
           <h1 style={{
             fontSize: "2.8rem",
