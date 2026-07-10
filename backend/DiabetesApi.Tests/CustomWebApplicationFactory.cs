@@ -76,9 +76,22 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                             anomaly_type = "missed_bolus",
                             description = "Mocked anomaly description",
                             rule_confirmed = true,
-                            severity = 3.5,
+                            severity = 7.0,
                             anomaly_strength = 75.0,
                             score = 1.2
+                        },
+                        // Below the 6σ persist floor — detect must drop this one.
+                        new {
+                            start = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            end = DateTime.UtcNow.AddMinutes(30).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            start_minute = 0,
+                            duration_min = 30,
+                            anomaly_type = "late_bolus",
+                            description = "Sub-threshold anomaly",
+                            rule_confirmed = true,
+                            severity = 4.0,
+                            anomaly_strength = 50.0,
+                            score = 0.8
                         }
                     }
                 });
