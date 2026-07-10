@@ -91,10 +91,12 @@ public record AnomalyDetectionDto(
     int? GlucoseReadingId,
     string AnomalyType,
     float Confidence,
-    string? Description,
+    string? Description,           // fallback sentence in mmol/L; prefer composing from ResidualMmoll
     bool IsAcknowledged,
     float? Severity = null,        // σ above patient baseline; the frontend slider filters on this
-    string? DetectedAt = null      // ISO; anomaly window start
+    string? DetectedAt = null,     // ISO; anomaly window start
+    float? ResidualMmoll = null,   // signed: + above / - below forecast. Render via the unit toggle
+    int? DurationMin = null
 );
 
 public record AnomaliesResponse(
@@ -135,12 +137,15 @@ public record MlAnomaly(
     bool RuleConfirmed,
     float Severity,                // σ above this patient's baseline
     float AnomalyStrength,         // 0–100 magnitude bar (NOT a probability)
-    float Score
+    float Score,
+    float ResidualMmoll,           // signed: + above / - below forecast. Unit-neutral for the UI
+    bool AboveForecast
 );
 
 public record MlInferResponse(
     int PatientId,
     int NWindows,
+    int NDetected,                 // excursions found before the rule named them (>= Anomalies.Count)
     IEnumerable<MlAnomaly> Anomalies
 );
 

@@ -13,6 +13,8 @@ import {
 import { format } from "date-fns";
 import type { AnomalyDetection } from "@/models/types";
 import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
+import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { describeAnomaly } from "@/models/glucoseUnits";
 import styles from "./AnomalyAlert.module.css";
 
 interface AnomalyAlertProps {
@@ -34,6 +36,7 @@ export default function AnomalyAlert({
   onAcknowledge,
 }: AnomalyAlertProps) {
   const { minSeverity } = useSeverityInference();
+  const { unit } = useGlucoseUnit();
   const [sortKey, setSortKey] = useState<SortKey | null>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showAcknowledged, setShowAcknowledged] = useState(true);
@@ -223,9 +226,17 @@ export default function AnomalyAlert({
               <span className={styles.confidence}>
                 {Math.round(anomaly.confidence * 100)}% strength
               </span>
-              {anomaly.description && (
-                <p className={styles.description}>{anomaly.description}</p>
-              )}
+              {(() => {
+                // Composed here, not on the server: `description` is fixed to mmol/L.
+                const text = describeAnomaly(
+                  anomaly.residual_mmoll,
+                  anomaly.duration_min,
+                  anomaly.anomaly_type,
+                  unit,
+                  anomaly.description
+                );
+                return text ? <p className={styles.description}>{text}</p> : null;
+              })()}
             </div>
           </div>
         ))}

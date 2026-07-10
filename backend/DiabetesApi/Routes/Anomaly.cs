@@ -150,6 +150,8 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
             Severity = a.Severity,
             DetectedAt = DateTime.Parse(a.Start).ToUniversalTime(),
             Description = a.Description,
+            ResidualMmoll = a.ResidualMmoll,          // number, not prose: the UI renders mmol/L or mg/dL
+            DurationMin = a.DurationMin,
             IsAcknowledged = false,
         }).ToList();
         db.Anomalies.AddRange(inserted);
@@ -246,6 +248,8 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         a.Description,
         a.IsAcknowledged,
         a.Severity is null ? null : (float)a.Severity,
-        a.DetectedAt?.ToString("O")
+        a.DetectedAt?.ToString("O"),
+        a.ResidualMmoll is null ? null : (float)a.ResidualMmoll,
+        a.DurationMin
     );
 }

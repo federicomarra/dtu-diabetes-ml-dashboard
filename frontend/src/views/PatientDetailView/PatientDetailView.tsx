@@ -19,7 +19,6 @@ import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import {
   useSeverityInference,
-  severityToPct,
   SEVERITY_MIN,
   SEVERITY_MAX,
   SEVERITY_STEP,
@@ -175,6 +174,22 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
     ? anomalies.filter((a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)).length
     : anomalies.filter((a) => !a.is_acknowledged).length;
 
+  // What the slider actually buys, in the two units a reader can act on: how many events
+  // survive the threshold, and how many that is per day. AnomalyAlert applies the same filter.
+  const shownAnomalies = anomalies.filter(
+    (a) => a.severity == null || a.severity >= minSeverity
+  ).length;
+
+  const anomalyRatePerDay = (() => {
+    const stamps = anomalies
+      .map((a) => (a.detected_at ? new Date(a.detected_at).getTime() : NaN))
+      .filter((t) => !Number.isNaN(t));
+    if (stamps.length < 2) return null;
+    const days = (Math.max(...stamps) - Math.min(...stamps)) / 86_400_000;
+    if (days < 0.5) return null;
+    return (shownAnomalies / days).toFixed(1);
+  })();
+
   return (
     <div className={styles.dashboard}>
       {mode === "doctor" && (
@@ -296,12 +311,20 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
                   step={SEVERITY_STEP}
                   value={minSeverity}
                   onChange={(e) => setMinSeverity(Number(e.target.value))}
-                  title={`${minSeverity}σ above baseline`}
+                  aria-describedby="sensitivity-readout"
                   className={styles.sliderInput}
                   style={{ "--pct": `${sliderPct}%` } as React.CSSProperties}
                 />
-                <span className={styles.sliderValue}>{severityToPct(minSeverity)}%</span>
+                <span className={styles.sliderValue}>{shownAnomalies}</span>
               </div>
+              {/* The threshold is a review-workload dial, not a rarity statistic: the score
+                  distribution is heavy-tailed (skew ~7), so "6σ" is a 1-in-27 window, not a
+                  1-in-a-billion one. State the workload, which is the only promise it keeps. */}
+              <p id="sensitivity-readout" className={styles.sliderReadout}>
+                Showing <strong>{shownAnomalies}</strong> of {anomalies.length} detected
+                {anomalyRatePerDay != null && <> · ~{anomalyRatePerDay} per day</>}, ranked by
+                how far glucose strayed from its forecast.
+              </p>
         </div>
       </div>
 

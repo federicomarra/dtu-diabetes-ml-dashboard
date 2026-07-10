@@ -32,3 +32,33 @@ export function formatGlucose(mmoll: number, unit: GlucoseUnit): string {
 export function convertThreshold(mmoll: number, unit: GlucoseUnit): number {
   return convertGlucose(mmoll, unit);
 }
+
+/**
+ * Plain-language evidence for one anomaly, in the user's chosen unit.
+ *
+ * The ML service also sends a `description`, but it hardcodes mmol/L — so we compose
+ * from the signed `residual_mmoll` instead and fall back to the server sentence only
+ * when the number is missing (anomalies detected before this field existed).
+ *
+ * The sign is the meaning: positive = glucose ran ABOVE the model's forecast, which is
+ * what a missed bolus looks like. A late bolus can legitimately run below, once the
+ * delayed dose lands.
+ */
+export function describeAnomaly(
+  residualMmoll: number | undefined,
+  durationMin: number | undefined,
+  anomalyType: string,
+  unit: GlucoseUnit,
+  fallback: string | null
+): string | null {
+  if (residualMmoll == null || durationMin == null) return fallback;
+
+  const magnitude = formatGlucose(Math.abs(residualMmoll), unit);
+  const direction = residualMmoll >= 0 ? "above" : "below";
+  const cause =
+    anomalyType === "late_bolus"
+      ? "covering bolus arrived late"
+      : "no bolus logged around the rise";
+
+  return `Glucose ran ${magnitude} ${direction} forecast for ${durationMin} min · ${cause}`;
+}

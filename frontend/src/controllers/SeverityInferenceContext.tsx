@@ -6,21 +6,19 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
  * Holds the two knobs the anomaly feature adds:
  *   - inferenceEnabled: when ON, the page runs ML detection (POST /api/anomaly/detect)
  *     for the current window before reading; when OFF, it only reads stored anomalies.
- *   - minSeverity: the DISPLAY threshold in σ above the patient's baseline. Range 2σ–6σ,
- *     default 3σ. Applied client-side in AnomalyAlert — the slider never triggers a refetch.
- *     Shown to the user as a 0–100% scale (nobody thinks in σ): higher % = stricter = fewer,
- *     stronger anomalies. The mapping is pct = 50 + (σ−2)·10, so 2σ→50%, 3σ→60%, … 6σ→90%.
- *     Slider steps 1σ (= 10%).
+ *   - minSeverity: the DISPLAY threshold in σ above the patient's baseline. Applied
+ *     client-side in AnomalyAlert — the slider never triggers a refetch.
+ *
+ * σ here is a ROBUST z-score of a forecast-surprise statistic, not a Gaussian sigma: the
+ * score distribution has skew ~7, so a "6σ" window occurs about once in 27, not once in a
+ * billion. It is a sound sort key and a worthless rarity claim. The UI therefore never shows
+ * σ as a percentage or a confidence — it shows how many events the threshold surfaces and at
+ * what daily rate. See ml/docs/DETECTION_SEVERITY.md §1 and §10.
  */
-export const SEVERITY_MIN = 6;     // σ, slider minimum  → 50%
-export const SEVERITY_MAX = 10;     // σ, slider maximum  → 90%
-export const SEVERITY_STEP = 1;    // σ per slider step  (= 10%)
-const SEVERITY_DEFAULT = 6;        // σ, default         → 60%
-
-/** Map a σ threshold to the user-facing percentage label. */
-export function severityToPct(sigma: number): number {
-  return 50 + (sigma - SEVERITY_MIN) * 10;
-}
+export const SEVERITY_MIN = 6;     // σ, slider minimum (loosest)
+export const SEVERITY_MAX = 10;    // σ, slider maximum (strictest)
+export const SEVERITY_STEP = 1;    // σ per slider step
+const SEVERITY_DEFAULT = 6;        // σ, default
 
 interface SeverityInferenceContextValue {
   inferenceEnabled: boolean;
