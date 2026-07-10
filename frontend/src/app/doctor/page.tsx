@@ -10,6 +10,7 @@ import {
   type PerPageOption,
 } from "@/controllers/useDoctorController";
 import { useTimeRangeSelector } from "@/controllers/TimeRangeContext";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import styles from "./doctor.module.css";
 
 
@@ -35,6 +36,15 @@ export default function DoctorDashboard() {
     sortDir,
     toggleSort,
   } = useDoctorController();
+
+  const { minSeverity } = useSeverityInference();
+
+  const totalAlertsFiltered = patients.reduce((sum, p) => {
+    const filteredCount = p.anomalies.filter(
+      (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+    ).length;
+    return sum + filteredCount;
+  }, 0);
 
   const {
     activeVal,
@@ -121,7 +131,7 @@ export default function DoctorDashboard() {
             )}
           </div>
           <p className={styles.subtitle}>
-            {totalPatients} patients • {totalAlerts} total alerts
+            {totalPatients} patients • {totalAlertsFiltered} total alerts
             {totalPages > 1 && (
               <> — page {page} of {totalPages}</>
             )}
@@ -301,7 +311,7 @@ export default function DoctorDashboard() {
 
       {/* ── Patient grid ─────────────────────────────────── */}
       <div className={styles.patientsGrid}>
-        {patients.map(({ patient, latestReading, tir, anomalyCount, averageGlucose, hba1c }) => (
+        {patients.map(({ patient, latestReading, tir, anomalies, averageGlucose, hba1c }) => (
           <Link
             key={patient.id}
             href={`/doctor/${patient.external_id}`}
@@ -313,7 +323,7 @@ export default function DoctorDashboard() {
               patientAge={patient.age != null ? String(patient.age) : "??"}
               latestReading={latestReading}
               tir={tir ?? undefined}
-              anomalyCount={anomalyCount}
+              anomalies={anomalies}
               averageGlucose={averageGlucose}
               hba1c={hba1c ?? undefined}
             />

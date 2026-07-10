@@ -1,10 +1,11 @@
 "use client";
 
 import { Activity, Droplets, AlertTriangle, FlaskConical } from "lucide-react";
-import type { GlucoseReading, TimeInRange, HbA1c, Gmi } from "@/models/types";
+import type { GlucoseReading, TimeInRange, HbA1c, Gmi, AnomalyDetection } from "@/models/types";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
 import { formatGlucose } from "@/models/glucoseUnits";
 import { useGlucoseRanges, type GlucoseRanges } from "@/controllers/GlucoseRangesContext";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import styles from "./PatientOverview.module.css";
 
 interface PatientOverviewProps {
@@ -14,6 +15,7 @@ interface PatientOverviewProps {
   latestReading?: GlucoseReading;
   tir?: TimeInRange;
   anomalyCount?: number;
+  anomalies?: AnomalyDetection[];
   averageGlucose?: number | null;
   timeRangeLast?: string;
   hba1c?: HbA1c;
@@ -74,6 +76,7 @@ export default function PatientOverview({
   latestReading,
   tir,
   anomalyCount = 0,
+  anomalies,
   averageGlucose,
   timeRangeLast = "2w",
   hba1c,
@@ -82,6 +85,7 @@ export default function PatientOverview({
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: glucoseRanges } = useGlucoseRanges();
+  const { minSeverity } = useSeverityInference();
 
   const latestStatus = latestReading
     ? getGlucoseStatus(latestReading.glucose_mmoll, glucoseRanges)
@@ -90,6 +94,12 @@ export default function PatientOverview({
   const averageStatus = averageGlucose != null
     ? getGlucoseStatus(averageGlucose, glucoseRanges)
     : undefined;
+
+  const activeAnomalyCount = anomalies
+    ? anomalies.filter(
+        (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+      ).length
+    : anomalyCount;
 
   return (
     <div className={styles.card}>
@@ -212,7 +222,7 @@ export default function PatientOverview({
         <div className={styles.metric}>
           <div
             className={styles.metricIcon}
-            style={anomalyCount > 0 ? { color: "var(--danger)" } : undefined}
+            style={activeAnomalyCount > 0 ? { color: "var(--danger)" } : undefined}
           >
             <AlertTriangle size={18} />
           </div>
@@ -220,9 +230,9 @@ export default function PatientOverview({
             <div className={styles.metricLabel}>Anomalies{isDetailView ? ` (${timeRangeLast})` : ""}</div>
             <div
               className={styles.metricValue}
-              style={anomalyCount > 0 ? { color: "var(--danger)" } : undefined}
+              style={activeAnomalyCount > 0 ? { color: "var(--danger)" } : undefined}
             >
-              {anomalyCount}
+              {activeAnomalyCount}
             </div>
           </div>
         </div>

@@ -158,9 +158,9 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const allChartsPresent = hasInsulin && hasCarbo;
   const onlyOneChart = (hasInsulin || hasCarbo) && !allChartsPresent;
 
-  const anomalyCount = mode === "doctor"
-    ? anomalies.filter((a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)).length
-    : anomalies.filter((a) => !a.is_acknowledged).length;
+  const anomalyCount = anomalies.filter(
+    (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+  ).length;
 
   // What the slider actually buys, in the two units a reader can act on: how many events
   // survive the threshold, and how many that is per day. AnomalyAlert applies the same filter.
@@ -323,6 +323,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
         latestReading={latestReading}
         tir={tir ?? undefined}
         anomalyCount={anomalyCount}
+        anomalies={anomalies}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
         hba1c={hba1c ?? undefined}

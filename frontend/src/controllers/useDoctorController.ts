@@ -13,7 +13,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Patient, GlucoseReading, TimeInRange, HbA1c } from "@/models/types";
+import type { Patient, GlucoseReading, TimeInRange, HbA1c, AnomalyDetection } from "@/models/types";
 import {
   getPatients,
   getLatestReading,
@@ -30,6 +30,7 @@ export interface PatientSummary {
   latestReading: GlucoseReading | undefined;
   tir: TimeInRange | null;
   anomalyCount: number;
+  anomalies: AnomalyDetection[];
   averageGlucose: number | null;
   hba1c: HbA1c | null;
 }
@@ -137,6 +138,10 @@ export function useDoctorController() {
                 anomaliesResp.status === "fulfilled"
                   ? anomaliesResp.value.anomalies.filter((a) => !a.is_acknowledged).length
                   : 0,
+              anomalies:
+                anomaliesResp.status === "fulfilled"
+                  ? anomaliesResp.value.anomalies
+                  : [],
               averageGlucose:
                 averageGlucoseResp.status === "fulfilled"
                   ? averageGlucoseResp.value
