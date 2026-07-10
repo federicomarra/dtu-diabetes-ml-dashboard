@@ -50,7 +50,7 @@ export function useDoctorController() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedOnce = useRef(false);
 
-  const [sortKey, setSortKey] = useState<"name" | "ext_id" | "age" | null>(null);
+  const [sortKey, setSortKey] = useState<"name" | "ext_id" | "age" | "anomalies" | "tir" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
 
   const refresh = () => setRefreshTrigger((prev) => prev + 1);
@@ -66,7 +66,7 @@ export function useDoctorController() {
   };
 
   /** Toggle sorting key with cycle: Ascending <-> Descending */
-  const toggleSort = (key: "name" | "ext_id" | "age") => {
+  const toggleSort = (key: "name" | "ext_id" | "age" | "anomalies" | "tir") => {
     if (sortKey === key) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
@@ -93,7 +93,12 @@ export function useDoctorController() {
           page,
           perPage,
           sortKey || undefined,
-          sortDir || undefined
+          sortDir || undefined,
+          timeRange,
+          {
+            low: glucoseRanges.low,
+            high: glucoseRanges.high
+          }
         );
         const patientList = paginatedPatients.patients;
 

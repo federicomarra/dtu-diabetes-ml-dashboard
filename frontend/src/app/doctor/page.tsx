@@ -38,7 +38,7 @@ export default function DoctorDashboard() {
   /** Per-page selector is shown whenever the total exceeds the minimum option (20). */
   const showPerPageSelector = totalPatients > PER_PAGE_OPTIONS[0];
 
-  function getSortIcon(key: "name" | "ext_id" | "age") {
+  function getSortIcon(key: "name" | "ext_id" | "age" | "anomalies" | "tir") {
     if (sortKey !== key) return <ArrowUpDown size={13} />;
     return sortDir === "desc" ? <ArrowDown size={13} /> : <ArrowUp size={13} />;
   }
@@ -165,6 +165,34 @@ export default function DoctorDashboard() {
             >
               {getSortIcon("age")}
               Age
+            </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "anomalies" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("anomalies")}
+              title={
+                sortKey === "anomalies"
+                  ? sortDir === "asc"
+                    ? "Sorted: anomalies low to high — click for high to low"
+                    : "Sorted: anomalies high to low — click for low to high"
+                  : "Sort by anomalies"
+              }
+            >
+              {getSortIcon("anomalies")}
+              Anomalies
+            </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "tir" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("tir")}
+              title={
+                sortKey === "tir"
+                  ? sortDir === "asc"
+                    ? "Sorted: TIR low to high — click for high to low"
+                    : "Sorted: TIR high to low — click for low to high"
+                  : "Sort by Time in Range (TIR)"
+              }
+            >
+              {getSortIcon("tir")}
+              TIR
             </button>
           </div>
 
