@@ -15,7 +15,7 @@ import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import DataUploader from "@/views/DataUploader/DataUploader";
 import { clearSession } from "@/models/session";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
-import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
+import { useTimeRange, useTimeRangeSelector } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import {
   useSeverityInference,
@@ -34,7 +34,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const { ext_id } = useParams<{ ext_id: string }>();
   const router = useRouter();
   const ctrl = usePatientDetailController(ext_id);
-  const { timeRange, setLast } = useTimeRange();
+  const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
   const { inferenceEnabled, setInferenceEnabled, minSeverity, setMinSeverity } = useSeverityInference();
   const sliderPct = ((minSeverity - SEVERITY_MIN) / (SEVERITY_MAX - SEVERITY_MIN)) * 100;
@@ -60,25 +60,13 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
     setGlucoseLatestDay(day);
   }, []);
 
-  const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
-  const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
-  const valuesArray = Array.from({ length: maxVal }, (_, i) => i + 1);
-
-  const handleUnitChange = (newUnit: "d" | "w" | "m") => {
-    let newValue = activeVal;
-    if (newUnit === "d") {
-      newValue = Math.min(Math.max(activeVal, 1), 7);
-    } else if (newUnit === "w") {
-      newValue = Math.min(Math.max(activeVal, 1), 4);
-    } else if (newUnit === "m") {
-      newValue = Math.min(Math.max(activeVal, 1), 6);
-    }
-    setLast(`${newValue}${newUnit}`);
-  };
-
-  const handleValueChange = (newValue: number) => {
-    setLast(`${newValue}${activeUnit}`);
-  };
+  const {
+    activeVal,
+    activeUnit,
+    valuesArray,
+    handleUnitChange,
+    handleValueChange,
+  } = useTimeRangeSelector();
 
   if (ctrl.loading) {
     return (
@@ -339,6 +327,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
         timeRangeLast={timeRange.last}
         hba1c={hba1c ?? undefined}
         gmi={gmi ?? undefined}
+        isDetailView={true}
       />
 
       {mode === "patient" && (

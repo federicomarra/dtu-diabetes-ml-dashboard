@@ -46,9 +46,17 @@
 }
 
 .metrics {
-  display: flex;
   gap: 1.5rem;
+}
+
+.detailView {
+  display: flex;
   flex-wrap: wrap;
+}
+
+.cardView {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .metric {

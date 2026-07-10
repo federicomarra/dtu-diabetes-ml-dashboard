@@ -9,6 +9,7 @@ import {
   PER_PAGE_OPTIONS,
   type PerPageOption,
 } from "@/controllers/useDoctorController";
+import { useTimeRangeSelector } from "@/controllers/TimeRangeContext";
 import styles from "./doctor.module.css";
 
 
@@ -34,6 +35,14 @@ export default function DoctorDashboard() {
     sortDir,
     toggleSort,
   } = useDoctorController();
+
+  const {
+    activeVal,
+    activeUnit,
+    valuesArray,
+    handleUnitChange,
+    handleValueChange,
+  } = useTimeRangeSelector();
 
   /** Per-page selector is shown whenever the total exceeds the minimum option (20). */
   const showPerPageSelector = totalPatients > PER_PAGE_OPTIONS[0];
@@ -196,6 +205,31 @@ export default function DoctorDashboard() {
             </button>
           </div>
 
+          {/* Time range selector */}
+          <div className={styles.timeRangeSelector}>
+            <span className={styles.selectorLabel}>Last</span>
+            <select
+              className={styles.selectInput}
+              value={activeVal}
+              onChange={(e) => handleValueChange(Number(e.target.value))}
+            >
+              {valuesArray.map((val) => (
+                <option key={val} value={val}>
+                  {val}
+                </option>
+              ))}
+            </select>
+            <select
+              className={styles.selectInput}
+              value={activeUnit}
+              onChange={(e) => handleUnitChange(e.target.value as "d" | "w" | "m")}
+            >
+              <option value="d">Days</option>
+              <option value="w">Weeks</option>
+              <option value="m">Months</option>
+            </select>
+          </div>
+
           {/* Per-page selector */}
           {showPerPageSelector && (
             <div className={styles.perPageSelector}>
@@ -267,7 +301,7 @@ export default function DoctorDashboard() {
 
       {/* ── Patient grid ─────────────────────────────────── */}
       <div className={styles.patientsGrid}>
-        {patients.map(({ patient, latestReading, tir, anomalyCount, averageGlucose }) => (
+        {patients.map(({ patient, latestReading, tir, anomalyCount, averageGlucose, hba1c }) => (
           <Link
             key={patient.id}
             href={`/doctor/${patient.external_id}`}
@@ -281,6 +315,7 @@ export default function DoctorDashboard() {
               tir={tir ?? undefined}
               anomalyCount={anomalyCount}
               averageGlucose={averageGlucose}
+              hba1c={hba1c ?? undefined}
             />
           </Link>
         ))}

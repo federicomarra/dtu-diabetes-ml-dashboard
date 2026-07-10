@@ -18,6 +18,7 @@ interface PatientOverviewProps {
   timeRangeLast?: string;
   hba1c?: HbA1c;
   gmi?: Gmi;
+  isDetailView?: boolean;
 }
 
 function getGlucoseStatus(value: number, ranges: GlucoseRanges): string {
@@ -45,18 +46,24 @@ function getStatusColor(status?: string): string {
 
 function getStatusLabel(status?: string): string {
   switch (status) {
-    case "very_low":  return "Very Low";
-    case "low":       return "Low";
-    case "in_range":  return "In Range";
-    case "high":      return "High";
+    case "very_low": return "Very Low";
+    case "low": return "Low";
+    case "in_range": return "In Range";
+    case "high": return "High";
     case "very_high": return "Very High";
-    default:          return "Unknown";
+    default: return "Unknown";
   }
 }
 
 function getA1cAndGMIColor(value: number): string {
   if (value < 7.0) return "var(--success)";
   if (value < 8.0) return "var(--warning)";
+  return "var(--danger)";
+}
+
+function getTirColor(pct: number): string {
+  if (pct >= 70) return "var(--success)";
+  if (pct >= 60) return "var(--warning)";
   return "var(--danger)";
 }
 
@@ -71,6 +78,7 @@ export default function PatientOverview({
   timeRangeLast = "2w",
   hba1c,
   gmi,
+  isDetailView = false,
 }: PatientOverviewProps) {
   const { unit } = useGlucoseUnit();
   const { ranges: glucoseRanges } = useGlucoseRanges();
@@ -93,30 +101,32 @@ export default function PatientOverview({
         </div>
       </div>
 
-      <div className={styles.metrics}>
-        {/* Current glucose */}
-        <div className={styles.metric}>
-          <div className={styles.metricIcon}>
-            <Droplets size={18} />
-          </div>
-          <div>
-            <div className={styles.metricLabel}>Latest Glucose</div>
-            <div
-              className={styles.metricValue}
-              style={{ color: getStatusColor(latestStatus) }}
-            >
-              {latestReading
-                ? formatGlucose(latestReading.glucose_mmoll, unit)
-                : "—"}
+      <div className={`${styles.metrics} ${isDetailView ? styles.detailView : styles.cardView}`}>
+        {/* Current glucose — detail view only */}
+        {isDetailView && (
+          <div className={styles.metric}>
+            <div className={styles.metricIcon}>
+              <Droplets size={18} />
             </div>
-            <div
-              className={styles.metricStatus}
-              style={{ color: getStatusColor(latestStatus) }}
-            >
-              {getStatusLabel(latestStatus)}
+            <div>
+              <div className={styles.metricLabel}>Latest Glucose</div>
+              <div
+                className={styles.metricValue}
+                style={{ color: getStatusColor(latestStatus) }}
+              >
+                {latestReading
+                  ? formatGlucose(latestReading.glucose_mmoll, unit)
+                  : "—"}
+              </div>
+              <div
+                className={styles.metricStatus}
+                style={{ color: getStatusColor(latestStatus) }}
+              >
+                {getStatusLabel(latestStatus)}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Time in range */}
         <div className={styles.metric}>
@@ -124,8 +134,11 @@ export default function PatientOverview({
             <Activity size={18} />
           </div>
           <div>
-            <div className={styles.metricLabel}>Time in Range</div>
-            <div className={styles.metricValue}>
+            <div className={styles.metricLabel}>Time in Range{isDetailView ? ` (${timeRangeLast})` : ""}</div>
+            <div
+              className={styles.metricValue}
+              style={tir ? { color: getTirColor(tir.in_range_pct) } : undefined}
+            >
               {tir ? `${tir.in_range_pct}%` : "—"}
             </div>
           </div>
@@ -138,23 +151,23 @@ export default function PatientOverview({
               <Droplets size={18} />
             </div>
             <div>
-            <div className={styles.metricLabel}>Avg Glucose ({timeRangeLast})</div>
-            <div
-              className={styles.metricValue}
-              style={{ color: getStatusColor(averageStatus) }}
-            >
-              {averageGlucose != null
-                ? formatGlucose(averageGlucose, unit)
-                : "—"}
+              <div className={styles.metricLabel}>Avg Glucose{isDetailView ? ` (${timeRangeLast})` : ""}</div>
+              <div
+                className={styles.metricValue}
+                style={{ color: getStatusColor(averageStatus) }}
+              >
+                {averageGlucose != null
+                  ? formatGlucose(averageGlucose, unit)
+                  : "—"}
+              </div>
+              <div
+                className={styles.metricStatus}
+                style={{ color: getStatusColor(averageStatus) }}
+              >
+                {getStatusLabel(averageStatus)}
+              </div>
             </div>
-            <div
-              className={styles.metricStatus}
-              style={{ color: getStatusColor(averageStatus) }}
-            >
-              {getStatusLabel(averageStatus)}
-            </div>
-          </div>
-        </div>)}
+          </div>)}
 
         {/* HbA1c */}
         {hba1c != null && (
@@ -163,8 +176,8 @@ export default function PatientOverview({
               <FlaskConical size={18} />
             </div>
             <div>
-              <div className={styles.metricLabel}>HbA1c ({timeRangeLast})</div>
-              <div 
+              <div className={styles.metricLabel}>HbA1c{isDetailView ? ` (${timeRangeLast})` : ""}</div>
+              <div
                 className={styles.metricValue}
                 style={{ color: getA1cAndGMIColor(hba1c.percent) }}
               >
@@ -184,8 +197,8 @@ export default function PatientOverview({
               <FlaskConical size={18} />
             </div>
             <div>
-              <div className={styles.metricLabel}>GMI ({timeRangeLast})</div>
-              <div 
+              <div className={styles.metricLabel}>GMI{isDetailView ? ` (${timeRangeLast})` : ""}</div>
+              <div
                 className={styles.metricValue}
                 style={{ color: getA1cAndGMIColor(gmi.gmi) }}
               >
@@ -204,7 +217,7 @@ export default function PatientOverview({
             <AlertTriangle size={18} />
           </div>
           <div>
-            <div className={styles.metricLabel}>Anomalies</div>
+            <div className={styles.metricLabel}>Anomalies{isDetailView ? ` (${timeRangeLast})` : ""}</div>
             <div
               className={styles.metricValue}
               style={anomalyCount > 0 ? { color: "var(--danger)" } : undefined}
