@@ -65,13 +65,19 @@ export function describeAnomaly(
 
 /**
  * Excursion size: total excess glucose above (or below) the forecast, in mmol/L·min.
+ * Sort key only — deliberately not rendered (see AnomalyAlert): as a display value it is
+ * an invented unit a patient cannot act on, and the card's sentence already gives both
+ * factors ("6.6 mmol/L above forecast for 65 min"), of which this is the product.
  *
  * This is the AREA over the forecast, not the peak deviation — a 4 mmol/L overshoot
- * sustained for 195 min is a bigger excursion than an 8 mmol/L spike lasting 30 min,
- * and only the area says so. It is a separate question from `severity`: severity ranks
- * by how UNEXPECTED an event was given insulin and carbs, this ranks by how much excess
- * glucose the patient actually experienced. The two genuinely disagree
- * (Spearman ≈ 0.47 on real data) — see ml/docs/DETECTION_SEVERITY.md.
+ * sustained 195 min is a bigger excursion than an 8 mmol/L spike lasting 30 min, and only
+ * the area says so.
+ *
+ * It ranks differently from `severity`, and the reason is DURATION. Severity is an event's
+ * single worst 160-minute window, so duration never accumulates into it
+ * (spearman(severity, duration) = 0.06 on real data); excursion size accumulates it by
+ * construction. Within one window the two agree closely (spearman ≈ 0.89). See
+ * ml/docs/DETECTION_SEVERITY.md §10.6.
  */
 export function excursionSize(
   residualMmoll: number | undefined,
@@ -79,16 +85,4 @@ export function excursionSize(
 ): number {
   if (residualMmoll == null || durationMin == null) return 0;
   return Math.abs(residualMmoll) * durationMin;
-}
-
-/** Excursion size in the user's unit, e.g. "429 mmol/L·min" or "7,733 mg/dL·min". */
-export function formatExcursionSize(
-  residualMmoll: number | undefined,
-  durationMin: number | undefined,
-  unit: GlucoseUnit
-): string | null {
-  const area = excursionSize(residualMmoll, durationMin);
-  if (area === 0) return null;
-  const scaled = unit === "mg/dL" ? area * 18.0182 : area;
-  return `${Math.round(scaled).toLocaleString()} ${unit}·min`;
 }

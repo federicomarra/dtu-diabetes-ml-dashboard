@@ -1,0 +1,15 @@
+# The frontend image builds from ./frontend as its context, so the repo-root .dockerignore
+# does NOT apply here — this file is what keeps host artefacts out of the image.
+#
+# node_modules is the load-bearing entry. The Dockerfile runs `npm ci` inside the image; if a
+# host node_modules is copied in on top of it (as happens the moment anyone runs `npm install`
+# locally for their IDE), the host's binaries — built for the host platform and carrying host
+# permissions — clobber the container's, and `npm run build` dies with exit 126 (permission
+# denied). Ignoring it also makes the build context small and the COPY layer cache-friendly.
+node_modules
+.next
+out
+
+.env*.local
+npm-debug.log*
+.DS_Store

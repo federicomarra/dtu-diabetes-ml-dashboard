@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import type { AnomalyDetection } from "@/models/types";
 import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
-import { describeAnomaly, excursionSize, formatExcursionSize } from "@/models/glucoseUnits";
+import { describeAnomaly, excursionSize } from "@/models/glucoseUnits";
 import styles from "./AnomalyAlert.module.css";
 
 interface AnomalyAlertProps {
@@ -35,12 +35,17 @@ type SortDir = "asc" | "desc";
 // Why the two sorts disagree, in one hover. The card shows a rank (ordinal, honest) rather
 // than the raw σ, because σ here is a robust z-score of a heavy-tailed surprise statistic
 // and reads as a rarity guarantee it cannot make. See ml/docs/DETECTION_SEVERITY.md §1.
+//
+// The divergence between this and excursion size is DURATION, not the NLL's uncertainty
+// weighting: measured on 3,830 windows, the standardized-error term explains 93.3% of the
+// score's variance and the log-variance term only 1.8%. Severity takes an event's single
+// worst 160-min window, so spearman(severity, duration) = 0.06 — duration never accumulates.
 const SURPRISE_HELP =
-  "Surprise score. The detector scores each window by Gaussian NLL — " +
-  "0.5 · (residual² · e^(−logvar) + logvar) — which divides the error by the model's own " +
-  "predicted uncertainty. A moderate miss the model was confident about scores higher than " +
-  "a big miss it was unsure about. So this answers “how unexpected, given the insulin and " +
-  "carbs on board” — not “how big”. Sort by excursion size for that.";
+  "Surprise score. Each 160-minute window is scored by how far glucose strayed from what " +
+  "the model forecast from the insulin and carbs on board, measured against the model's own " +
+  "error bar. An event takes its single worst window, so a longer event is not automatically " +
+  "more surprising, duration is not added up here. Sort by Excursion to rank by total excess " +
+  "glucose instead.";
 
 export default function AnomalyAlert({
   anomalies,
@@ -228,8 +233,10 @@ export default function AnomalyAlert({
           carries the maths; this carries the takeaway, and is visible without hovering —
           which matters on touch, and to anyone watching a demo over your shoulder. */}
       <p className={styles.rankNote}>
-        Ranked <strong>#1</strong> onwards by how <em>unexpected</em> each event was given the
-        insulin and carbs on board — not by how large it was. Sort by <em>Excursion</em> for that.
+        Ranked <strong>#1</strong> onwards by how <em>unexpected</em> each event was, given the
+        insulin and carbs on board. This takes each event&apos;s single worst window, so a longer
+        event is not automatically higher. Sort by <em>Excursion</em> to rank by total excess
+        glucose instead.
       </p>
 
       <div ref={gridRef} className={styles.grid}>
@@ -270,19 +277,14 @@ export default function AnomalyAlert({
                   {format(new Date(anomaly.detected_at), "MMM d, HH:mm")}
                 </span>
               )}
-              {/* `confidence` (0-100 "strength") is dropped: it is 100 × severity / max
-                  severity in the response, so it is a linear rescale of the surprise score
-                  and its ordering is identical (Spearman 1.0). It carried no information the
-                  rank and score do not already carry. Excursion size answers the OTHER
-                  question — how much excess glucose the patient actually experienced. */}
-              {formatExcursionSize(anomaly.residual_mmoll, anomaly.duration_min, unit) && (
-                <span
-                  className={styles.confidence}
-                  title="Excursion size: total excess glucose above forecast (deviation × duration)"
-                >
-                  {formatExcursionSize(anomaly.residual_mmoll, anomaly.duration_min, unit)}
-                </span>
-              )}
+              {/* `confidence` (0-100 "strength") is gone: it was 100 × severity / max severity
+                  in the response, a linear rescale of the surprise score whose ordering was
+                  identical (Spearman 1.0). It carried nothing the rank and score do not.
+
+                  Excursion size (|residual| × duration) is NOT rendered either. It drives the
+                  Excursion sort, but as a display value "426 mmol/L·min" is an invented unit a
+                  patient cannot act on — and the sentence below already gives both factors
+                  ("6.6 mmol/L above forecast for 65 min"), from which it is the product. */}
               {(() => {
                 // Composed here, not on the server: `description` is fixed to mmol/L.
                 const text = describeAnomaly(
