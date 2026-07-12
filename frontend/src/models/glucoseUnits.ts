@@ -62,3 +62,33 @@ export function describeAnomaly(
 
   return `Glucose ran ${magnitude} ${direction} forecast for ${durationMin} min · ${cause}`;
 }
+
+/**
+ * Excursion size: total excess glucose above (or below) the forecast, in mmol/L·min.
+ *
+ * This is the AREA over the forecast, not the peak deviation — a 4 mmol/L overshoot
+ * sustained for 195 min is a bigger excursion than an 8 mmol/L spike lasting 30 min,
+ * and only the area says so. It is a separate question from `severity`: severity ranks
+ * by how UNEXPECTED an event was given insulin and carbs, this ranks by how much excess
+ * glucose the patient actually experienced. The two genuinely disagree
+ * (Spearman ≈ 0.47 on real data) — see ml/docs/DETECTION_SEVERITY.md.
+ */
+export function excursionSize(
+  residualMmoll: number | undefined,
+  durationMin: number | undefined
+): number {
+  if (residualMmoll == null || durationMin == null) return 0;
+  return Math.abs(residualMmoll) * durationMin;
+}
+
+/** Excursion size in the user's unit, e.g. "429 mmol/L·min" or "7,733 mg/dL·min". */
+export function formatExcursionSize(
+  residualMmoll: number | undefined,
+  durationMin: number | undefined,
+  unit: GlucoseUnit
+): string | null {
+  const area = excursionSize(residualMmoll, durationMin);
+  if (area === 0) return null;
+  const scaled = unit === "mg/dL" ? area * 18.0182 : area;
+  return `${Math.round(scaled).toLocaleString()} ${unit}·min`;
+}

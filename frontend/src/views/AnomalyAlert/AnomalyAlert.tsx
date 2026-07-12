@@ -9,12 +9,13 @@ import {
   ArrowUpDown,
   ArrowDown,
   ArrowUp,
+  HelpCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { AnomalyDetection } from "@/models/types";
 import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
-import { describeAnomaly } from "@/models/glucoseUnits";
+import { describeAnomaly, excursionSize, formatExcursionSize } from "@/models/glucoseUnits";
 import styles from "./AnomalyAlert.module.css";
 
 interface AnomalyAlertProps {
@@ -28,8 +29,18 @@ const TYPE_LABELS: Record<string, string> = {
   unusual_pattern: "Unusual Pattern",
 };
 
-type SortKey = "severity" | "date";
+type SortKey = "severity" | "excursion" | "date";
 type SortDir = "asc" | "desc";
+
+// Why the two sorts disagree, in one hover. The card shows a rank (ordinal, honest) rather
+// than the raw σ, because σ here is a robust z-score of a heavy-tailed surprise statistic
+// and reads as a rarity guarantee it cannot make. See ml/docs/DETECTION_SEVERITY.md §1.
+const SURPRISE_HELP =
+  "Surprise score. The detector scores each window by Gaussian NLL — " +
+  "0.5 · (residual² · e^(−logvar) + logvar) — which divides the error by the model's own " +
+  "predicted uncertainty. A moderate miss the model was confident about scores higher than " +
+  "a big miss it was unsure about. So this answers “how unexpected, given the insulin and " +
+  "carbs on board” — not “how big”. Sort by excursion size for that.";
 
 export default function AnomalyAlert({
   anomalies,
@@ -61,6 +72,16 @@ export default function AnomalyAlert({
     return () => observer.disconnect();
   }, []);
 
+  // Surprise rank, assigned over EVERY stored anomaly before any filtering, so a card keeps
+  // the same rank as the slider moves. Because the slider also thresholds on severity, the
+  // visible ranks stay contiguous (1..N) — a gap only appears when a card is acknowledged
+  // away, which correctly signals "that one was handled".
+  const rankById = new Map<number, number>(
+    [...anomalies]
+      .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
+      .map((a, i) => [a.id, i + 1])
+  );
+
   // Apply severity threshold client-side — the slider never triggers a refetch.
   const filtered = anomalies.filter(
     (a) =>
@@ -74,6 +95,15 @@ export default function AnomalyAlert({
       const sa = a.severity ?? 0;
       const sb = b.severity ?? 0;
       return sortDir === "desc" ? sb - sa : sa - sb;
+    }
+    if (sortKey === "excursion") {
+      // Area over the forecast, NOT the peak deviation — the question "which of these cost
+      // the patient the most excess glucose" is different from "which surprised the model
+      // most", and the two orders really do differ. Ties fall back to surprise.
+      const ea = excursionSize(a.residual_mmoll, a.duration_min);
+      const eb = excursionSize(b.residual_mmoll, b.duration_min);
+      if (ea !== eb) return sortDir === "desc" ? eb - ea : ea - eb;
+      return (b.severity ?? 0) - (a.severity ?? 0);
     }
     if (sortKey === "date") {
       const da = a.detected_at ? new Date(a.detected_at).getTime() : 0;
@@ -94,31 +124,23 @@ export default function AnomalyAlert({
   const visibleCards = sorted.slice(0, limit);
   const hasMoreThanTwoRows = sorted.length > 2 * columns;
 
+  // First click sorts descending; second flips to ascending; a third on a non-default key
+  // returns to the default (date desc). Date itself just cycles direction.
   function toggleSort(key: SortKey) {
-    if (key === "severity") {
-      if (sortKey === "severity") {
-        if (sortDir === "desc") {
-          setSortDir("asc");
-        } else {
-          // Clear back to default (date desc)
-          setSortKey("date");
-          setSortDir("desc");
-        }
-      } else {
-        setSortKey("severity");
-        setSortDir("desc");
-      }
-    } else { // key === "date"
-      if (sortKey === "date") {
-        if (sortDir === "desc") {
-          setSortDir("asc");
-        } else {
-          setSortDir("desc");
-        }
-      } else {
-        setSortKey("date");
-        setSortDir("desc");
-      }
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("desc");
+      return;
+    }
+    if (sortDir === "desc") {
+      setSortDir("asc");
+      return;
+    }
+    if (key === "date") {
+      setSortDir("desc");
+    } else {
+      setSortKey("date");
+      setSortDir("desc");
     }
   }
 
@@ -151,13 +173,27 @@ export default function AnomalyAlert({
             title={
               sortKey === "severity"
                 ? sortDir === "desc"
-                  ? "Sorted: highest first — click for lowest first"
-                  : "Sorted: lowest first — click to clear"
-                : "Sort by severity"
+                  ? "Sorted: most unexpected first — click to reverse"
+                  : "Sorted: least unexpected first — click to clear"
+                : "Sort by how unexpected the event was"
             }
           >
             {getSortIcon("severity")}
-            Severity
+            Surprise
+          </button>
+          <button
+            className={`${styles.sortBtn}${sortKey === "excursion" ? ` ${styles.sortBtnActive}` : ""}`}
+            onClick={() => toggleSort("excursion")}
+            title={
+              sortKey === "excursion"
+                ? sortDir === "desc"
+                  ? "Sorted: largest excursion first — click to reverse"
+                  : "Sorted: smallest excursion first — click to clear"
+                : "Sort by excursion size — total excess glucose above forecast (deviation × duration)"
+            }
+          >
+            {getSortIcon("excursion")}
+            Excursion
           </button>
           <button
             className={`${styles.sortBtn}${sortKey === "date" ? ` ${styles.sortBtnActive}` : ""}`}
@@ -188,6 +224,14 @@ export default function AnomalyAlert({
         </div>
       </div>
 
+      {/* Stated once for the list, not repeated on 31 cards. The tooltip on each score
+          carries the maths; this carries the takeaway, and is visible without hovering —
+          which matters on touch, and to anyone watching a demo over your shoulder. */}
+      <p className={styles.rankNote}>
+        Ranked <strong>#1</strong> onwards by how <em>unexpected</em> each event was given the
+        insulin and carbs on board — not by how large it was. Sort by <em>Excursion</em> for that.
+      </p>
+
       <div ref={gridRef} className={styles.grid}>
         {visibleCards.map((anomaly) => (
           <div
@@ -196,12 +240,16 @@ export default function AnomalyAlert({
           >
             <div className={styles.cardHeader}>
               <span className={styles.alertType}>
+                <span className={styles.rank} title="Surprise rank across every anomaly in this window">
+                  #{rankById.get(anomaly.id)}
+                </span>
                 {TYPE_LABELS[anomaly.anomaly_type] ?? anomaly.anomaly_type}
               </span>
               <div className={styles.cardHeaderRight}>
                 {anomaly.severity != null && (
-                  <strong className={styles.severity}>
-                    {anomaly.severity.toFixed(1)}σ
+                  <strong className={styles.severity} title={SURPRISE_HELP}>
+                    {anomaly.severity.toFixed(1)}
+                    <HelpCircle size={11} aria-hidden="true" />
                   </strong>
                 )}
                 {onAcknowledge && !anomaly.is_acknowledged && (
@@ -222,10 +270,19 @@ export default function AnomalyAlert({
                   {format(new Date(anomaly.detected_at), "MMM d, HH:mm")}
                 </span>
               )}
-              {/* confidence is a magnitude bar (rarity), NOT a probability — label it honestly */}
-              <span className={styles.confidence}>
-                {Math.round(anomaly.confidence * 100)}% strength
-              </span>
+              {/* `confidence` (0-100 "strength") is dropped: it is 100 × severity / max
+                  severity in the response, so it is a linear rescale of the surprise score
+                  and its ordering is identical (Spearman 1.0). It carried no information the
+                  rank and score do not already carry. Excursion size answers the OTHER
+                  question — how much excess glucose the patient actually experienced. */}
+              {formatExcursionSize(anomaly.residual_mmoll, anomaly.duration_min, unit) && (
+                <span
+                  className={styles.confidence}
+                  title="Excursion size: total excess glucose above forecast (deviation × duration)"
+                >
+                  {formatExcursionSize(anomaly.residual_mmoll, anomaly.duration_min, unit)}
+                </span>
+              )}
               {(() => {
                 // Composed here, not on the server: `description` is fixed to mmol/L.
                 const text = describeAnomaly(
