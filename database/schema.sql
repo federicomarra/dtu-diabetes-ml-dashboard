@@ -21,8 +21,6 @@ CREATE TABLE IF NOT EXISTS histories (
     glucose_mmoll   REAL,
     insulin_u      REAL,
     cho_grams       REAL
-    --exercise_ca     REAL,    -- NOT INCLUDED IN SCHEMA FOR NOW
-    --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 );
 
 CREATE INDEX idx_history_patient_time ON histories(patient_id, timestamp);
@@ -32,12 +30,11 @@ CREATE TABLE IF NOT EXISTS glucoses (
     id              SERIAL PRIMARY KEY,
     patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     timestamp       TIMESTAMP NOT NULL,
-    glucose_mmoll   REAL NOT NULL,                      -- stored in mmol/L
-    source          VARCHAR(20) NOT NULL DEFAULT 'simulated'  -- simulated, dexcom, libre, glooko_cgm, glooko_manual
+    glucose_mmoll   REAL NOT NULL,
+    source          VARCHAR(20) NOT NULL DEFAULT 'simulated'
                         CHECK (source IN ('simulated', 'dexcom', 'libre', 'glooko_cgm', 'glooko_manual')),
-    status          VARCHAR(20) NOT NULL             -- very_low, low, in_range, high, very_high
+    status          VARCHAR(20) NOT NULL
                         CHECK (status IN ('very_low', 'low', 'in_range', 'high', 'very_high'))
-    --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_glucose_patient_time ON glucoses(patient_id, timestamp);
@@ -48,9 +45,8 @@ CREATE TABLE IF NOT EXISTS insulins (
     patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     timestamp       TIMESTAMP NOT NULL,
     units           REAL NOT NULL,
-    event_type      VARCHAR(10) NOT NULL     -- bolus, basal
+    event_type      VARCHAR(10) NOT NULL
                         CHECK (event_type IN ('bolus', 'basal'))
-    --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_insulin_patient_time ON insulins(patient_id, timestamp);
@@ -61,25 +57,11 @@ CREATE TABLE IF NOT EXISTS meals (
     patient_id      INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     timestamp       TIMESTAMP NOT NULL,
     carbs       REAL NOT NULL,
-    meal_type       VARCHAR(20)                               -- breakfast, lunch, dinner, snack
+    meal_type       VARCHAR(20)
                         CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack'))
-    --created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_meal_patient_time ON meals(patient_id, timestamp);
-
--- Exercises
-CREATE TABLE IF NOT EXISTS exercises (
-    id                  SERIAL PRIMARY KEY,
-    patient_id          INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-    timestamp           TIMESTAMP NOT NULL,
-    duration_minutes    INTEGER NOT NULL,
-    intensity           VARCHAR(10) NOT NULL                  -- low, medium, high
-                            CHECK (intensity IN ('low', 'medium', 'high'))
-    --created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_exercise_patient_time ON exercises(patient_id, timestamp);
 
 -- Anomalies (ML results)
 CREATE TABLE IF NOT EXISTS anomalies (
