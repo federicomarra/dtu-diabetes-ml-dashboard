@@ -350,7 +350,9 @@ export function getDemoPatients(
   page = 1,
   perPage = 20,
   sortBy?: string,
-  sortDir?: string
+  sortDir?: string,
+  timeRange?: { last?: string; start?: string; end?: string },
+  ranges?: { low?: number; high?: number }
 ): PaginatedResponse<Patient> {
   ensureStateInitialized();
   const list = [...patientsList];
@@ -368,6 +370,24 @@ export function getDemoPatients(
       } else if (sortBy === "age") {
         valA = Number(a.age) || 0;
         valB = Number(b.age) || 0;
+      } else if (sortBy === "anomalies") {
+        const activeA = (anomaliesMap[a.id] || []).filter(anom => !anom.is_acknowledged);
+        const activeB = (anomaliesMap[b.id] || []).filter(anom => !anom.is_acknowledged);
+        valA = filterByTimeParams(activeA, timeRange).length;
+        valB = filterByTimeParams(activeB, timeRange).length;
+      } else if (sortBy === "tir") {
+        const readingsA = glucoseReadingsMap[a.id] || [];
+        const readingsB = glucoseReadingsMap[b.id] || [];
+        const filteredA = filterByTimeParams(readingsA, timeRange);
+        const filteredB = filterByTimeParams(readingsB, timeRange);
+        const lowLimit = ranges?.low ?? LOW_THRESHOLD;
+        const highLimit = ranges?.high ?? HIGH_THRESHOLD;
+
+        const countInRange = (readings: typeof readingsA) =>
+          readings.filter(r => r.glucose_mmoll >= lowLimit && r.glucose_mmoll <= highLimit).length;
+
+        valA = filteredA.length === 0 ? 0 : countInRange(filteredA) / filteredA.length;
+        valB = filteredB.length === 0 ? 0 : countInRange(filteredB) / filteredB.length;
       }
 
       if (valA < valB) return sortDir === "desc" ? 1 : -1;

@@ -200,3 +200,45 @@
   background: color-mix(in srgb, var(--accent, #6366f1) 20%, transparent);
   color: var(--accent, #6366f1);
 }
+
+.timeRangeSelector {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 3.5px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.selectorLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 0 0.4rem;
+  user-select: none;
+}
+
+.selectInput {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--card-bg, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.selectInput:hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+  border-color: var(--border, rgba(255, 255, 255, 0.15));
+}
+
+.selectInput:focus {
+  border-color: var(--accent, #6366f1);
+  background: var(--surface-3, rgba(255, 255, 255, 0.12));
+}

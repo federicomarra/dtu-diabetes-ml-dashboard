@@ -9,6 +9,8 @@ import {
   PER_PAGE_OPTIONS,
   type PerPageOption,
 } from "@/controllers/useDoctorController";
+import { useTimeRangeSelector } from "@/controllers/TimeRangeContext";
+import { useSeverityInference } from "@/controllers/SeverityInferenceContext";
 import styles from "./doctor.module.css";
 
 
@@ -20,7 +22,6 @@ export default function DoctorDashboard() {
   const {
     patients,
     totalPatients,
-    totalAlerts,
     loading,
     error,
     page,
@@ -35,10 +36,27 @@ export default function DoctorDashboard() {
     toggleSort,
   } = useDoctorController();
 
+  const { minSeverity } = useSeverityInference();
+
+  const totalAlertsFiltered = patients.reduce((sum, p) => {
+    const filteredCount = p.anomalies.filter(
+      (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+    ).length;
+    return sum + filteredCount;
+  }, 0);
+
+  const {
+    activeVal,
+    activeUnit,
+    valuesArray,
+    handleUnitChange,
+    handleValueChange,
+  } = useTimeRangeSelector();
+
   /** Per-page selector is shown whenever the total exceeds the minimum option (20). */
   const showPerPageSelector = totalPatients > PER_PAGE_OPTIONS[0];
 
-  function getSortIcon(key: "name" | "ext_id" | "age") {
+  function getSortIcon(key: "name" | "ext_id" | "age" | "anomalies" | "tir") {
     if (sortKey !== key) return <ArrowUpDown size={13} />;
     return sortDir === "desc" ? <ArrowDown size={13} /> : <ArrowUp size={13} />;
   }
@@ -112,7 +130,7 @@ export default function DoctorDashboard() {
             )}
           </div>
           <p className={styles.subtitle}>
-            {totalPatients} patients • {totalAlerts} total alerts
+            {totalPatients} patients • {totalAlertsFiltered} total alerts
             {totalPages > 1 && (
               <> — page {page} of {totalPages}</>
             )}
@@ -166,6 +184,59 @@ export default function DoctorDashboard() {
               {getSortIcon("age")}
               Age
             </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "anomalies" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("anomalies")}
+              title={
+                sortKey === "anomalies"
+                  ? sortDir === "asc"
+                    ? "Sorted: anomalies low to high — click for high to low"
+                    : "Sorted: anomalies high to low — click for low to high"
+                  : "Sort by anomalies"
+              }
+            >
+              {getSortIcon("anomalies")}
+              Anomalies
+            </button>
+            <button
+              className={`${styles.sortBtn}${sortKey === "tir" ? ` ${styles.sortBtnActive}` : ""}`}
+              onClick={() => toggleSort("tir")}
+              title={
+                sortKey === "tir"
+                  ? sortDir === "asc"
+                    ? "Sorted: TIR low to high — click for high to low"
+                    : "Sorted: TIR high to low — click for low to high"
+                  : "Sort by Time in Range (TIR)"
+              }
+            >
+              {getSortIcon("tir")}
+              TIR
+            </button>
+          </div>
+
+          {/* Time range selector */}
+          <div className={styles.timeRangeSelector}>
+            <span className={styles.selectorLabel}>Last</span>
+            <select
+              className={styles.selectInput}
+              value={activeVal}
+              onChange={(e) => handleValueChange(Number(e.target.value))}
+            >
+              {valuesArray.map((val) => (
+                <option key={val} value={val}>
+                  {val}
+                </option>
+              ))}
+            </select>
+            <select
+              className={styles.selectInput}
+              value={activeUnit}
+              onChange={(e) => handleUnitChange(e.target.value as "d" | "w" | "m")}
+            >
+              <option value="d">Days</option>
+              <option value="w">Weeks</option>
+              <option value="m">Months</option>
+            </select>
           </div>
 
           {/* Per-page selector */}
@@ -239,7 +310,7 @@ export default function DoctorDashboard() {
 
       {/* ── Patient grid ─────────────────────────────────── */}
       <div className={styles.patientsGrid}>
-        {patients.map(({ patient, latestReading, tir, anomalyCount, averageGlucose }) => (
+        {patients.map(({ patient, latestReading, tir, anomalies, averageGlucose, hba1c }) => (
           <Link
             key={patient.id}
             href={`/doctor/${patient.external_id}`}
@@ -251,8 +322,9 @@ export default function DoctorDashboard() {
               patientAge={patient.age != null ? String(patient.age) : "??"}
               latestReading={latestReading}
               tir={tir ?? undefined}
-              anomalyCount={anomalyCount}
+              anomalies={anomalies}
               averageGlucose={averageGlucose}
+              hba1c={hba1c ?? undefined}
             />
           </Link>
         ))}

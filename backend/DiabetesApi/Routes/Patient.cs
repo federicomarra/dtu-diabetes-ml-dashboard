@@ -20,15 +20,25 @@ public class Patient(AppDbContext db, PatientService patientService, UploadServi
     /// <summary>List all patients with optional pagination and sorting.</summary>
     /// <param name="page">Page number (default 1).</param>
     /// <param name="perPage">Items per page (default 20).</param>
-    /// <param name="sortBy">Field to sort by: "name", "ext_id"/"external_id", or "age"/"date_of_birth" (default is creation date).</param>
+    /// <param name="sortBy">Field to sort by: "name", "ext_id"/"external_id", "age"/"date_of_birth", "anomalies", or "tir" (default is creation date).</param>
     /// <param name="sortDir">Sorting direction: "asc" or "desc" (default "desc").</param>
+    /// <param name="start">Optional time window start (ISO datetime).</param>
+    /// <param name="end">Optional time window end (ISO datetime).</param>
+    /// <param name="last">Optional sliding window duration (e.g., "24h", "7d", "2w", "1m").</param>
+    /// <param name="low">Optional custom glucose range lower threshold (mmol/L).</param>
+    /// <param name="high">Optional custom glucose range upper threshold (mmol/L).</param>
     [HttpGet("list")]
     [ProducesResponseType(typeof(PaginatedPatientsResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListPatients(
         [FromQuery] int page = 1,
         [FromQuery] int perPage = 20,
         [FromQuery] string? sortBy = null,
-        [FromQuery] string? sortDir = null)
+        [FromQuery] string? sortDir = null,
+        [FromQuery] string? start = null,
+        [FromQuery] string? end = null,
+        [FromQuery] string? last = null,
+        [FromQuery] double? low = null,
+        [FromQuery] double? high = null)
     {
         IQueryable<Models.Patient> query = db.Patients;
 
@@ -57,6 +67,56 @@ public class Patient(AppDbContext db, PatientService patientService, UploadServi
                 query = isAsc 
                     ? query.OrderByDescending(p => p.DateOfBirth).ThenByDescending(p => p.Id) 
                     : query.OrderBy(p => p.DateOfBirth).ThenBy(p => p.Id);
+            }
+            else if (sortBy.Equals("anomalies", StringComparison.OrdinalIgnoreCase))
+            {
+                var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                    last: last,
+                    start: start,
+                    end: end,
+                    getLatestTimestamp: () => db.Glucoses.Select(g => (DateTime?)g.Timestamp).MaxAsync());
+
+                if (range is null)
+                {
+                    return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+                }
+
+                var rangeStart = range.Value.start;
+                var rangeEnd = range.Value.end;
+
+                query = isAsc 
+                    ? query.OrderBy(p => p.Anomalies.Count(a => !a.IsAcknowledged && a.DetectedAt >= rangeStart && a.DetectedAt <= rangeEnd)).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.Anomalies.Count(a => !a.IsAcknowledged && a.DetectedAt >= rangeStart && a.DetectedAt <= rangeEnd)).ThenByDescending(p => p.Id);
+            }
+            else if (sortBy.Equals("tir", StringComparison.OrdinalIgnoreCase))
+            {
+                var range = await TimeRangeUtils.ResolveTimeRangeAsync(
+                    last: last,
+                    start: start,
+                    end: end,
+                    getLatestTimestamp: () => db.Glucoses.Select(g => (DateTime?)g.Timestamp).MaxAsync());
+
+                if (range is null)
+                {
+                    return BadRequest(new { error = "Invalid last parameter format. Use e.g. 24h, 7d, 2w, 1m." });
+                }
+
+                var rangeStart = range.Value.start;
+                var rangeEnd = range.Value.end;
+                var thresholdLow = low ?? 3.9;
+                var thresholdHigh = high ?? 10.0;
+
+                query = isAsc 
+                    ? query.OrderBy(p => p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd) == 0 
+                        ? 0.0 
+                        : (double)p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd && g.GlucoseMmoll >= thresholdLow && g.GlucoseMmoll <= thresholdHigh) 
+                          / p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd)
+                      ).ThenBy(p => p.Id) 
+                    : query.OrderByDescending(p => p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd) == 0 
+                        ? 0.0 
+                        : (double)p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd && g.GlucoseMmoll >= thresholdLow && g.GlucoseMmoll <= thresholdHigh) 
+                          / p.Glucoses.Count(g => g.Timestamp >= rangeStart && g.Timestamp <= rangeEnd)
+                      ).ThenByDescending(p => p.Id);
             }
             else
             {
@@ -118,10 +178,16 @@ public class Patient(AppDbContext db, PatientService patientService, UploadServi
     [HttpPost("create")]
     [ProducesResponseType(typeof(PatientDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreatePatient([FromBody] CreatePatientRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ExternalId) || string.IsNullOrWhiteSpace(req.Name))
             return BadRequest(new { error = "external_id and name are required" });
+
+        // Without this the unique index on external_id raises a DbUpdateException, which the
+        // client receives as an unhandled 500 with a stack trace and no readable `error` field.
+        if (await db.Patients.AnyAsync(p => p.ExternalId == req.ExternalId))
+            return Conflict(new { error = $"A patient with external_id '{req.ExternalId}' already exists." });
 
         var patient = new Models.Patient
         {

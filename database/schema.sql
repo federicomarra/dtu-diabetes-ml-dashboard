@@ -90,7 +90,9 @@ CREATE TABLE IF NOT EXISTS anomalies (
                             CHECK (anomaly_type IN ('missed_bolus', 'late_bolus')),
     confidence          REAL NOT NULL,
     severity            REAL,                                 -- σ above patient baseline; read-time threshold filters on this
-    description         TEXT,
+    description         TEXT,                                 -- fallback sentence (mmol/L); clients that can convert should compose from residual_mmoll
+    residual_mmoll      REAL,                                 -- signed: + glucose ABOVE forecast, - BELOW. Unit-neutral, so the UI can render mg/dL
+    duration_min        INTEGER,                              -- length of the detected excursion
     is_acknowledged     BOOLEAN DEFAULT FALSE,
     detected_at         TIMESTAMP                             -- anomaly window start (the table has no other time column)
 );

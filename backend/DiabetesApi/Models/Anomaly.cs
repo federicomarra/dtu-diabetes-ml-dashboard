@@ -33,6 +33,17 @@ public class Anomaly
     [Column("description")]
     public string? Description { get; set; }
 
+    /// <summary>
+    /// Signed forecast residual in mmol/L: positive = glucose ran ABOVE the model's
+    /// forecast, negative = below. Stored as a number, not baked into
+    /// <see cref="Description"/>, so the UI can render it in mg/dL.
+    /// </summary>
+    [Column("residual_mmoll")]
+    public double? ResidualMmoll { get; set; }
+
+    [Column("duration_min")]
+    public int? DurationMin { get; set; }
+
     [Column("is_acknowledged")]
     public bool IsAcknowledged { get; set; } = false;
 

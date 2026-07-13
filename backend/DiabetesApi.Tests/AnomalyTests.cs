@@ -32,6 +32,60 @@ public class AnomalyTests(CustomWebApplicationFactory factory) : TestBase(factor
     }
 
     [Fact]
+    public async Task GetAnomalies_ExposesSignedResidualAndDuration()
+    {
+        // The residual must travel as a NUMBER. Baking "6.6 mmol/L" into `description`
+        // (the old behaviour) leaves the anomaly card as the one place on the page that
+        // cannot honour the mg/dL toggle.
+        var patient = await SeedPatientAsync("P_ANOMALY_RESID", "Residual Patient");
+
+        await using var db = CreateDb();
+        db.Anomalies.Add(new Anomaly
+        {
+            PatientId = patient.Id,
+            AnomalyType = "missed_bolus",
+            Confidence = 0.9,
+            Severity = 12.5,
+            ResidualMmoll = 6.6,
+            DurationMin = 65,
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await Client.GetAsync($"/api/anomaly?id={patient.Id}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var a = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+            .GetProperty("anomalies")[0];
+        Assert.Equal(6.6, a.GetProperty("residual_mmoll").GetDouble(), 3);
+        Assert.Equal(65, a.GetProperty("duration_min").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetAnomalies_NegativeResidualSurvivesRoundTrip()
+    {
+        // Sign carries the meaning: below-forecast excursions are never `missed`, but a
+        // `late_bolus` legitimately runs below forecast once the late dose lands.
+        var patient = await SeedPatientAsync("P_ANOMALY_BELOW", "Below Patient");
+
+        await using var db = CreateDb();
+        db.Anomalies.Add(new Anomaly
+        {
+            PatientId = patient.Id,
+            AnomalyType = "late_bolus",
+            Confidence = 0.4,
+            Severity = 4.0,
+            ResidualMmoll = -4.3,
+            DurationMin = 55,
+        });
+        await db.SaveChangesAsync();
+
+        var resp = await Client.GetAsync($"/api/anomaly?id={patient.Id}");
+        var a = (await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts))
+            .GetProperty("anomalies")[0];
+        Assert.True(a.GetProperty("residual_mmoll").GetDouble() < 0);
+    }
+
+    [Fact]
     public async Task GetAnomalies_ReturnsAllSortedBySeverity()
     {
         var patient = await SeedPatientAsync("P_ANOMALY_FILTER", "AF Patient");
@@ -164,21 +218,22 @@ public class AnomalyTests(CustomWebApplicationFactory factory) : TestBase(factor
         var resp = await Client.PostAsync($"/api/anomaly/detect?id={patient.Id}", null);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
+        // The mock returns two anomalies (7.0σ and 4.0σ); only the one ≥ 6σ is persisted.
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
         Assert.Equal(1, body.GetProperty("count").GetInt32());
 
         var anomaly = body.GetProperty("anomalies")[0];
         Assert.Equal("missed_bolus", anomaly.GetProperty("anomaly_type").GetString());
         Assert.Equal("Mocked anomaly description", anomaly.GetProperty("description").GetString());
-        Assert.Equal(3.5, anomaly.GetProperty("severity").GetDouble(), precision: 1);
+        Assert.Equal(7.0, anomaly.GetProperty("severity").GetDouble(), precision: 1);
         Assert.Equal(0.75, anomaly.GetProperty("confidence").GetDouble(), precision: 2); // 75.0 / 100.0
 
-        // Verify it was saved to the database
+        // Verify only the ≥ 6σ anomaly was saved to the database
         await using (var db = CreateDb())
         {
             var dbAnomaly = await db.Anomalies.SingleAsync(a => a.PatientId == patient.Id);
             Assert.Equal("missed_bolus", dbAnomaly.AnomalyType);
-            Assert.Equal(3.5, dbAnomaly.Severity);
+            Assert.Equal(7.0, dbAnomaly.Severity);
             Assert.Equal(0.75, dbAnomaly.Confidence);
             Assert.Equal("Mocked anomaly description", dbAnomaly.Description);
         }

@@ -91,13 +91,25 @@ export async function getPatients(
   page = 1,
   perPage = 20,
   sortBy?: string,
-  sortDir?: string
+  sortDir?: string,
+  timeRange?: { last?: string; start?: string; end?: string },
+  ranges?: { low?: number; high?: number }
 ): Promise<PaginatedResponse<Patient>> {
   if (await shouldRunDemo()) {
-    return getDemoPatients(page, perPage, sortBy, sortDir);
+    return getDemoPatients(page, perPage, sortBy, sortDir, timeRange, ranges);
   }
   const { data } = await api.get("/patient/list", {
-    params: { page, perPage, sortBy, sortDir },
+    params: {
+      page,
+      perPage,
+      sortBy,
+      sortDir,
+      start: timeRange?.start,
+      end: timeRange?.end,
+      last: timeRange?.last,
+      low: ranges?.low,
+      high: ranges?.high,
+    },
   });
   return data;
 }

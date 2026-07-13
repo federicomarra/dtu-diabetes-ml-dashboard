@@ -17,14 +17,12 @@ export default function Home() {
 
   const [hoveredPortal, setHoveredPortal] = useState<"patient" | "doctor" | null>(null);
 
+  // Always go through /patient: it validates the saved session against the backend and
+  // forwards to the dashboard itself. Jumping straight to /patient/<savedId> from here
+  // would skip that check and strand the user if the patient no longer exists.
   const handlePatientPortalClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    const savedId = localStorage.getItem("logged_in_patient_id");
-    if (savedId) {
-      router.push(`/patient/${savedId}`);
-    } else {
-      router.push("/patient");
-    }
+    router.push("/patient");
   };
 
   useEffect(() => {
@@ -34,7 +32,7 @@ export default function Home() {
       try {
         const health = await healthCheck();
         const patients = await getPatients(1, 100);
-        
+
         let alertsCount = 0;
         try {
           const anomaliesPromises = patients.patients.map((p) =>
@@ -101,7 +99,7 @@ export default function Home() {
             display: "inline-block",
             marginBottom: "1rem"
           }}>
-            DTU Research Project
+            DTU Master Thesis Project
           </span>
           <h1 style={{
             fontSize: "2.8rem",
@@ -267,7 +265,7 @@ export default function Home() {
             cursor: "pointer",
             transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
             transform: hoveredPortal === "patient" ? "translateY(-4px)" : "none",
-            boxShadow: hoveredPortal === "patient" 
+            boxShadow: hoveredPortal === "patient"
               ? "0 12px 20px -8px rgba(59, 130, 246, 0.15)"
               : "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
           }}>
@@ -314,7 +312,7 @@ export default function Home() {
             cursor: "pointer",
             transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
             transform: hoveredPortal === "doctor" ? "translateY(-4px)" : "none",
-            boxShadow: hoveredPortal === "doctor" 
+            boxShadow: hoveredPortal === "doctor"
               ? "0 12px 20px -8px rgba(59, 130, 246, 0.15)"
               : "0 4px 6px -1px rgba(0, 0, 0, 0.05)"
           }}>

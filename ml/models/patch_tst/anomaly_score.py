@@ -210,6 +210,47 @@ def calibrate_threshold(
     return float(mu + k * std)
 
 
+def robust_baseline(
+    scores: np.ndarray,
+    k: float = 2.0,
+    trim_iters: int = 3,
+) -> tuple[float, float, float]:
+    """
+    Median, sigma and threshold of this patient's NON-anomalous windows.
+
+    Two differences from `calibrate_threshold`, which fits the leading
+    `n_cal_windows` and keeps whatever anomalies live there:
+
+      * every window is used, so the result no longer depends on whether the
+        patient happened to be well-behaved during their first five days;
+      * the fit is iterated, dropping windows above median + k*sigma each pass,
+        so sigma describes normal behaviour instead of absorbing the anomalies
+        it is supposed to measure distance from.
+
+    Returns (median, sigma, threshold). At least half the windows are always
+    retained, so a pathological all-tail input still yields a defined scale.
+    """
+    s = np.asarray(scores, dtype=float)
+    if s.size == 0:
+        return 0.0, 1e-6, 0.0
+
+    keep = np.ones(s.size, dtype=bool)
+    mu = float(np.median(s))
+    std = max(iqr(s) / 1.349, 1e-6)
+    floor = max(s.size // 2, 1)          # never trim past half the record
+
+    for _ in range(trim_iters):
+        thr = mu + k * std
+        nxt = s <= thr
+        if nxt.sum() < floor or nxt.sum() == keep.sum():
+            break
+        keep = nxt
+        mu = float(np.median(s[keep]))
+        std = max(iqr(s[keep]) / 1.349, 1e-6)
+
+    return mu, std, float(mu + k * std)
+
+
 def calibrate_per_patient(
     scores: np.ndarray,
     patient_counts: list[tuple[str, int]],

@@ -149,9 +149,10 @@ def anomaly_score(out, target, mode: str = "sym"):
       sym    : symmetric - squared residual (point) / per-element NLL (prob.). default.
       signed : mean POSITIVE-part residual (glucose ABOVE forecast) - targets the
                hyperglycemic anomalies (missed/late/large = under-insulinization).
-      peak   : max positive-part residual over the horizon (a missed bolus diverges
+      peak   : max SYMMETRIC per-element score over the horizon (a missed bolus diverges
                progressively; the mean dilutes the late, strongest part).
-      end    : mean positive-part residual over the LAST quarter of the horizon.
+      end    : mean SYMMETRIC per-element score over the LAST quarter of the horizon.
+               Only `signed` is directional; `peak`/`end` fire on hypo surprise too.
 
     For the probabilistic model the positive residual is standardized by sigma
     (directional surprise under uncertainty); for the point model it is the raw

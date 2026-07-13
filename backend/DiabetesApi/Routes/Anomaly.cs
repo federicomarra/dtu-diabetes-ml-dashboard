@@ -13,9 +13,15 @@ namespace DiabetesApi.Routes;
 [Produces("application/json")]
 public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
 {
-    // Sent to ML so nothing is pre-filtered — we store ALL returned anomalies and let the
-    // frontend's threshold slider decide what to show at read time (see GET minSeverity).
+    // Low k so ML flags a broad set of candidate events; we then persist only anomalies at or
+    // above the 6σ display floor (MinPersistSeverity). The frontend slider filters further at
+    // read time (see GET minSeverity).
     private const float DetectThresholdK = 2.0f;
+
+    // Only anomalies with severity ≥ this (σ above the patient baseline) are stored on detect.
+    // Matches the frontend's SEVERITY_MIN, the loosest slider setting — anything weaker can never
+    // be surfaced by the UI, so we don't persist it.
+    private const float MinPersistSeverity = 6.0f;
 
     /// <summary>
     /// Get detected anomalies for a patient, optionally filtered by time window.
@@ -134,10 +140,14 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         if (rows.Count == 0) return Ok(new AnomaliesResponse(id, [], 0));
 
         var result = await ml.InferAsync(new MlInferRequest(id, DetectThresholdK, rows));
-        var returned = result?.Anomalies?.ToList() ?? [];
+        // Persist only anomalies at or above the 6σ floor; ML is queried at a lower k so it also
+        // returns weaker events, which we deliberately drop rather than store.
+        var returned = (result?.Anomalies ?? [])
+            .Where(a => a.Severity >= MinPersistSeverity)
+            .ToList();
 
         // Overwrite this window: delete AFTER a successful ML call (so a failure never loses
-        // the old rows), then insert everything returned (no pre-filter — store all).
+        // the old rows), then insert the surviving (≥ 6σ) anomalies.
         var stale = db.Anomalies.Where(a =>
             a.PatientId == id && a.DetectedAt >= startDt && a.DetectedAt <= endDt);
         db.Anomalies.RemoveRange(stale);
@@ -150,6 +160,8 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
             Severity = a.Severity,
             DetectedAt = DateTime.Parse(a.Start).ToUniversalTime(),
             Description = a.Description,
+            ResidualMmoll = a.ResidualMmoll,          // number, not prose: the UI renders mmol/L or mg/dL
+            DurationMin = a.DurationMin,
             IsAcknowledged = false,
         }).ToList();
         db.Anomalies.AddRange(inserted);
@@ -246,6 +258,8 @@ public class Anomaly(AppDbContext db, MlInferenceService ml) : ControllerBase
         a.Description,
         a.IsAcknowledged,
         a.Severity is null ? null : (float)a.Severity,
-        a.DetectedAt?.ToString("O")
+        a.DetectedAt?.ToString("O"),
+        a.ResidualMmoll is null ? null : (float)a.ResidualMmoll,
+        a.DurationMin
     );
 }

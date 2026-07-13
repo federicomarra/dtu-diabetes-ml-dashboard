@@ -13,13 +13,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Patient, GlucoseReading, TimeInRange } from "@/models/types";
+import type { Patient, GlucoseReading, TimeInRange, HbA1c, AnomalyDetection } from "@/models/types";
 import {
   getPatients,
   getLatestReading,
   getTimeInRange,
   getAnomalies,
   getAverageReading,
+  getHbA1c,
 } from "@/models/api";
 import { useTimeRange } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -29,7 +30,9 @@ export interface PatientSummary {
   latestReading: GlucoseReading | undefined;
   tir: TimeInRange | null;
   anomalyCount: number;
+  anomalies: AnomalyDetection[];
   averageGlucose: number | null;
+  hba1c: HbA1c | null;
 }
 
 export const PER_PAGE_OPTIONS = [20, 50, 100, 200] as const;
@@ -50,7 +53,7 @@ export function useDoctorController() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedOnce = useRef(false);
 
-  const [sortKey, setSortKey] = useState<"name" | "ext_id" | "age" | null>(null);
+  const [sortKey, setSortKey] = useState<"name" | "ext_id" | "age" | "anomalies" | "tir" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
 
   const refresh = () => setRefreshTrigger((prev) => prev + 1);
@@ -66,7 +69,7 @@ export function useDoctorController() {
   };
 
   /** Toggle sorting key with cycle: Ascending <-> Descending */
-  const toggleSort = (key: "name" | "ext_id" | "age") => {
+  const toggleSort = (key: "name" | "ext_id" | "age" | "anomalies" | "tir") => {
     if (sortKey === key) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
@@ -93,7 +96,12 @@ export function useDoctorController() {
           page,
           perPage,
           sortKey || undefined,
-          sortDir || undefined
+          sortDir || undefined,
+          timeRange,
+          {
+            low: glucoseRanges.low,
+            high: glucoseRanges.high
+          }
         );
         const patientList = paginatedPatients.patients;
 
@@ -105,7 +113,7 @@ export function useDoctorController() {
         // 2. For each patient, fetch their latest reading, TIR, anomaly count, and average glucose in parallel
         const summaries = await Promise.all(
           patientList.map(async (patient): Promise<PatientSummary> => {
-            const [latestReading, tir, anomaliesResp, averageGlucoseResp] = await Promise.allSettled([
+            const [latestReading, tir, anomaliesResp, averageGlucoseResp, hba1cResp] = await Promise.allSettled([
               getLatestReading(patient.id),
               getTimeInRange(patient.id, {
                 ...timeRange,
@@ -116,6 +124,7 @@ export function useDoctorController() {
               }),
               getAnomalies(patient.id, timeRange),
               getAverageReading(patient.id, timeRange),
+              getHbA1c(patient.id, timeRange),
             ]);
 
             return {
@@ -129,9 +138,17 @@ export function useDoctorController() {
                 anomaliesResp.status === "fulfilled"
                   ? anomaliesResp.value.anomalies.filter((a) => !a.is_acknowledged).length
                   : 0,
+              anomalies:
+                anomaliesResp.status === "fulfilled"
+                  ? anomaliesResp.value.anomalies
+                  : [],
               averageGlucose:
                 averageGlucoseResp.status === "fulfilled"
                   ? averageGlucoseResp.value
+                  : null,
+              hba1c:
+                hba1cResp.status === "fulfilled"
+                  ? hba1cResp.value
                   : null,
             };
           })

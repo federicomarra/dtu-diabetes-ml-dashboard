@@ -2,7 +2,7 @@
 
 **Type 1 Diabetes monitoring system** with continuous glucose monitoring, insulin tracking, and ML-powered anomaly detection for missed and late boluses.
 
-> DTU Research Project — Currently run locally (Docker or manual setup)
+> DTU Master Thesis Project — Currently run locally (Docker or manual setup)
 
 ## Architecture
 

@@ -1,5 +1,9 @@
 # Full-stack local development environment
 # Usage: docker compose up
+#
+# The three built services set `pull_policy: build`, so `docker compose up` always
+# rebuilds them from the working tree instead of silently reusing a months-old image.
+# Layer caching keeps this cheap when nothing changed.
 
 services:
   # PostgreSQL database
@@ -24,6 +28,7 @@ services:
   # ASP.NET Core backend API
   backend:
     build: ./backend
+    pull_policy: build
     container_name: diabetes-backend
     ports:
       - "8000:8000"
@@ -43,6 +48,7 @@ services:
     build:
       context: .
       dockerfile: ml/Dockerfile
+    pull_policy: build
     container_name: diabetes-ml
     ports:
       - "5001:5001"
@@ -63,6 +69,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    pull_policy: build
     container_name: diabetes-frontend
     ports:
       - "3000:3000"
@@ -70,8 +77,9 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000/api
     depends_on:
       - backend
-    volumes:
-      - ./frontend/src:/app/src
+    # NOTE: no source bind-mount. The image runs the Next.js standalone server against a
+    # prebuilt .next/, so mounting ./frontend/src changed nothing while looking like live
+    # reload — edits appeared to do nothing and a stale image served old code for days.
 
   # pgAdmin (optional — for DB inspection)
   pgadmin:

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useGlucoseUnit } from "@/controllers/GlucoseUnitContext";
+import { clearSession } from "@/models/session";
 import styles from "./NavBar.module.css";
 
 export default function NavBar() {
@@ -33,10 +34,8 @@ export default function NavBar() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("logged_in_patient_id");
-    localStorage.removeItem("logged_in_patient_name");
+    clearSession();
     syncLoginState();
-    window.dispatchEvent(new Event("storage"));
     router.push("/patient");
   };
 

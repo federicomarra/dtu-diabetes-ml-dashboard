@@ -31,9 +31,40 @@ def test_grid_and_valid_mask():
     rows = _rows(n=12, step_min=5)               # 12 readings, 5-min -> spans 55 min -> T=56
     arr, valid, t0 = histories_to_array(rows)
     assert arr.shape == (56, 8)
-    assert valid.sum() == 12                       # only sampled minutes are valid
-    assert valid[0] and valid[5] and not valid[1]  # 5-min grid, gaps between
+    assert valid.all()                             # 5-min gaps are bridged, whole span usable
     assert arr[0, 0] == 7.0                         # glucose channel filled
+
+
+def test_glucose_interpolated_between_5min_samples():
+    """Real CGM is 5-min. Minutes between samples must carry an interpolated glucose
+    (not 0.0) or the z-score and the forecaster see a square wave of zeros."""
+    rows = _rows(n=12, step_min=5)                  # glucose 7.00, 7.01, ...
+    arr, _, _ = histories_to_array(rows)
+    assert arr[1, 0] > 0.0
+    assert 7.0 < arr[3, 0] < 7.01                  # linear between sample 0 and sample 5
+
+
+def test_long_gap_marked_invalid():
+    """A CGM dropout longer than MAX_GAP_MIN must NOT be bridged."""
+    base = datetime.fromisoformat("2026-01-01T00:00:00")
+    rows = [
+        {"timestamp": base.isoformat(), "glucose_mmoll": 7.0},
+        {"timestamp": (base + timedelta(minutes=90)).isoformat(), "glucose_mmoll": 9.0},
+    ]
+    _, valid, _ = histories_to_array(rows)
+    assert valid[0] and valid[90]
+    assert not valid[45]                            # 90-min hole stays invalid
+
+
+def test_five_min_cgm_yields_scoreable_windows():
+    """Regression: the detector needs `valid[s:s+WIN].all()` over a 160-min window.
+    With raw 5-min sampling no window ever qualified -> every real upload returned
+    0 anomalies."""
+    WIN = 160
+    rows = _rows(n=200, step_min=5)                 # ~16.6 h of real-cadence CGM
+    arr, valid, _ = histories_to_array(rows)
+    starts = [s for s in range(0, arr.shape[0] - WIN + 1, 5) if valid[s:s + WIN].all()]
+    assert len(starts) > 0
 
 
 def test_unordered_input_sorted():

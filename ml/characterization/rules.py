@@ -101,7 +101,8 @@ def classify_meals(meals, boluses, cfg: RuleConfig = RuleConfig()) -> dict[str, 
     return out
 
 
-def classify_detection(onset_min: int, bolus_minutes, cfg: RuleConfig = RuleConfig()) -> str | None:
+def classify_detection(onset_min: int, bolus_minutes, cfg: RuleConfig = RuleConfig(),
+                       direction: float | None = None) -> str | None:
     """
     Name a DETECTED glucose excursion by the bolus that should have covered it.
 
@@ -112,9 +113,19 @@ def classify_detection(onset_min: int, bolus_minutes, cfg: RuleConfig = RuleConf
     "actual eaten" signal, so a log-anchored rule is structurally blind to misses.
 
       missed : no bolus in [onset - det_lookback, onset + det_attribute_max]
+               AND (if known) glucose ran ABOVE the forecast
       late   : the covering bolus lands >= det_late_delay after onset
       None   : a timely bolus covers it (the excursion has some other cause -
-               e.g. a large but correctly-bolused meal) -> not a behavioural flag
+               e.g. a large but correctly-bolused meal) -> not a behavioural flag;
+               or it ran BELOW forecast with no bolus -> not a bolus-timing anomaly
+
+    `direction` is the mean forecast residual (observed - predicted) over the tail of
+    the horizon. The detector's score is SYMMETRIC, so it flags below-forecast windows
+    just as readily; without this gate ~52% of `missed` events on real data were glucose
+    running LOW, which a missed bolus cannot cause. Sim ground truth: P(above|missed)
+    = 82.8% vs 49.7% for normal windows. `late` is NOT gated - P(above|late) = 55.0%,
+    because the late bolus drives glucose back under the forecast (gating it costs AUPRC
+    0.0955 -> 0.0810). Pass None when no forecast is available to keep the old behaviour.
 
     `bolus_minutes` are event onsets in the SAME minute base as `onset_min`.
     """
@@ -124,6 +135,8 @@ def classify_detection(onset_min: int, bolus_minutes, cfg: RuleConfig = RuleConf
     else:
         near = np.empty(0, dtype=int)
     if near.size == 0:
+        if direction is not None and direction < 0:
+            return None            # below forecast, no bolus -> not a missed bolus
         return "missed"
     if int(near.min()) - onset_min >= cfg.det_late_delay:
         return "late"

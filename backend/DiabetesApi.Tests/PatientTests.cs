@@ -80,6 +80,23 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
     }
 
     [Fact]
+    public async Task CreatePatient_DuplicateExternalId_Returns409()
+    {
+        var body = new { external_id = "P003_DUPLICATE", name = "First" };
+
+        var first = await Client.PostAsJsonAsync("/api/patient/create", body);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Without an existence check this hits the unique index and surfaces as a raw
+        // 500 DbUpdateException, which the frontend cannot render.
+        var second = await Client.PostAsJsonAsync("/api/patient/create", body);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
+        var err = await second.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Contains("already exists", err.GetProperty("error").GetString()!);
+    }
+
+    [Fact]
     public async Task GetPatient_ReturnsPatient()
     {
         var patient = await SeedPatientAsync("P_GET_TEST", "Get Test Patient");
@@ -258,5 +275,66 @@ public class PatientTests(CustomWebApplicationFactory factory) : TestBase(factor
         Assert.Equal(1.2f, histories[2].Insulin);
         Assert.Equal(5.5f, histories[3].Insulin);
         Assert.Equal(45f, histories[3].Meal);
+    }
+
+    [Fact]
+    public async Task ListPatients_SortByAnomaliesAndTir()
+    {
+        // 1. Seed patients
+        var p1 = await SeedPatientAsync("P_SORT_1", "Alpha Patient");
+        var p2 = await SeedPatientAsync("P_SORT_2", "Beta Patient");
+
+        using (var db = CreateDb())
+        {
+            // Seed anomalies: Patient 1 has 2 unacknowledged, Patient 2 has 1
+            db.Anomalies.AddRange(
+                new Models.Anomaly { PatientId = p1.Id, AnomalyType = "missed_bolus", Confidence = 0.8, IsAcknowledged = false, DetectedAt = DateTime.UtcNow },
+                new Models.Anomaly { PatientId = p1.Id, AnomalyType = "late_bolus", Confidence = 0.9, IsAcknowledged = false, DetectedAt = DateTime.UtcNow },
+                new Models.Anomaly { PatientId = p2.Id, AnomalyType = "missed_bolus", Confidence = 0.7, IsAcknowledged = false, DetectedAt = DateTime.UtcNow }
+            );
+
+            // Seed glucoses: Patient 1 has low TIR (0%), Patient 2 has high TIR (100%)
+            // Range low is 3.9, high is 10.0
+            db.Glucoses.AddRange(
+                new Models.Glucose { PatientId = p1.Id, Timestamp = DateTime.UtcNow, GlucoseMmoll = 2.5, Status = "low" },
+                new Models.Glucose { PatientId = p2.Id, Timestamp = DateTime.UtcNow, GlucoseMmoll = 5.5, Status = "in_range" }
+            );
+
+            await db.SaveChangesAsync();
+        }
+
+        // Test sorting by anomalies descending (default)
+        var respAnomDesc = await Client.GetAsync("/api/patient/list?sortBy=anomalies&sortDir=desc&last=24h&perPage=100");
+        Assert.Equal(HttpStatusCode.OK, respAnomDesc.StatusCode);
+        var bodyAnomDesc = await respAnomDesc.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var patientsAnomDesc = bodyAnomDesc.GetProperty("patients").EnumerateArray().ToList();
+        Assert.True(patientsAnomDesc.Count >= 2);
+        // Alpha Patient (P1) has more anomalies, so should be first in desc
+        Assert.Equal("P_SORT_1", patientsAnomDesc[0].GetProperty("external_id").GetString());
+
+        // Test sorting by anomalies ascending
+        var respAnomAsc = await Client.GetAsync("/api/patient/list?sortBy=anomalies&sortDir=asc&last=24h&perPage=100");
+        Assert.Equal(HttpStatusCode.OK, respAnomAsc.StatusCode);
+        var bodyAnomAsc = await respAnomAsc.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var patientsAnomAsc = bodyAnomAsc.GetProperty("patients").EnumerateArray().ToList();
+        // Patient with fewer anomalies (or none) should be first. Since P2 has 1 and P1 has 2, P2 or a patient with 0 should be first
+        // We know P_SORT_2 should come before P_SORT_1
+        var idxP1 = patientsAnomAsc.FindIndex(p => p.GetProperty("external_id").GetString() == "P_SORT_1");
+        var idxP2 = patientsAnomAsc.FindIndex(p => p.GetProperty("external_id").GetString() == "P_SORT_2");
+        Assert.True(idxP1 != -1);
+        Assert.True(idxP2 != -1);
+        Assert.True(idxP2 < idxP1);
+
+        // Test sorting by TIR descending
+        var respTirDesc = await Client.GetAsync("/api/patient/list?sortBy=tir&sortDir=desc&last=24h&perPage=100");
+        Assert.Equal(HttpStatusCode.OK, respTirDesc.StatusCode);
+        var bodyTirDesc = await respTirDesc.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var patientsTirDesc = bodyTirDesc.GetProperty("patients").EnumerateArray().ToList();
+        // Beta Patient (P2) has 100% TIR, Alpha Patient (P1) has 0% TIR. P2 should come before P1.
+        var idxP1Tir = patientsTirDesc.FindIndex(p => p.GetProperty("external_id").GetString() == "P_SORT_1");
+        var idxP2Tir = patientsTirDesc.FindIndex(p => p.GetProperty("external_id").GetString() == "P_SORT_2");
+        Assert.True(idxP1Tir != -1);
+        Assert.True(idxP2Tir != -1);
+        Assert.True(idxP2Tir < idxP1Tir);
     }
 }

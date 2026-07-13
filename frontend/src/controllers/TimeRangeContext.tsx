@@ -130,3 +130,35 @@ export function formatTimeRangeFriendly(timeRange: TimeRange): string {
   }
   return "latest 2 weeks";
 }
+
+/** Custom hook to reuse Time Range Selector state logic */
+export function useTimeRangeSelector() {
+  const { timeRange, setLast } = useTimeRange();
+  const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
+  const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
+  const valuesArray = Array.from({ length: maxVal }, (_, i) => i + 1);
+
+  const handleUnitChange = (newUnit: "d" | "w" | "m") => {
+    let newValue = activeVal;
+    if (newUnit === "d") {
+      newValue = Math.min(Math.max(activeVal, 1), 7);
+    } else if (newUnit === "w") {
+      newValue = Math.min(Math.max(activeVal, 1), 4);
+    } else if (newUnit === "m") {
+      newValue = Math.min(Math.max(activeVal, 1), 6);
+    }
+    setLast(`${newValue}${newUnit}`);
+  };
+
+  const handleValueChange = (newValue: number) => {
+    setLast(`${newValue}${activeUnit}`);
+  };
+
+  return {
+    activeVal,
+    activeUnit,
+    valuesArray,
+    handleUnitChange,
+    handleValueChange,
+  };
+}

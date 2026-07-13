@@ -98,10 +98,13 @@ class AnomalySchema(ma.Schema):
     severity         = ma.fields.Float(metadata={"description": "σ above this patient's baseline"})
     anomaly_strength = ma.fields.Float(metadata={"description": "0-100 bar relative to strongest flag"})
     score            = ma.fields.Float(metadata={"description": "Raw forecast residual"})
+    residual_mmoll   = ma.fields.Float(metadata={"description": "Signed mmol/L above (+) or below (-) forecast"})
+    above_forecast   = ma.fields.Bool(metadata={"description": "True = glucose ran above forecast"})
 
 class InferResponseSchema(ma.Schema):
     patient_id = ma.fields.Int(allow_none=True)
     n_windows  = ma.fields.Int()
+    n_detected = ma.fields.Int(metadata={"description": "excursions detected before the rule named them"})
     anomalies  = ma.fields.List(ma.fields.Nested(AnomalySchema))
 
 class HealthResponseSchema(ma.Schema):
@@ -200,6 +203,10 @@ class Infer(MethodView):
         else:
             meals, boluses = derive_events(arr)
 
+        # the scale zscore_channels divides glucose by -> lets us report the forecast
+        # residual back in mmol/L, which a clinician can argue with (unlike "34 sigma").
+        glucose_scale = float(arr[:, 0].std()) or 1.0
+
         z = zscore_channels(arr)
         events, _ = detect(
             z, valid, detector=_MODEL["detector"], device=_MODEL["device"],
@@ -223,11 +230,21 @@ class Infer(MethodView):
         out = []
         for e in events:
             if e.rule_label == "late":
-                atype, desc = "late_bolus", "bolus delivered well after the glucose rise began (detection-anchored)"
+                atype = "late_bolus"
             elif e.rule_label == "missed":
-                atype, desc = "missed_bolus", "glucose excursion with no covering bolus (detection-anchored)"
+                atype = "missed_bolus"
             else:
-                continue   # timely bolus covers the excursion -> not a missed/late-bolus event
+                continue   # timely bolus covers it, or it ran BELOW forecast with no bolus
+
+            # Residual back in the patient's own units. `direction` is (observed - forecast)
+            # over the horizon tail, in z-units; multiplying by the patient's glucose std
+            # gives "ran X mmol/L above/below what the model expected".
+            resid_mmol = e.direction * glucose_scale
+            desc = (f"glucose ran {abs(resid_mmol):.1f} mmol/L "
+                    f"{'above' if resid_mmol >= 0 else 'below'} forecast for "
+                    f"{int(e.duration_min)} min; "
+                    + ("no bolus logged around the rise" if atype == "missed_bolus"
+                       else "covering bolus arrived late"))
             out.append({
                 "start": (t0 + timedelta(minutes=e.start_min)).isoformat(),
                 "end": (t0 + timedelta(minutes=e.start_min + e.duration_min)).isoformat(),
@@ -239,12 +256,16 @@ class Infer(MethodView):
                 "severity": round(float(e.severity), 2),        # sigma above this patient's baseline (interpretable, stable)
                 "anomaly_strength": strength(e.severity),        # 0-100 bar relative to the strongest flag (UI knob)
                 "score": round(float(e.anomaly_score), 4),      # raw surprise (forecast residual)
+                "residual_mmoll": round(float(resid_mmol), 2),  # signed: +above / -below forecast
+                "above_forecast": bool(e.direction >= 0),
             })
         out.sort(key=lambda a: a["severity"], reverse=True)
         if max_events > 0:
             out = out[:max_events]
+        # n_detected vs len(out): excursions the detector found but the rule did not name
+        # a bolus-timing anomaly. Reported so the drop is visible, not silent.
         return jsonify(patient_id=patient_id, n_windows=int(valid.sum()),
-                       anomalies=out), 200
+                       n_detected=len(events), anomalies=out), 200
 
 
 api.register_blueprint(blp)

@@ -18,7 +18,7 @@ export interface GlucoseReading {
   patient_id: number;
   timestamp: string;
   glucose_mmoll: number;
-  source: "simulated" | "dexcom" | "libre";
+  source: "simulated" | "dexcom" | "libre" | "glooko_cgm" | "glooko_manual";
   status: "very_low" | "low" | "in_range" | "high" | "very_high";
 }
 
@@ -46,10 +46,12 @@ export interface AnomalyDetection {
   glucose_reading_id: number | null;
   anomaly_type: "missed_bolus" | "late_bolus" | "unusual_pattern";
   confidence: number;          // 0–1 magnitude bar (NOT a probability)
-  description: string | null;
+  description: string | null;  // server fallback, always mmol/L — prefer composing from residual_mmoll
   is_acknowledged: boolean;
-  severity?: number;           // σ above the patient's baseline — the headline number; the slider filters on this
+  severity?: number;           // σ above the patient's baseline — the sort key; the slider filters on this
   detected_at?: string;        // ISO; anomaly window start
+  residual_mmoll?: number;     // signed: + glucose above forecast, - below. Render through the unit toggle
+  duration_min?: number;       // length of the detected excursion
 }
 
 export interface TimeInRange {

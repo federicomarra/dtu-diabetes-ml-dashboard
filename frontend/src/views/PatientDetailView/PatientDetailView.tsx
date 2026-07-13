@@ -13,12 +13,12 @@ import InsulinDailyChart from "@/views/InsulinDailyChart/InsulinDailyChart";
 import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import DataUploader from "@/views/DataUploader/DataUploader";
+import { clearSession } from "@/models/session";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
-import { useTimeRange, parseLast } from "@/controllers/TimeRangeContext";
+import { useTimeRange, useTimeRangeSelector } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
 import {
   useSeverityInference,
-  severityToPct,
   SEVERITY_MIN,
   SEVERITY_MAX,
   SEVERITY_STEP,
@@ -34,7 +34,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const { ext_id } = useParams<{ ext_id: string }>();
   const router = useRouter();
   const ctrl = usePatientDetailController(ext_id);
-  const { timeRange, setLast } = useTimeRange();
+  const { timeRange } = useTimeRange();
   const { ranges: glucoseRanges, setRanges: onThresholdsChange } = useGlucoseRanges();
   const { inferenceEnabled, setInferenceEnabled, minSeverity, setMinSeverity } = useSeverityInference();
   const sliderPct = ((minSeverity - SEVERITY_MIN) / (SEVERITY_MAX - SEVERITY_MIN)) * 100;
@@ -60,25 +60,13 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
     setGlucoseLatestDay(day);
   }, []);
 
-  const { value: activeVal, unit: activeUnit } = parseLast(timeRange.last);
-  const maxVal = activeUnit === "d" ? 7 : activeUnit === "w" ? 4 : 6;
-  const valuesArray = Array.from({ length: maxVal }, (_, i) => i + 1);
-
-  const handleUnitChange = (newUnit: "d" | "w" | "m") => {
-    let newValue = activeVal;
-    if (newUnit === "d") {
-      newValue = Math.min(Math.max(activeVal, 1), 7);
-    } else if (newUnit === "w") {
-      newValue = Math.min(Math.max(activeVal, 1), 4);
-    } else if (newUnit === "m") {
-      newValue = Math.min(Math.max(activeVal, 1), 6);
-    }
-    setLast(`${newValue}${newUnit}`);
-  };
-
-  const handleValueChange = (newValue: number) => {
-    setLast(`${newValue}${activeUnit}`);
-  };
+  const {
+    activeVal,
+    activeUnit,
+    valuesArray,
+    handleUnitChange,
+    handleValueChange,
+  } = useTimeRangeSelector();
 
   if (ctrl.loading) {
     return (
@@ -115,7 +103,12 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
             We couldn&apos;t find a patient with ID: <code>{ext_id}</code>.
           </p>
           <button
-            onClick={() => router.push("/patient")}
+            onClick={() => {
+              // Drop the saved session first: it is what sent us to this missing patient,
+              // and /patient would bounce straight back here if we left it in place.
+              clearSession();
+              router.push("/patient");
+            }}
             style={{
               background: "var(--primary)",
               color: "white",
@@ -165,9 +158,25 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const allChartsPresent = hasInsulin && hasCarbo;
   const onlyOneChart = (hasInsulin || hasCarbo) && !allChartsPresent;
 
-  const anomalyCount = mode === "doctor"
-    ? anomalies.filter((a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)).length
-    : anomalies.filter((a) => !a.is_acknowledged).length;
+  const anomalyCount = anomalies.filter(
+    (a) => !a.is_acknowledged && (a.severity == null || a.severity >= minSeverity)
+  ).length;
+
+  // What the slider actually buys, in the two units a reader can act on: how many events
+  // survive the threshold, and how many that is per day. AnomalyAlert applies the same filter.
+  const shownAnomalies = anomalies.filter(
+    (a) => a.severity == null || a.severity >= minSeverity
+  ).length;
+
+  const anomalyRatePerDay = (() => {
+    const stamps = anomalies
+      .map((a) => (a.detected_at ? new Date(a.detected_at).getTime() : NaN))
+      .filter((t) => !Number.isNaN(t));
+    if (stamps.length < 2) return null;
+    const days = (Math.max(...stamps) - Math.min(...stamps)) / 86_400_000;
+    if (days < 0.5) return null;
+    return (shownAnomalies / days).toFixed(1);
+  })();
 
   return (
     <div className={styles.dashboard}>
@@ -290,12 +299,20 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
                   step={SEVERITY_STEP}
                   value={minSeverity}
                   onChange={(e) => setMinSeverity(Number(e.target.value))}
-                  title={`${minSeverity}σ above baseline`}
+                  aria-describedby="sensitivity-readout"
                   className={styles.sliderInput}
                   style={{ "--pct": `${sliderPct}%` } as React.CSSProperties}
                 />
-                <span className={styles.sliderValue}>{severityToPct(minSeverity)}%</span>
+                <span className={styles.sliderValue}>{shownAnomalies}</span>
               </div>
+              {/* The threshold is a review-workload dial, not a rarity statistic: the score
+                  distribution is heavy-tailed (skew ~7), so "6σ" is a 1-in-27 window, not a
+                  1-in-a-billion one. State the workload, which is the only promise it keeps. */}
+              <p id="sensitivity-readout" className={styles.sliderReadout}>
+                Showing <strong>{shownAnomalies}</strong> of {anomalies.length} detected
+                {anomalyRatePerDay != null && <> · ~{anomalyRatePerDay} per day</>}, ranked by
+                how far glucose strayed from its forecast.
+              </p>
         </div>
       </div>
 
@@ -306,10 +323,12 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
         latestReading={latestReading}
         tir={tir ?? undefined}
         anomalyCount={anomalyCount}
+        anomalies={anomalies}
         averageGlucose={averageGlucose}
         timeRangeLast={timeRange.last}
         hba1c={hba1c ?? undefined}
         gmi={gmi ?? undefined}
+        isDetailView={true}
       />
 
       {mode === "patient" && (

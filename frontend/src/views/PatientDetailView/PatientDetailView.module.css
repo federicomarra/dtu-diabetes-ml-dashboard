@@ -282,6 +282,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* States what the threshold buys — a review workload — instead of a σ that reads as a
+   rarity guarantee the score distribution does not support. */
+.sliderReadout {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .sliderInput {
   -webkit-appearance: none;
   appearance: none;
