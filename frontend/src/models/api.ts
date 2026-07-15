@@ -337,7 +337,14 @@ export async function getMeals(
 
 // ─── Health check ────────────────────────────────────────
 
-export async function healthCheck(): Promise<{ status: string }> {
+export async function healthCheck(): Promise<{
+  status: string;
+  components?: {
+    backend?: { status: string };
+    database?: { status: string };
+    ml?: { detector?: string; device?: string; status: string };
+  };
+}> {
   const { data } = await api.get("/health");
   return data;
 }

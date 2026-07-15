@@ -13,6 +13,7 @@ export default function Home() {
     loading: true,
     patientCount: 0,
     totalAlerts: 0,
+    mlActive: false,
   });
 
   const [hoveredPortal, setHoveredPortal] = useState<"patient" | "doctor" | null>(null);
@@ -54,6 +55,7 @@ export default function Home() {
             loading: false,
             patientCount: patients.total || patients.patients.length,
             totalAlerts: alertsCount,
+            mlActive: health.components?.ml?.status?.toLowerCase() === "healthy",
           });
         }
       } catch (error) {
@@ -64,6 +66,7 @@ export default function Home() {
             loading: false,
             patientCount: 5,
             totalAlerts: 12,
+            mlActive: false,
           });
         }
       }
@@ -224,13 +227,13 @@ export default function Home() {
                 </div>
                 <span style={{
                   fontSize: "0.8rem",
-                  color: "var(--success)",
-                  background: "rgba(39, 174, 96, 0.1)",
+                  color: systemStatus.mlActive ? "var(--success)" : "var(--warning)",
+                  background: systemStatus.mlActive ? "rgba(39, 174, 96, 0.1)" : "rgba(243, 156, 18, 0.1)",
                   padding: "0.2rem 0.5rem",
                   borderRadius: "4px",
                   fontWeight: 600
                 }}>
-                  Active
+                  {systemStatus.mlActive ? "Active" : "Inactive"}
                 </span>
               </div>
             </div>
