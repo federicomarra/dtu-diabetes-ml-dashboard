@@ -241,6 +241,11 @@
   background: var(--primary, #3b82f6);
 }
 
+.switchTrack:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .switchKnob {
   position: absolute;
   left: 2px;

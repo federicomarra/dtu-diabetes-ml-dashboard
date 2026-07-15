@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
@@ -14,6 +14,7 @@ import CarboDailyChart from "@/views/CarboDailyChart/CarboDailyChart";
 import GlucoseScatterplot from "@/views/GlucoseScatterplot/GlucoseScatterplot";
 import DataUploader from "@/views/DataUploader/DataUploader";
 import { clearSession } from "@/models/session";
+import { healthCheck } from "@/models/api";
 import { usePatientDetailController } from "@/controllers/usePatientDetailController";
 import { useTimeRange, useTimeRangeSelector } from "@/controllers/TimeRangeContext";
 import { useGlucoseRanges } from "@/controllers/GlucoseRangesContext";
@@ -40,6 +41,16 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
   const sliderPct = ((minSeverity - SEVERITY_MIN) / (SEVERITY_MAX - SEVERITY_MIN)) * 100;
   const { unit } = useGlucoseUnit();
   const [showRangesModal, setShowRangesModal] = useState(false);
+
+  // ML detection can only be enabled when the backend's ML component reports healthy.
+  const [mlHealthy, setMlHealthy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    healthCheck()
+      .then((h) => { if (active) setMlHealthy(h.components?.ml?.status?.toLowerCase() === "healthy"); })
+      .catch(() => { if (active) setMlHealthy(false); });
+    return () => { active = false; };
+  }, []);
 
   // Shared daily-view state — GlucoseDailyChart is the source of truth
   const [dailyOffset, setDailyOffset] = useState(0);
@@ -268,7 +279,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
           </button>
 
           {/* Anomaly detection: toggle inference for the current window + sensitivity filter */}
-          <div className={styles.switchContainer} title="Run ML anomaly detection over the selected window">
+          <div className={styles.switchContainer} title={mlHealthy ? "Run ML anomaly detection over the selected window" : "ML engine unavailable"}>
             <span className={styles.switchLabel}>
               {ctrl.isRefreshing && inferenceEnabled ? (
                 <Loader2 size={13} className={styles.spinner} />
@@ -282,6 +293,7 @@ export default function PatientDetailView({ mode }: PatientDetailViewProps) {
                   id="ml-detection-toggle"
                   className={`${styles.switchTrack} ${inferenceEnabled ? styles.switchTrackActive : ""}`}
                   onClick={() => setInferenceEnabled(!inferenceEnabled)}
+                  disabled={!mlHealthy}
                   aria-checked={inferenceEnabled}
                   role="switch"
                 >

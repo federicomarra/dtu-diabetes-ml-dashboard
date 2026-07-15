@@ -55,8 +55,8 @@ export async function checkIsHealthy(): Promise<boolean> {
   healthCheckPromise = (async () => {
     try {
       const response = await api.get("/health", { timeout: 3000 });
-      const status = response.data?.status?.toLowerCase();
-      const isHealthy = status === "healthy" || response.data?.status === "Healthy";
+      const backendStatus = response.data?.components?.backend?.status?.toLowerCase();
+      const isHealthy = backendStatus === "healthy";
       isHealthyCache = isHealthy;
       return isHealthy;
     } catch (e) {
